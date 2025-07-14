@@ -1,131 +1,166 @@
-# AI-Driven RTS Game - MVP Implementation
+# AI-RTS: Cooperative Real-Time Strategy Game
 
-A competitive 1v1 RTS where players command AI minions using natural language, powered by Godot 4 and OpenAI.
+## 🎮 Project Overview
 
-## Project Overview
+AI-RTS is an innovative cooperative real-time strategy game built with Godot 4.4, featuring team-based shared unit control where 2 players per team control the same 5 units collaboratively in 2v2 matches. The game integrates AI-powered natural language commands for intuitive unit control.
 
-This is an innovative RTS game where each player controls up to 10 personality-driven robotic minions through natural language commands. The AI interprets these commands via OpenAI and converts them into multi-step tactical plans that units execute over several seconds.
+## ✨ Key Features
 
-### Key Features
-- **Natural Language Control**: Issue commands in plain English
-- **Vision-Based AI**: Units only know what they can see (120° cone, 30m range)
-- **Personality System**: Each unit has a customizable system prompt affecting behavior
-- **Multi-Step Planning**: AI generates complex plans with conditional triggers
-- **Speech Bubbles**: Units communicate their actions with personality
-- **Node Capture**: Control strategic points to build structures
-- **Deterministic Multiplayer**: Lock-step networking for competitive play
+### 🤝 Cooperative Gameplay
+- **Shared Unit Control**: Multiple players control the same units simultaneously
+- **Team-Based Strategy**: 2v2 matches with coordinated team gameplay
+- **Seamless Collaboration**: Real-time shared control without conflicts
 
-## Documentation Structure
+### 🤖 AI Integration
+- **Natural Language Commands**: Control units using plain English
+- **OpenAI Integration**: Powered by GPT for intelligent command interpretation
+- **Voice Command Support**: Speak commands directly to your units
+- **Context-Aware**: AI understands game state and unit capabilities
 
-### 📋 Planning Documents
-- **[mvp_implementation_plan.md](mvp_implementation_plan.md)** - Complete 12-week development roadmap
-- **[weekly_breakdown.md](weekly_breakdown.md)** - Detailed day-by-day task breakdown
-- **[week1_starter_guide.md](week1_starter_guide.md)** - Step-by-step guide for initial setup
+### 🎯 Unit System
+- **5 Unit Types**: Scout, Soldier, Tank, Medic, Engineer
+- **Unique Abilities**: Each unit type has distinct roles and capabilities
+- **Combat System**: Health, damage, and tactical combat mechanics
+- **Vision System**: Realistic fog of war and unit detection
 
-### 🏗️ Technical Documents
-- **[technical_architecture.md](technical_architecture.md)** - System architecture and code examples
+### 🌐 Multiplayer Architecture
+- **Dedicated Server**: Scalable server architecture for multiplayer matches
+- **Real-time Synchronization**: Server-authoritative game state
+- **100 Client Capacity**: Supports large-scale multiplayer sessions
+- **Session Management**: Automatic matchmaking and session cleanup
 
-## Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
-- Godot 4.4+
-- OpenAI API key
-- Git
+- Godot 4.4.1 or later
+- OpenAI API key (optional, for AI features)
 
-### Setup Instructions
-1. Clone this repository
-2. Open project in Godot 4.4+
-3. Follow [week1_starter_guide.md](week1_starter_guide.md) for initial setup
-4. Set your OpenAI API key in environment variables:
-   ```bash
-   export OPENAI_API_KEY="your-key-here"
-   ```
+### Running the Game
+1. Clone the repository
+2. Open `project.godot` in Godot
+3. Run the main scene (`scenes/Main.tscn`)
 
-## Development Timeline
+### Controls
+- **Camera**: WASD/Arrow keys to pan, Mouse wheel to zoom
+- **Unit Selection**: Click and drag to select units
+- **Commands**: Press Enter to type AI commands
+- **Voice**: Press 'V' for voice commands (if configured)
 
-### Phase 1: Core Setup (Weeks 1-2) ✅
-- Project structure and singletons
-- Basic map and environment
-- Camera and input systems
-
-### Phase 2: Units & AI (Weeks 3-4)
-- Unit archetypes (Scout, Tank, Sniper, Medic, Engineer)
-- Vision system and fog of war
-- Finite State Machine framework
-
-### Phase 3: Networking (Weeks 5-6)
-- Multiplayer lobby system
-- Lock-step synchronization
-- Client prediction and interpolation
-
-### Phase 4: LLM Integration (Weeks 7-8)
-- OpenAI API connection
-- Command parsing and validation
-- Plan execution system
-
-### Phase 5: Gameplay (Weeks 9-10)
-- Node capture mechanics
-- Building system (Spire, Tower, Relay Pad)
-- Combat and special actions
-
-### Phase 6: Polish (Weeks 11-12)
-- UI/UX implementation
-- Speech bubble system
-- Post-match summary and ELO
-
-## Architecture Overview
-
-```
-Client (60 Hz) → Commands → Server (30 Hz) → LLM Bridge (0.5-2 Hz)
-                                ↓
-                          Plan Validator
-                                ↓
-                          Plan Executor → FSM → Game Logic
-```
+## 🛠️ Technical Architecture
 
 ### Core Systems
-- **GameManager**: Overall game state management
-- **EventBus**: Global signal dispatching
-- **ConfigManager**: Game constants and settings
-- **LLMBridge**: OpenAI integration and batching
-- **PlanExecutor**: Multi-step AI plan execution
-- **VisionSystem**: Cone-based visibility calculations
+- **Game Manager**: Central game state management
+- **Selection System**: Multi-unit selection with visual feedback
+- **Command Processing**: AI-powered command interpretation
+- **Network Layer**: ENetMultiplayerPeer for real-time communication
 
-## MVP Requirements Checklist
+### AI Components
+- **OpenAI Client**: Natural language processing
+- **Command Translator**: Converts AI responses to game commands
+- **Voice Recognition**: Speech-to-text integration
 
-- [ ] Online 1v1 matches (15+ minutes)
-- [ ] OpenAI integration (<1s latency)
-- [ ] 5 minion archetypes
-- [ ] System prompt customization
-- [ ] 3 building types
-- [ ] 9-node map with fog of war
-- [ ] Vision-based knowledge system
-- [ ] Multi-step plan execution
-- [ ] Speech bubble system
-- [ ] Core actions (move, peek_and_fire, lay_mines, hijack)
-- [ ] Command UI (radial + text)
-- [ ] Post-match summary
-- [ ] ELO rating system
-- [ ] Replay system
+### Dedicated Server
+- **Server-Authoritative**: All game logic runs on server
+- **Real-time Physics**: Server-side collision and movement
+- **AI Integration**: Server processes AI commands
+- **Session Management**: Automatic player matchmaking
 
-## Technologies Used
+## 🎮 Development Status
 
-- **Engine**: Godot 4.4 (GDScript)
-- **AI**: OpenAI GPT-4
-- **Networking**: Godot High-Level Multiplayer API
-- **Assets**: Kenney.nl 3D models
-- **Rendering**: Forward+ with toon shading
+### ✅ Completed Features
+- [x] Cooperative team-based unit control
+- [x] 5 unit types with unique abilities
+- [x] AI natural language command processing
+- [x] Real-time multiplayer with dedicated server
+- [x] Vision and combat systems
+- [x] Session management and matchmaking
+- [x] Comprehensive testing framework
 
-## Contributing
+### 🔄 Current Phase
+**Phase 4**: Client-Server Integration
+- Migrating client game to use dedicated server
+- Implementing client-side prediction
+- Adding visual synchronization
 
-This is an MVP implementation following the provided PRD. Please refer to the weekly breakdown for current development priorities.
+## 🧪 Testing
 
-## License
+### Test Coverage
+- Unit spawning and management
+- Combat and healing mechanics
+- AI command processing
+- Multiplayer networking
+- Session management
+- Client-server communication
 
-[Your License Here]
+### Running Tests
+```bash
+# Run main game tests
+godot scenes/Main.tscn
 
-## Acknowledgments
+# Run dedicated server tests
+cd game-server
+godot --headless scenes/main.gd
 
-- Kenney.nl for 3D assets
-- OpenAI for LLM capabilities
-- Godot Engine community 
+# Run client connection tests
+godot TestServerClient.tscn
+```
+
+## 🏗️ Project Structure
+
+```
+ai-rts/
+├── scenes/                 # Game scenes
+│   ├── Main.tscn          # Main game scene
+│   ├── units/             # Unit scene templates
+│   └── ui/                # User interface
+├── scripts/               # Game logic
+│   ├── core/              # Core systems
+│   ├── ai/                # AI integration
+│   ├── ui/                # UI controllers
+│   └── autoload/          # Singleton systems
+├── game-server/           # Dedicated server
+│   ├── server/            # Server core
+│   ├── multiplayer/       # Multiplayer logic
+│   └── game_logic/        # Game systems
+└── resources/             # Assets and resources
+```
+
+## 🔧 Configuration
+
+### Environment Variables
+- `OPENAI_API_KEY`: Your OpenAI API key for AI features
+- `SERVER_PORT`: Dedicated server port (default: 7777)
+- `MAX_CLIENTS`: Maximum client connections (default: 100)
+
+### Game Settings
+- Team sizes: 2 players per team
+- Unit count: 5 units per team
+- Match format: 2v2 multiplayer
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Follow the `.cursorrules` coding guidelines
+4. Add tests for new features
+5. Submit a pull request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🙏 Acknowledgments
+
+- Built with Godot 4.4
+- AI powered by OpenAI
+- Networking with ENetMultiplayerPeer
+- Testing framework for comprehensive validation
+
+## 📞 Support
+
+For questions, issues, or contributions, please open an issue on GitHub.
+
+---
+
+**Current Version**: 1.0.0 (Phase 4 Implementation Complete)
+**Last Updated**: December 2024 

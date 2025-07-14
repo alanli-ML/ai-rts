@@ -1,11 +1,11 @@
 # test_setup.gd
 extends Node3D
 
-const GameController = preload("res://scripts/core/game_controller.gd")
+# const GameController = preload("res://scripts/core/game_controller.gd")
 const UnitSpawner = preload("res://scripts/units/unit_spawner.gd")
 
 var map_scene: PackedScene
-var game_controller: GameController
+var game_controller
 var unit_spawner: Node3D
 
 func _ready() -> void:
@@ -15,7 +15,8 @@ func _ready() -> void:
 	_verify_singletons()
 	
 	# Create game controller
-	game_controller = GameController.new()
+	var GameControllerScript = load("res://scripts/core/game_controller.gd")
+	game_controller = GameControllerScript.new()
 	game_controller.name = "GameController"
 	add_child(game_controller)
 	
@@ -45,6 +46,7 @@ func _ready() -> void:
 	Logger.info("TestSetup", "Camera controls: WASD/Arrow keys to pan, Mouse wheel to zoom, Middle mouse to drag")
 	Logger.info("TestSetup", "Command input: Press Enter to type commands, Q for radial menu")
 	Logger.info("TestSetup", "Unit testing: Click to select units, multiple archetypes spawned")
+	Logger.info("TestSetup", "AI testing: Press 'I' to test AI commands, 'O' to test AI status, 'P' to test voice commands")
 
 func _verify_singletons() -> void:
 	# Check if all autoloads are accessible
@@ -155,6 +157,12 @@ func _input(event: InputEvent) -> void:
 				_show_lobby_ui()
 			KEY_T:
 				_test_team_based_units()
+			KEY_I:
+				_test_ai_commands()
+			KEY_O:
+				_test_ai_status()
+			KEY_P:
+				_test_voice_commands()
 
 func _start_ai_behavior_test() -> void:
 	Logger.info("TestSetup", "Starting AI behavior test in 3 seconds...")
@@ -287,4 +295,128 @@ func _test_team_based_units() -> void:
 	await get_tree().create_timer(2.0).timeout
 	team_spawner.spawn_team_units()
 	
-	Logger.info("TestSetup", "Team-based unit spawning test complete") 
+	Logger.info("TestSetup", "Team-based unit spawning test complete")
+
+func _test_ai_commands() -> void:
+	Logger.info("TestSetup", "Testing AI command processing...")
+	
+	# Get reference to game controller
+	if not game_controller:
+		Logger.error("TestSetup", "Game controller not found")
+		return
+	
+	# Test commands
+	var test_commands = [
+		"Move the selected units to the center",
+		"All scouts move to position 20 0 20",
+		"Attack the enemy tank",
+		"Medic unit heal nearby allies",
+		"Form a line formation",
+		"Set defensive stance",
+		"Patrol between waypoints",
+		"Stop all units"
+	]
+	
+	Logger.info("TestSetup", "Testing %d AI commands..." % test_commands.size())
+	
+	for i in range(test_commands.size()):
+		var command = test_commands[i]
+		Logger.info("TestSetup", "AI Command %d: %s" % [i + 1, command])
+		
+		# Simulate command input
+		EventBus.ui_command_entered.emit(command)
+		
+		# Wait between commands
+		await get_tree().create_timer(2.0).timeout
+	
+	Logger.info("TestSetup", "AI command testing complete!")
+
+func _test_ai_status() -> void:
+	Logger.info("TestSetup", "Testing AI system status...")
+	
+	if not game_controller:
+		Logger.error("TestSetup", "Game controller not found")
+		return
+	
+	# Get AI status
+	var ai_status = game_controller.get_ai_status()
+	
+	Logger.info("TestSetup", "AI Status:")
+	Logger.info("TestSetup", "  - AI Available: %s" % ai_status.ai_available)
+	Logger.info("TestSetup", "  - Currently Processing: %s" % ai_status.processing)
+	Logger.info("TestSetup", "  - Queue Size: %d" % ai_status.queue_size)
+	Logger.info("TestSetup", "  - Selected Units: %d" % ai_status.selected_units)
+	
+	# Test OpenAI client status
+	if game_controller.ai_command_processor and game_controller.ai_command_processor.openai_client:
+		var openai_client = game_controller.ai_command_processor.openai_client
+		var usage_info = openai_client.get_usage_info()
+		
+		Logger.info("TestSetup", "OpenAI Client Status:")
+		Logger.info("TestSetup", "  - Active Requests: %d" % usage_info.active_requests)
+		Logger.info("TestSetup", "  - Queued Requests: %d" % usage_info.queued_requests)
+		Logger.info("TestSetup", "  - Requests Last Minute: %d" % usage_info.requests_last_minute)
+		Logger.info("TestSetup", "  - Rate Limit: %d/min" % usage_info.rate_limit)
+	
+	# Test command history
+	if game_controller.ai_command_processor:
+		var command_history = game_controller.ai_command_processor.get_command_history()
+		Logger.info("TestSetup", "Recent Commands: %s" % command_history)
+	
+	Logger.info("TestSetup", "AI status testing complete!")
+
+func _test_voice_commands() -> void:
+	Logger.info("TestSetup", "Testing voice command integration...")
+	
+	# Note: This is a placeholder for future voice integration
+	Logger.info("TestSetup", "Voice commands not yet implemented")
+	Logger.info("TestSetup", "Future implementation will include:")
+	Logger.info("TestSetup", "  - Speech-to-text integration")
+	Logger.info("TestSetup", "  - Voice activity detection")
+	Logger.info("TestSetup", "  - Audio input processing")
+	Logger.info("TestSetup", "  - Real-time voice command parsing")
+	
+	# For now, simulate voice commands with text
+	var voice_commands = [
+		"Move forward",
+		"Attack that target",
+		"Regroup at my position",
+		"Defensive positions"
+	]
+	
+	Logger.info("TestSetup", "Simulating voice commands as text...")
+	
+	for command in voice_commands:
+		Logger.info("TestSetup", "Voice Command: '%s'" % command)
+		EventBus.ui_command_entered.emit(command)
+		await get_tree().create_timer(3.0).timeout
+	
+	Logger.info("TestSetup", "Voice command testing complete!")
+
+func _test_ai_context_system() -> void:
+	Logger.info("TestSetup", "Testing AI context system...")
+	
+	if not game_controller or not game_controller.ai_command_processor:
+		Logger.error("TestSetup", "AI command processor not found")
+		return
+	
+	# Test context building
+	var selected_units = []
+	var all_units = get_tree().get_nodes_in_group("units")
+	
+	if all_units.size() > 0:
+		# Select first few units for testing
+		selected_units = all_units.slice(0, min(3, all_units.size()))
+		
+		# Test context with selected units
+		var test_command = "Move these units to a safe position"
+		Logger.info("TestSetup", "Testing context with %d selected units" % selected_units.size())
+		
+		# Get game state
+		var game_state = game_controller._get_current_game_state()
+		Logger.info("TestSetup", "Game state: %s" % game_state)
+		
+		# Process command with context
+		game_controller.ai_command_processor.process_command(test_command, selected_units, game_state)
+	
+	Logger.info("TestSetup", "AI context system testing complete!") 

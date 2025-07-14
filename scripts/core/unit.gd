@@ -355,6 +355,59 @@ func _on_command_received(command: Dictionary) -> void:
 		Logger.debug("Unit", "Unit %s received command: %s" % [unit_id, command])
 		# Process command here
 
-func _on_health_changed(new_health: float, max_health: float) -> void:
+func _on_health_changed(_new_health: float, _max_health: float) -> void:
 	# Health bar updates will be implemented later
 	pass
+
+func get_unit_info() -> Dictionary:
+	"""Get unit information for AI system"""
+	return {
+		"id": unit_id,
+		"archetype": archetype,
+		"health": current_health,
+		"max_health": max_health,
+		"position": [global_position.x, global_position.y, global_position.z],
+		"state": UnitState.keys()[current_state].to_lower(),
+		"team_id": team_id,
+		"speed": move_speed,
+		"vision_range": vision_range,
+		"attack_range": attack_range,
+		"abilities": _get_available_abilities(),
+		"is_selected": is_selected,
+		"is_moving": is_moving,
+		"is_attacking": is_attacking,
+		"morale": morale,
+		"energy": energy
+	}
+
+func _get_available_abilities() -> Array[String]:
+	"""Get list of available abilities for this unit"""
+	var abilities = []
+	
+	# Add unit-specific abilities based on archetype
+	match archetype:
+		"scout":
+			abilities.append("stealth")
+			abilities.append("mark_target")
+		"sniper":
+			abilities.append("snipe")
+			abilities.append("overwatch")
+		"medic":
+			abilities.append("heal")
+			abilities.append("revive")
+		"engineer":
+			abilities.append("repair")
+			abilities.append("build_turret")
+		"tank":
+			abilities.append("charge")
+			abilities.append("shield")
+	
+	return abilities
+
+func get_unit_id() -> String:
+	"""Get unit ID for AI system"""
+	return unit_id
+
+func get_archetype() -> String:
+	"""Get unit archetype for AI system"""
+	return archetype

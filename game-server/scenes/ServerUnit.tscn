@@ -1,0 +1,38 @@
+[gd_scene load_steps=3 format=3 uid="uid://bs4qgwmj8dxpy"]
+
+[ext_resource type="Script" path="res://multiplayer/server_unit.gd" id="1_2jkdw"]
+
+[sub_resource type="MultiplayerSynchronizer" id="MultiplayerSynchronizer_1"]
+replication_config = SubResource("SceneReplicationConfig_1")
+
+[sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_1"]
+properties/0/path = NodePath(".:position")
+properties/0/spawn = true
+properties/0/sync = true
+properties/0/watch = false
+properties/1/path = NodePath(".:rotation")
+properties/1/spawn = true
+properties/1/sync = true
+properties/1/watch = false
+properties/2/path = NodePath(".:current_health")
+properties/2/spawn = true
+properties/2/sync = true
+properties/2/watch = false
+properties/3/path = NodePath(".:current_state")
+properties/3/spawn = true
+properties/3/sync = true
+properties/3/watch = false
+properties/4/path = NodePath(".:unit_id")
+properties/4/spawn = true
+properties/4/sync = true
+properties/4/watch = false
+properties/5/path = NodePath(".:team_id")
+properties/5/spawn = true
+properties/5/sync = true
+properties/5/watch = false
+
+[node name="ServerUnit" type="CharacterBody3D" groups=["server_units"]]
+script = ExtResource("1_2jkdw")
+
+[node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
+replication_config = SubResource("SceneReplicationConfig_1") 

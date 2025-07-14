@@ -1,0 +1,21 @@
+[application]
+
+config/name="AI-RTS Dedicated Server"
+run/main_scene="res://scenes/Main.tscn"
+config/features=PackedStringArray("4.4")
+
+[autoload]
+
+DedicatedServer="*res://server/dedicated_server.gd"
+SessionManager="*res://server/session_manager.gd"
+AIIntegration="*res://game_logic/ai_integration.gd"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+driver/threads/thread_model=2
+
+[debug]
+
+settings/stdout/print_fps=true
+settings/stdout/verbose_stdout=true 

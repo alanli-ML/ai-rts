@@ -1,0 +1,12 @@
+[gd_scene load_steps=2 format=3 uid="uid://bs4qgwmj8dxpy"]
+
+[ext_resource type="Script" path="res://scripts/test_server_client.gd" id="1_2jkdw"]
+
+[node name="TestServerClient" type="Node"]
+script = ExtResource("1_2jkdw")
+
+[node name="TestTimer" type="Timer" parent="."]
+wait_time = 1.0
+autostart = true
+
+[connection signal="timeout" from="TestTimer" to="." method="_on_test_timer_timeout"] 

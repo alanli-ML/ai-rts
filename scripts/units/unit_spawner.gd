@@ -92,15 +92,14 @@ func spawn_unit(archetype: String, team_id: int, custom_position: Vector3 = Vect
 	return unit
 
 func _create_unit(archetype: String, team_id: int, spawn_position: Vector3) -> Unit:
-	var unit: Unit
-	
-	unit = Unit.new()
-	unit.archetype = archetype
+	var unit_scene = preload("res://scenes/units/Unit.tscn")
+	var unit = unit_scene.instantiate()
 	
 	if unit:
 		unit.archetype = archetype
 		unit.team_id = team_id
 		unit.name = "Unit_%s_%s" % [archetype, team_id]
+		unit.position = spawn_position
 	
 	return unit
 

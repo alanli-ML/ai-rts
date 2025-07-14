@@ -48,6 +48,22 @@ var destination: Vector3
 # AI/Vision system
 var visible_enemies: Array[Unit] = []
 var visible_allies: Array[Unit] = []
+
+# State management functions
+func get_state_name() -> String:
+	match current_state:
+		UnitState.IDLE:
+			return "IDLE"
+		UnitState.MOVING:
+			return "MOVING"
+		UnitState.ATTACKING:
+			return "ATTACKING"
+		UnitState.USING_ABILITY:
+			return "USING_ABILITY"
+		UnitState.DEAD:
+			return "DEAD"
+		_:
+			return "UNKNOWN"
 var can_attack: bool = true
 
 # Node references (created programmatically)

@@ -58,21 +58,22 @@ func _spawn_team_units(team_data: NetworkManager.TeamData) -> void:
 
 func _create_team_unit(archetype: String, team_id: int, position: Vector3) -> Node:
 	"""Create a unit with team-based ownership"""
-	var unit_scene = Unit.new()
-	unit_scene.archetype = archetype
-	unit_scene.team_id = team_id
-	unit_scene.position = position
+	var unit_scene = preload("res://scenes/units/Unit.tscn")
+	var unit = unit_scene.instantiate()
+	unit.archetype = archetype
+	unit.team_id = team_id
+	unit.position = position
 	
 	# Add to scene
 	if map_node:
-		map_node.add_child(unit_scene)
+		map_node.add_child(unit)
 	else:
-		add_child(unit_scene)
+		add_child(unit)
 	
 	# Register unit with team
-	EventBus.unit_spawned.emit(unit_scene)
+	EventBus.unit_spawned.emit(unit)
 	
-	return unit_scene
+	return unit
 
 func _get_team_spawn_position(team_id: int) -> Vector3:
 	"""Get spawn position for team"""
@@ -128,7 +129,7 @@ func get_shared_controlled_units(player_id: int) -> Array:
 	
 	return get_team_units(player_data.team_id)
 
-func can_player_control_unit(player_id: int, unit: Unit) -> bool:
+func can_player_control_unit(player_id: int, unit) -> bool:
 	"""Check if a player can control a specific unit"""
 	var player_data = NetworkManager.get_player_data(player_id)
 	if not player_data:

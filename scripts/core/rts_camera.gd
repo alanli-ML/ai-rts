@@ -52,6 +52,10 @@ func _ready() -> void:
     # Load edge scroll setting from config
     use_edge_scroll = ConfigManager.user_settings.get("edge_scroll_enabled", true)
     
+    # Add to groups for easy discovery
+    add_to_group("rts_cameras")
+    add_to_group("cameras")
+    
     Logger.info("RTSCamera", "RTS Camera initialized")
 
 func _input(event: InputEvent) -> void:

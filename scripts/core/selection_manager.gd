@@ -103,8 +103,22 @@ func _find_camera() -> void:
         # Look for RTSCamera or Camera3D in the current scene
         var viewport = get_viewport()
         camera = viewport.get_camera_3d()
+        
+        # If still not found, look for RTSCamera specifically
+        if not camera:
+            var rts_cameras = get_tree().get_nodes_in_group("rts_cameras")
+            for rts_cam in rts_cameras:
+                if rts_cam.has_node("Camera3D"):
+                    camera = rts_cam.get_node("Camera3D")
+                    break
+    
+    if camera:
+        Logger.debug("SelectionManager", "Found camera: %s" % camera.name)
+    else:
+        Logger.warning("SelectionManager", "No camera found for selection system")
 
 func _on_left_click_pressed(position: Vector2) -> void:
+    Logger.debug("SelectionManager", "Left click pressed at %s" % position)
     box_start_position = position
     box_end_position = position
     is_box_selecting = true
@@ -122,6 +136,7 @@ func _on_left_click_pressed(position: Vector2) -> void:
     last_click_time = current_time
 
 func _on_left_click_released(position: Vector2) -> void:
+    Logger.debug("SelectionManager", "Left click released at %s" % position)
     if not is_box_selecting:
         return
     
@@ -129,12 +144,15 @@ func _on_left_click_released(position: Vector2) -> void:
     selection_box_drawer.visible = false
     
     var drag_distance = box_start_position.distance_to(position)
+    Logger.debug("SelectionManager", "Drag distance: %f (min: %f)" % [drag_distance, min_drag_distance])
     
     if drag_distance < min_drag_distance:
         # Single click selection
+        Logger.debug("SelectionManager", "Processing single click selection")
         _handle_single_selection(position)
     else:
         # Box selection
+        Logger.debug("SelectionManager", "Processing box selection")
         _handle_box_selection()
 
 func _on_right_click(position: Vector2) -> void:
@@ -192,6 +210,7 @@ func _handle_box_selection() -> void:
 
 func _get_unit_at_position(screen_position: Vector2) -> Node:
     if not camera:
+        Logger.debug("SelectionManager", "No camera available for unit detection")
         return null
     
     var from = camera.project_ray_origin(screen_position)
@@ -204,13 +223,16 @@ func _get_unit_at_position(screen_position: Vector2) -> Node:
     var result = space_state.intersect_ray(query)
     if result:
         var collider = result.collider
+        Logger.debug("SelectionManager", "Raycast hit: %s, in units group: %s" % [collider.name, collider.is_in_group("units")])
         # Check if it's a unit (you'll need to tag units appropriately)
         if collider.is_in_group("units"):
             return collider
+    else:
+        Logger.debug("SelectionManager", "No raycast hit at position %s" % screen_position)
     
     return null
 
-func _get_units_in_box(start: Vector2, end: Vector2) -> Array[Node]:
+func _get_units_in_box(start: Vector2, end: Vector2) -> Array:
     var units = []
     var all_units = get_tree().get_nodes_in_group("units")
     
@@ -278,9 +300,11 @@ func _add_to_selection(units: Array) -> void:
             selected_units.append(unit)
             _set_unit_selected(unit, true)
             EventBus.unit_selected.emit(unit)
+            Logger.debug("SelectionManager", "Added unit %s to selection" % unit.name)
     
     if units.size() > 0:
         units_selected.emit(selected_units)
+        Logger.debug("SelectionManager", "Selection updated: %d units selected" % selected_units.size())
 
 func _remove_from_selection(units: Array) -> void:
     for unit in units:
@@ -305,10 +329,13 @@ func _clear_selection() -> void:
         units_deselected.emit(previous_selection)
 
 func _set_unit_selected(unit: Node, selected: bool) -> void:
-    # This will be implemented when we have units
-    # For now, just log
-    if unit.has_method("set_selected"):
-        unit.set_selected(selected)
+    # Call the appropriate method on the unit
+    if selected:
+        if unit.has_method("select"):
+            unit.select()
+    else:
+        if unit.has_method("deselect"):
+            unit.deselect()
 
 func _update_selection_box() -> void:
     if not is_box_selecting:

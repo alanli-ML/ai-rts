@@ -8,6 +8,9 @@
 - Prefer composition over inheritance where possible
 - Use signals for loose coupling between nodes
 - Follow Godot's node naming conventions (PascalCase for nodes, snake_case for methods)
+- **STRICT INDENTATION**: Never mix tabs and spaces in the same file - Godot 4.4 enforces consistent indentation
+- Prefer plain `Array` over typed arrays like `Array[Node]` when experiencing type inference issues
+- Always define InputMap actions before referencing them in code (e.g., "shift", "ctrl")
 
 ## Code Style
 
@@ -16,6 +19,7 @@
 - Keep methods focused and under 30 lines when possible
 - Use meaningful variable and function names
 - Group related properties and methods together
+- Be careful of parameter names that shadow built-in properties (e.g., `position` in Node3D)
 
 ## Naming Conventions
 
@@ -35,6 +39,11 @@
 - Implement proper scene cleanup on queue_free()
 - Use SubViewport nodes carefully due to performance impact
 - Provide step-by-step instructions to create Godot scene(s) instead of providing scene source code
+- **Unit Instantiation**: CharacterBody3D-based units must be instantiated from scene files using `preload()` and `instantiate()`, not `Unit.new()`
+- **Group Assignment**: Always add nodes to appropriate groups for systems to find them:
+  - Units: `add_to_group("units")`
+  - Cameras: `add_to_group("cameras")` and `add_to_group("rts_cameras")`
+- Maintain proper parent-child relationships for collision detection and selection
 
 ## Signal Best Practices
 
@@ -47,6 +56,15 @@
 - Minimize signal bubbling through multiple parent nodes
 - Always disconnect signals when nodes are freed to prevent memory leaks
 - Document signals with comments explaining their purpose and parameters
+
+## Input & Selection Systems
+
+- **Collision Bodies**: Units need proper collision shapes for raycast-based selection
+- **Selection Feedback**: Implement both `select()` and `deselect()` methods on selectable units
+- **Camera Discovery**: Selection managers need multiple group searches to find cameras reliably
+- **Vision Areas**: Be mindful that VisionArea components can interfere with unit selection raycasts
+- **Input Validation**: Verify camera availability before attempting selection operations
+- Cache frequently accessed nodes rather than searching repeatedly
 
 ## Resource Management
 
@@ -68,6 +86,15 @@
 - Use assert() for development-time error checking
 - Log errors appropriately in production builds
 - Handle network errors gracefully in multiplayer games
+- Verify InputMap actions exist before checking them with `Input.is_action_pressed()`
+
+## Debugging Best Practices
+
+- **Comprehensive Logging**: Add debug logging to selection, input, and command systems for traceability
+- **State Tracking**: Log unit states, positions, and team assignments during testing
+- **System Integration**: Test all interconnected systems together (selection → commands → units)
+- **Testing Framework**: Implement comprehensive test controls for multiplayer and selection systems
+- Use meaningful debug messages that include context (e.g., unit names, positions, states)
 
 ## TileMap Implementation
 
@@ -76,3 +103,12 @@
 - Access TileMap layers through TileMapLayer nodes
 - Update navigation code to use TileMapLayer.get_navigation_map()
 - Store layer-specific properties on individual TileMapLayer nodes
+
+## Common Pitfalls to Avoid
+
+- Don't use `Unit.new()` for CharacterBody3D-based classes - use scene instantiation instead
+- Don't mix tabs and spaces in indentation - choose one and stick with it
+- Don't assume InputMap actions exist without defining them first
+- Don't forget to add nodes to required groups for system discovery
+- Don't skip collision shape setup for selectable units
+- Don't forget to properly connect and disconnect signals to prevent memory leaks

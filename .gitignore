@@ -25,3 +25,4 @@ mono_crash.*.json
 # API Keys and sensitive data
 .env
 config/secrets.cfg
+godot-mcp/

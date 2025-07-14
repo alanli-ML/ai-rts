@@ -126,6 +126,9 @@ func _spawn_test_units() -> void:
 	
 	# Start AI behavior test after basic setup
 	_start_ai_behavior_test()
+	
+	# Test multiplayer lobby
+	_test_multiplayer_lobby()
 
 func _input(event: InputEvent) -> void:
 	# Test hotkeys
@@ -144,6 +147,14 @@ func _input(event: InputEvent) -> void:
 			KEY_3:
 				GameManager.change_state(GameManager.GameState.PAUSED)
 				Logger.info("TestSetup", "Changed to PAUSED state")
+			KEY_H:
+				_test_host_game()
+			KEY_J:
+				_test_join_game()
+			KEY_L:
+				_show_lobby_ui()
+			KEY_T:
+				_test_team_based_units()
 
 func _start_ai_behavior_test() -> void:
 	Logger.info("TestSetup", "Starting AI behavior test in 3 seconds...")
@@ -190,4 +201,90 @@ func _monitor_ai_behavior_test() -> void:
 					var health_pct = unit.get_health_percentage() * 100
 					Logger.info("TestSetup", "%s: %d%% health, state: %s" % [unit.unit_id, health_pct, unit.get_state_name()])
 	
-	Logger.info("TestSetup", "AI behavior test complete!") 
+	Logger.info("TestSetup", "AI behavior test complete!")
+
+func _test_multiplayer_lobby() -> void:
+	Logger.info("TestSetup", "Testing multiplayer lobby system...")
+	
+	# Wait a bit to let the unit system stabilize
+	await get_tree().create_timer(5.0).timeout
+	
+	# Test NetworkManager basic functionality
+	Logger.info("TestSetup", "NetworkManager state: %s" % NetworkManager.NetworkState.keys()[NetworkManager.current_state])
+	
+	# Test lobby UI loading
+	var lobby_scene = load("res://scenes/ui/lobby.tscn")
+	if lobby_scene:
+		Logger.info("TestSetup", "Lobby scene loaded successfully")
+		var lobby_instance = lobby_scene.instantiate()
+		
+		# Test script attachment
+		var lobby_script = load("res://scripts/ui/lobby_ui.gd")
+		if lobby_script:
+			lobby_instance.script = lobby_script
+			Logger.info("TestSetup", "Lobby script attached successfully")
+		
+		# Clean up test instance
+		lobby_instance.queue_free()
+	else:
+		Logger.error("TestSetup", "Failed to load lobby scene")
+	
+	# Test network functionality
+	Logger.info("TestSetup", "Testing network host functionality...")
+	Logger.info("TestSetup", "Press 'H' to test host game")
+	Logger.info("TestSetup", "Press 'J' to test join game")
+	Logger.info("TestSetup", "Press 'L' to show lobby UI")
+	Logger.info("TestSetup", "Press 'T' to test team-based unit spawning")
+
+func _test_host_game() -> void:
+	Logger.info("TestSetup", "Testing host game functionality...")
+	if NetworkManager.host_game():
+		Logger.info("TestSetup", "Successfully hosting game on port %d" % NetworkManager.server_port)
+	else:
+		Logger.error("TestSetup", "Failed to host game")
+
+func _test_join_game() -> void:
+	Logger.info("TestSetup", "Testing join game functionality...")
+	if NetworkManager.join_game("127.0.0.1"):
+		Logger.info("TestSetup", "Attempting to join game at 127.0.0.1:7777")
+	else:
+		Logger.error("TestSetup", "Failed to join game")
+
+func _show_lobby_ui() -> void:
+	Logger.info("TestSetup", "Showing cooperative team lobby UI...")
+	
+	# Load and instantiate lobby scene
+	var lobby_scene = load("res://scenes/ui/lobby.tscn")
+	if lobby_scene:
+		var lobby_instance = lobby_scene.instantiate()
+		
+		# Attach script
+		var lobby_script = load("res://scripts/ui/lobby_ui.gd")
+		if lobby_script:
+			lobby_instance.script = lobby_script
+			
+		# Add to scene
+		add_child(lobby_instance)
+		
+		# Position in center of screen
+		var screen_size = get_viewport().get_visible_rect().size
+		lobby_instance.position = Vector2(screen_size.x / 2 - 300, screen_size.y / 2 - 200)
+		lobby_instance.size = Vector2(600, 400)
+		
+		Logger.info("TestSetup", "Cooperative team lobby UI displayed")
+	else:
+		Logger.error("TestSetup", "Failed to load lobby scene")
+
+func _test_team_based_units() -> void:
+	Logger.info("TestSetup", "Testing team-based unit spawning...")
+	
+	# Create team unit spawner
+	var team_spawner = preload("res://scripts/units/team_unit_spawner.gd").new()
+	team_spawner.name = "TeamUnitSpawner"
+	add_child(team_spawner)
+	
+	# Test team unit spawning
+	await get_tree().create_timer(2.0).timeout
+	team_spawner.spawn_team_units()
+	
+	Logger.info("TestSetup", "Team-based unit spawning test complete") 

@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3 uid="uid://ddj7kiah7uioj"]
+[gd_scene load_steps=2 format=3 uid="uid://main_scene"]
 
-[ext_resource type="Script" uid="uid://ctvjcv3itinr5" path="res://scripts/test_setup.gd" id="1_elqb8"]
+[ext_resource type="PackedScene" uid="uid://c7pq6qcyhqjl7" path="res://scenes/UnifiedMain.tscn" id="1_unified"]
 
-[node name="Main" type="Node3D"]
-script = ExtResource("1_elqb8")
+[node name="Main" type="Node"]
+
+[node name="UnifiedMain" parent="." instance=ExtResource("1_unified")]

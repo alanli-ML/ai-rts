@@ -1,0 +1,626 @@
+# SessionManager.gd - Session manager with dependency injection
+extends Node
+
+# Injected dependencies
+var logger
+var game_state: Node
+
+# Session management
+var sessions: Dictionary = {}  # session_id -> Session
+var client_sessions: Dictionary = {}  # peer_id -> session_id
+var session_counter: int = 0
+
+# Session configuration
+const MAX_PLAYERS_PER_SESSION: int = 4
+const SESSION_TIMEOUT: int = 3600  # 1 hour
+
+# Signals
+signal session_created(session_id: String)
+signal session_destroyed(session_id: String)
+signal player_joined_session(session_id: String, player_id: String)
+signal player_left_session(session_id: String, player_id: String)
+
+func setup(logger_ref, game_state_ref):
+    """Setup dependencies - called by DependencyContainer"""
+    logger = logger_ref
+    game_state = game_state_ref
+    
+    logger.info("SessionManager", "Setting up session manager")
+    
+    # Initialize session management
+    _initialize_session_manager()
+
+func _initialize_session_manager():
+    """Initialize session management"""
+    # Setup session cleanup timer
+    var cleanup_timer = Timer.new()
+    cleanup_timer.wait_time = 60.0  # Check every minute
+    cleanup_timer.timeout.connect(_cleanup_sessions)
+    add_child(cleanup_timer)
+    cleanup_timer.start()
+    
+    logger.info("SessionManager", "Session manager initialized")
+
+# Session management
+func create_session(host_player_id: String = "") -> String:
+    """Create a new session"""
+    session_counter += 1
+    var session_id = "session_%d" % session_counter
+    
+    var session = {
+        "id": session_id,
+        "host_player_id": host_player_id,
+        "players": {},
+        "created_at": Time.get_ticks_msec(),
+        "last_activity": Time.get_ticks_msec(),
+        "state": "waiting",
+        "max_players": MAX_PLAYERS_PER_SESSION,
+        "map": "default",
+        "game_mode": "standard"
+    }
+    
+    sessions[session_id] = session
+    session_created.emit(session_id)
+    
+    logger.info("SessionManager", "Created session %s" % session_id)
+    return session_id
+
+func destroy_session(session_id: String) -> void:
+    """Destroy a session"""
+    if session_id in sessions:
+        var session = sessions[session_id]
+        
+        # Remove all players from session
+        for player_id in session.players.keys():
+            _remove_player_from_session_internal(player_id, session_id)
+        
+        # Remove session
+        sessions.erase(session_id)
+        session_destroyed.emit(session_id)
+        
+        logger.info("SessionManager", "Destroyed session %s" % session_id)
+
+func join_session(peer_id: int, player_id: String, preferred_session_id: String = "") -> String:
+    """Join a player to a session"""
+    var session_id = ""
+    
+    # If preferred session specified, try to join it
+    if preferred_session_id != "" and preferred_session_id in sessions:
+        var session = sessions[preferred_session_id]
+        
+        if session.players.size() < session.max_players:
+            session_id = preferred_session_id
+    
+    # Otherwise, find or create a session
+    if session_id == "":
+        session_id = _find_available_session()
+        
+        if session_id == "":
+            session_id = create_session(player_id)
+    
+    # Add player to session
+    if session_id != "":
+        _add_player_to_session(peer_id, player_id, session_id)
+    
+    return session_id
+
+func leave_session(peer_id: int) -> void:
+    """Remove a player from their session"""
+    if peer_id in client_sessions:
+        var session_id = client_sessions[peer_id]
+        var session = sessions.get(session_id)
+        
+        if session:
+            # Find player ID by peer ID
+            var player_id = ""
+            for pid in session.players.keys():
+                if session.players[pid]["peer_id"] == peer_id:
+                    player_id = pid
+                    break
+            
+            if player_id != "":
+                _remove_player_from_session_internal(player_id, session_id)
+
+func get_session(session_id: String) -> Dictionary:
+    """Get session data"""
+    return sessions.get(session_id, {})
+
+func get_session_count() -> int:
+    """Get the number of active sessions"""
+    return sessions.size()
+
+func get_player_session(peer_id: int) -> String:
+    """Get the session ID for a player"""
+    return client_sessions.get(peer_id, "")
+
+# Client event handlers
+func on_client_connected(peer_id: int) -> void:
+    """Handle client connection"""
+    logger.info("SessionManager", "Client connected: %d" % peer_id)
+
+func on_client_disconnected(peer_id: int, client_data: Dictionary) -> void:
+    """Handle client disconnection"""
+    logger.info("SessionManager", "Client disconnected: %d" % peer_id)
+    
+    # Remove from session if in one
+    if peer_id in client_sessions:
+        leave_session(peer_id)
+
+func handle_join_session(peer_id: int, preferred_session_id: String) -> void:
+    """Handle session join request"""
+    var player_id = "player_%d" % peer_id  # Simplified for now
+    var session_id = join_session(peer_id, player_id, preferred_session_id)
+    
+    # Send response through root multiplayer node
+    var root_node = get_tree().get_root().get_node("UnifiedMain")
+    if root_node:
+        if session_id != "":
+            var session_data = get_session(session_id)
+            var can_start = _can_start_game(session_id)
+            session_data["can_start_game"] = can_start
+            
+            root_node.rpc_id(peer_id, "_on_session_join_response", {
+                "success": true,
+                "session_id": session_id,
+                "session_data": session_data
+            })
+            
+            # Broadcast lobby update to all players in session
+            _broadcast_lobby_update(session_id)
+        else:
+            root_node.rpc_id(peer_id, "_on_session_join_response", {
+                "success": false,
+                "message": "Failed to join session"
+            })
+
+func handle_player_ready(peer_id: int, ready_state: bool) -> void:
+    """Handle player ready state change"""
+    var session_id = get_player_session(peer_id)
+    
+    if session_id == "":
+        logger.warning("SessionManager", "Player %d not in any session" % peer_id)
+        return
+    
+    var session = sessions.get(session_id)
+    if not session:
+        return
+    
+    # Find and update player ready state
+    var player_id = "player_%d" % peer_id
+    if player_id in session.players:
+        session.players[player_id]["ready"] = ready_state
+        logger.info("SessionManager", "Player %s ready state: %s" % [player_id, ready_state])
+        
+        # Broadcast lobby update
+        _broadcast_lobby_update(session_id)
+        
+        # Check if game can start
+        _check_start_game(session_id)
+
+func handle_force_start_game(peer_id: int) -> void:
+    """Handle force start game request"""
+    var session_id = get_player_session(peer_id)
+    
+    logger.info("SessionManager", "Force start game request from peer %d" % peer_id)
+    
+    if session_id == "":
+        logger.warning("SessionManager", "Player %d not in any session" % peer_id)
+        return
+    
+    var session = sessions.get(session_id)
+    if not session:
+        logger.warning("SessionManager", "Session %s not found" % session_id)
+        return
+    
+    if session.state != "waiting":
+        logger.warning("SessionManager", "Session %s is not in waiting state (current: %s)" % [session_id, session.state])
+        return
+    
+    # Force start regardless of ready state
+    logger.info("SessionManager", "Force starting game for session %s with %d players" % [session_id, session.players.size()])
+    _start_game(session_id)
+
+func handle_leave_session(peer_id: int) -> void:
+    """Handle leave session request"""
+    leave_session(peer_id)
+    
+    # Send response through root multiplayer node
+    var root_node = get_tree().get_root().get_node("UnifiedMain")
+    if root_node:
+        root_node.rpc_id(peer_id, "_on_session_leave_response", {
+            "success": true,
+            "message": "Left session successfully"
+        })
+
+func handle_ai_command(peer_id: int, command: String, selected_units: Array) -> void:
+    """Handle AI command from client"""
+    var session_id = get_player_session(peer_id)
+    
+    if session_id != "":
+        var session = sessions[session_id]
+        
+        # Forward to game state if session is active
+        if session.state == "active" and game_state:
+            var player_id = "player_%d" % peer_id
+            game_state.process_ai_command(command, selected_units, player_id)
+
+# Internal methods
+func _find_available_session() -> String:
+    """Find an available session to join"""
+    for session_id in sessions.keys():
+        var session = sessions[session_id]
+        
+        if session.state == "waiting" and session.players.size() < session.max_players:
+            return session_id
+    
+    return ""
+
+func _add_player_to_session(peer_id: int, player_id: String, session_id: String) -> void:
+    """Add a player to a session"""
+    if session_id in sessions:
+        var session = sessions[session_id]
+        
+        # Add player to session
+        session.players[player_id] = {
+            "peer_id": peer_id,
+            "player_id": player_id,
+            "team_id": _assign_team(session),
+            "ready": false,
+            "joined_at": Time.get_ticks_msec()
+        }
+        
+        session.last_activity = Time.get_ticks_msec()
+        
+        # Track client session
+        client_sessions[peer_id] = session_id
+        
+        # Notify observers
+        player_joined_session.emit(session_id, player_id)
+        
+        logger.info("SessionManager", "Player %s joined session %s" % [player_id, session_id])
+        
+        # Broadcast lobby update to all players in session
+        _broadcast_lobby_update(session_id)
+        
+        # Check if game can start
+        _check_start_game(session_id)
+
+func _remove_player_from_session_internal(player_id: String, session_id: String) -> void:
+    """Remove a player from a session"""
+    if session_id in sessions:
+        var session = sessions[session_id]
+        
+        if player_id in session.players:
+            # Remove player from session
+            var player_data = session.players[player_id]
+            var peer_id = player_data["peer_id"]
+            
+            session.players.erase(player_id)
+            session.last_activity = Time.get_ticks_msec()
+            
+            # Remove client session tracking
+            client_sessions.erase(peer_id)
+            
+            # Notify observers
+            player_left_session.emit(session_id, player_id)
+            
+            logger.info("SessionManager", "Player %s left session %s" % [player_id, session_id])
+            
+            # Broadcast lobby update to remaining players
+            if session.players.size() > 0:
+                _broadcast_lobby_update(session_id)
+            
+            # Destroy session if empty
+            if session.players.size() == 0:
+                destroy_session(session_id)
+
+func _assign_team(session: Dictionary) -> int:
+    """Assign a team to a new player"""
+    var team_counts = {}
+    
+    for player_id in session.players.keys():
+        var player = session.players[player_id]
+        var team_id = player.team_id
+        
+        if not team_counts.has(team_id):
+            team_counts[team_id] = 0
+        team_counts[team_id] += 1
+    
+    # Find team with fewest players
+    var min_count = 999
+    var best_team = 1
+    
+    for team_id in range(1, 3):  # Teams 1 and 2
+        var count = team_counts.get(team_id, 0)
+        if count < min_count:
+            min_count = count
+            best_team = team_id
+    
+    return best_team
+
+func _check_start_game(session_id: String) -> void:
+    """Check if game should start"""
+    var session = sessions.get(session_id)
+    
+    if not session or session.state != "waiting":
+        return
+    
+    # Check if all players are ready
+    var all_ready = true
+    var player_count = session.players.size()
+    
+    # Allow single-player games
+    if player_count < 1:
+        all_ready = false
+    
+    for player_id in session.players.keys():
+        var player = session.players[player_id]
+        if not player.ready:
+            all_ready = false
+            break
+    
+    if all_ready:
+        _start_game(session_id)
+
+func _start_game(session_id: String) -> void:
+    """Start the game for a session"""
+    var session = sessions.get(session_id)
+    
+    if not session:
+        logger.warning("SessionManager", "Cannot start game - session %s not found" % session_id)
+        return
+    
+    logger.info("SessionManager", "Starting game for session %s" % session_id)
+    
+    session.state = "active"
+    session.last_activity = Time.get_ticks_msec()
+    
+    # Initialize game content
+    _initialize_game_content(session)
+    
+    # Get root node for RPC calls
+    var root_node = get_tree().get_root().get_node("UnifiedMain")
+    
+    if not root_node:
+        logger.error("SessionManager", "Cannot find UnifiedMain root node for RPC calls")
+        return
+    
+    # Notify all players in session
+    for player_id in session.players.keys():
+        var player = session.players[player_id]
+        var peer_id = player.peer_id
+        
+        logger.info("SessionManager", "Notifying player %s (peer %d) that game started" % [player_id, peer_id])
+        
+        root_node.rpc_id(peer_id, "_on_game_started", {
+            "session_id": session_id,
+            "player_team": player.team_id,
+            "map": session.map,
+            "game_mode": session.game_mode
+        })
+    
+    logger.info("SessionManager", "Game started for session %s" % session_id)
+
+func _initialize_game_content(session: Dictionary) -> void:
+    """Initialize game content when a game starts"""
+    var session_id = session.id
+    logger.info("SessionManager", "Initializing game content for session %s" % session_id)
+    
+    # Get the game state to add players and spawn units
+    if game_state:
+        # Initialize all game systems
+        _initialize_game_systems(session)
+        
+        # Add players to the game state
+        for player_id in session.players.keys():
+            var player = session.players[player_id]
+            var peer_id = player.peer_id
+            var team_id = player.team_id
+            
+            game_state.add_player(player_id, peer_id, player_id, team_id)
+            logger.info("SessionManager", "Added player %s to game state (team %d)" % [player_id, team_id])
+        
+        # Initialize teams for all systems
+        _initialize_team_systems(session)
+        
+        # Initialize control points
+        _initialize_control_points(session)
+        
+        # Initialize resource management
+        _initialize_resource_management(session)
+        
+        # Initialize AI systems
+        _initialize_ai_systems(session)
+        
+        # Spawn initial units for each team
+        _spawn_initial_units(session)
+        
+        # Set game state to active
+        game_state.set_match_state("active")
+        logger.info("SessionManager", "Game content initialized successfully")
+    else:
+        logger.warning("SessionManager", "No game state available to initialize content")
+
+func _initialize_game_systems(session: Dictionary) -> void:
+    """Initialize all game systems for the session"""
+    logger.info("SessionManager", "Initializing game systems")
+    
+    # Get system references from dependency container
+    var dependency_container = get_node("/root/DependencyContainer")
+    if not dependency_container:
+        logger.error("SessionManager", "Cannot find DependencyContainer")
+        return
+    
+    var resource_manager = dependency_container.get_resource_manager()
+    var node_capture_system = dependency_container.get_node_capture_system()
+    var ai_command_processor = dependency_container.get_ai_command_processor()
+    
+    # Initialize systems
+    if resource_manager:
+        logger.info("SessionManager", "Resource manager available")
+    
+    if node_capture_system:
+        logger.info("SessionManager", "Node capture system available")
+    
+    if ai_command_processor:
+        logger.info("SessionManager", "AI command processor available")
+    
+    logger.info("SessionManager", "Game systems initialized")
+
+func _initialize_team_systems(session: Dictionary) -> void:
+    """Initialize team-based systems"""
+    logger.info("SessionManager", "Initializing team systems")
+    
+    # Get unique team IDs from session
+    var team_ids = []
+    for player_id in session.players.keys():
+        var player = session.players[player_id]
+        var team_id = player.team_id
+        if team_id not in team_ids:
+            team_ids.append(team_id)
+    
+    logger.info("SessionManager", "Teams in session: %s" % team_ids)
+    
+    # Initialize resource manager for teams
+    var dependency_container = get_node("/root/DependencyContainer")
+    if dependency_container:
+        var resource_manager = dependency_container.get_resource_manager()
+        if resource_manager:
+            resource_manager.initialize_teams(team_ids)
+            logger.info("SessionManager", "Resource manager initialized for teams: %s" % team_ids)
+
+func _initialize_control_points(session: Dictionary) -> void:
+    """Initialize control points for the session"""
+    logger.info("SessionManager", "Initializing control points")
+    
+    var dependency_container = get_node("/root/DependencyContainer")
+    if dependency_container:
+        var node_capture_system = dependency_container.get_node_capture_system()
+        if node_capture_system:
+            node_capture_system.initialize_control_points()
+            logger.info("SessionManager", "Control points initialized")
+
+func _initialize_resource_management(session: Dictionary) -> void:
+    """Initialize resource management for the session"""
+    logger.info("SessionManager", "Initializing resource management")
+    
+    var dependency_container = get_node("/root/DependencyContainer")
+    if dependency_container:
+        var resource_manager = dependency_container.get_resource_manager()
+        if resource_manager:
+            # Start resource generation for all teams
+            resource_manager.start_resource_generation()
+            logger.info("SessionManager", "Resource generation started")
+
+func _initialize_ai_systems(session: Dictionary) -> void:
+    """Initialize AI systems for the session"""
+    logger.info("SessionManager", "Initializing AI systems")
+    
+    var dependency_container = get_node("/root/DependencyContainer")
+    if dependency_container:
+        var ai_command_processor = dependency_container.get_ai_command_processor()
+        if ai_command_processor:
+            # AI system is ready for command processing
+            logger.info("SessionManager", "AI command processor initialized")
+
+func _spawn_initial_units(session: Dictionary) -> void:
+    """Spawn initial units for each team"""
+    logger.info("SessionManager", "Spawning initial units")
+    
+    # Spawn some initial units for each team
+    for player_id in session.players.keys():
+        var player = session.players[player_id]
+        var team_id = player.team_id
+        
+        # Spawn units closer to the camera's view area (camera is at 0,15,12 looking down)
+        var spawn_positions = [
+            Vector3(-5, 0, -5),   # Team 1 area - closer to camera view
+            Vector3(5, 0, 5),     # Team 2 area - closer to camera view
+        ]
+        
+        var base_position = spawn_positions[team_id - 1] if team_id <= 2 else Vector3.ZERO
+        
+        # Spawn 3 units for each player with better spacing
+        for i in range(3):
+            var unit_position = base_position + Vector3(i * 3, 0, 0)  # More spacing between units
+            var unit_id = game_state.spawn_unit("scout", team_id, unit_position, player_id)
+            logger.info("SessionManager", "Spawned unit %s for player %s at %s" % [unit_id, player_id, unit_position])
+    
+    logger.info("SessionManager", "Initial units spawned")
+
+func _broadcast_lobby_update(session_id: String) -> void:
+    """Broadcast lobby update to all players in session"""
+    var session = sessions.get(session_id)
+    if not session:
+        return
+    
+    # Determine if game can start
+    var can_start = _can_start_game(session_id)
+    
+    # Create lobby data
+    var lobby_data = {
+        "players": session.players,
+        "can_start_game": can_start,
+        "session_id": session_id
+    }
+    
+    # Get root node for RPC calls
+    var root_node = get_tree().get_root().get_node("UnifiedMain")
+    
+    # Send to all players in session
+    for player_id in session.players.keys():
+        var player = session.players[player_id]
+        var player_peer_id = player.peer_id
+        
+        if root_node:
+            root_node.rpc_id(player_peer_id, "_on_lobby_update", lobby_data)
+
+func _can_start_game(session_id: String) -> bool:
+    """Check if game can start (all players ready or single player)"""
+    var session = sessions.get(session_id)
+    if not session or session.state != "waiting":
+        return false
+    
+    var player_count = session.players.size()
+    
+    # Allow single-player games
+    if player_count == 1:
+        return true
+    
+    # Check if all players are ready
+    for player_id in session.players.keys():
+        var player = session.players[player_id]
+        if not player.ready:
+            return false
+    
+    return true
+
+func _cleanup_sessions() -> void:
+    """Cleanup expired sessions"""
+    var current_time = Time.get_ticks_msec()
+    var sessions_to_remove = []
+    
+    for session_id in sessions.keys():
+        var session = sessions[session_id]
+        
+        # Check if session has expired
+        if current_time - session.last_activity > SESSION_TIMEOUT * 1000:
+            sessions_to_remove.append(session_id)
+    
+    # Remove expired sessions
+    for session_id in sessions_to_remove:
+        destroy_session(session_id)
+        logger.info("SessionManager", "Cleaned up expired session %s" % session_id)
+
+func cleanup() -> void:
+    """Cleanup resources"""
+    # Destroy all sessions
+    for session_id in sessions.keys():
+        destroy_session(session_id)
+    
+    sessions.clear()
+    client_sessions.clear()
+    
+    logger.info("SessionManager", "Session manager cleaned up")
+
+# Note: RPC methods are now handled by UnifiedMain root node 

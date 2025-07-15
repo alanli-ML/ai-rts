@@ -1,0 +1,178 @@
+# GameConstants.gd - Shared constants (not an autoload)
+
+# Game balance constants
+const TICK_RATE: int = 60
+const NETWORK_TICK_RATE: int = 30
+const MAX_PLAYERS: int = 4
+const MAX_UNITS_PER_PLAYER: int = 50
+
+# Unit selection
+const UNIT_SELECTION_RADIUS: float = 1.0
+const MULTI_SELECT_RADIUS: float = 0.5
+
+# Combat constants
+const DAMAGE_VARIANCE: float = 0.1
+const CRITICAL_HIT_CHANCE: float = 0.05
+const CRITICAL_HIT_MULTIPLIER: float = 2.0
+
+# Movement constants
+const MOVEMENT_TOLERANCE: float = 0.1
+const PATHFINDING_MARGIN: float = 0.5
+
+# AI constants
+const AI_THINK_INTERVAL: float = 0.5
+const AI_RESPONSE_TIMEOUT: float = 10.0
+const MAX_AI_COMMAND_LENGTH: int = 500
+
+# Network constants
+const NETWORK_TIMEOUT: float = 5.0
+const RECONNECT_ATTEMPTS: int = 3
+const PING_INTERVAL: float = 1.0
+
+# Building constants
+const MAX_BUILDINGS_PER_PLAYER: int = 20
+const BUILDING_PLACEMENT_RADIUS: float = 2.0
+const BUILDING_CONSTRUCTION_RANGE: float = 5.0
+
+# Unit configurations
+const UNIT_CONFIGS: Dictionary = {
+    "scout": {
+        "health": 80,
+        "speed": 6.0,
+        "damage": 20,
+        "range": 2.5,
+        "vision": 10.0,
+        "cost": 50,
+        "build_time": 5.0
+    },
+    "soldier": {
+        "health": 120,
+        "speed": 4.0,
+        "damage": 35,
+        "range": 3.0,
+        "vision": 8.0,
+        "cost": 75,
+        "build_time": 8.0
+    },
+    "tank": {
+        "health": 300,
+        "speed": 2.0,
+        "damage": 80,
+        "range": 5.0,
+        "vision": 12.0,
+        "cost": 200,
+        "build_time": 20.0
+    },
+    "medic": {
+        "health": 100,
+        "speed": 4.5,
+        "damage": 10,
+        "range": 2.0,
+        "vision": 8.0,
+        "cost": 100,
+        "build_time": 12.0,
+        "heal_rate": 10.0
+    },
+    "engineer": {
+        "health": 90,
+        "speed": 4.0,
+        "damage": 15,
+        "range": 2.0,
+        "vision": 6.0,
+        "cost": 80,
+        "build_time": 10.0
+    }
+}
+
+# Building configurations
+const BUILDING_CONFIGS: Dictionary = {
+    "power_spire": {
+        "health": 500,
+        "cost": 300,
+        "construction_time": 30.0,
+        "power_generation": 50,
+        "power_consumption": 0,
+        "range": 15.0
+    },
+    "defense_tower": {
+        "health": 400,
+        "cost": 250,
+        "construction_time": 25.0,
+        "power_generation": 0,
+        "power_consumption": 20,
+        "damage": 60,
+        "range": 12.0,
+        "attack_speed": 1.5
+    },
+    "relay_pad": {
+        "health": 200,
+        "cost": 150,
+        "construction_time": 15.0,
+        "power_generation": 0,
+        "power_consumption": 30,
+        "teleport_range": 20.0,
+        "teleport_cooldown": 10.0
+    }
+}
+
+# Map constants
+const MAP_SIZE: Vector2 = Vector2(100, 100)
+const CONTROL_POINT_COUNT: int = 9
+const CONTROL_POINT_RADIUS: float = 5.0
+const CONTROL_POINT_CAPTURE_TIME: float = 10.0
+
+# Victory conditions
+const VICTORY_POINTS_TO_WIN: int = 1000
+const CONTROL_POINT_VICTORY_THRESHOLD: int = 7
+const ELIMINATION_VICTORY_ENABLED: bool = true
+
+# Resource constants
+const STARTING_RESOURCES: Dictionary = {
+    "energy": 500,
+    "minerals": 300
+}
+
+const RESOURCE_TICK_RATE: float = 1.0
+const RESOURCE_PER_TICK: Dictionary = {
+    "energy": 10,
+    "minerals": 5
+}
+
+# Resource management system constants
+const STARTING_ENERGY: int = 1000
+const STARTING_MATERIALS: int = 500
+const STARTING_RESEARCH: int = 0
+
+const BASE_ENERGY_INCOME: float = 5.0
+const BASE_MATERIAL_INCOME: float = 2.0
+const BASE_RESEARCH_INCOME: float = 1.0
+
+const MAX_ENERGY_STORAGE: int = 5000
+const MAX_MATERIAL_STORAGE: int = 3000
+const MAX_RESEARCH_STORAGE: int = 1000
+
+const RESOURCE_UPDATE_INTERVAL: float = 1.0
+
+# UI constants
+const UI_SCALE: float = 1.0
+const MINIMAP_SIZE: Vector2 = Vector2(200, 200)
+const CHAT_MAX_LINES: int = 50
+const NOTIFICATION_DURATION: float = 3.0
+
+# Voice/Speech constants
+const SPEECH_BUBBLE_DURATION: float = 4.0
+const SPEECH_BUBBLE_FADE_TIME: float = 0.5
+const MAX_SPEECH_LENGTH: int = 100
+
+# Static utility functions
+static func get_unit_config(unit_type: String) -> Dictionary:
+    return UNIT_CONFIGS.get(unit_type, {})
+
+static func get_building_config(building_type: String) -> Dictionary:
+    return BUILDING_CONFIGS.get(building_type, {})
+
+static func is_valid_unit_type(unit_type: String) -> bool:
+    return UNIT_CONFIGS.has(unit_type)
+
+static func is_valid_building_type(building_type: String) -> bool:
+    return BUILDING_CONFIGS.has(building_type) 

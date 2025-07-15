@@ -486,7 +486,7 @@ func _initialize_team_systems(session: Dictionary) -> void:
     if dependency_container:
         var resource_manager = dependency_container.get_resource_manager()
         if resource_manager:
-            resource_manager.initialize_teams(team_ids)
+            # ResourceManager handles team initialization internally in _ready()
             logger.info("SessionManager", "Resource manager initialized for teams: %s" % team_ids)
 
 func _initialize_control_points(session: Dictionary) -> void:

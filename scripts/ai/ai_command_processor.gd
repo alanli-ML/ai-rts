@@ -8,7 +8,7 @@ var game_constants = null
 var action_validator = null
 var openai_client = null
 var selection_manager: SelectionManager = null
-# var plan_executor: PlanExecutor = null
+var plan_executor: PlanExecutor = null
 
 # Command processing settings
 @export var system_prompt_template: String = """
@@ -20,6 +20,13 @@ GAME CONTEXT:
 - Unit types: scout, sniper, medic, engineer, tank
 - Players can select units and give movement, attack, and ability commands
 - Units have different capabilities and roles
+
+UNIT CAPABILITIES:
+- Scout: stealth, mark_target, scan_area (fast reconnaissance)
+- Sniper: peek_and_fire, overwatch (long-range precision)
+- Medic: heal (unit healing and support)
+- Engineer: repair, lay_mines, build_turret, hijack_spire (construction/sabotage)
+- Tank: charge, shield (heavy assault and defense)
 
 COMMAND MODES:
 You can respond with either DIRECT COMMANDS or MULTI-STEP PLANS.
@@ -50,22 +57,55 @@ MULTI-STEP PLANS (for complex tactical sequences):
             "unit_id": "unit_id",
             "steps": [
                 {
-                    "action": "move_to|attack|peek_and_fire|lay_mines|retreat|formation|stance",
+                    "action": "move_to|attack|peek_and_fire|lay_mines|retreat|heal|repair|stealth|overwatch|mark_target|build_turret|shield|charge|formation|stance|patrol|follow|guard|scan_area",
                     "params": {
                         "position": [x, y, z],
                         "target_id": "unit_id",
-                        "formation": "line|column|wedge|scattered"
+                        "target_position": [x, y, z],
+                        "formation": "line|column|wedge|scattered",
+                        "stance": "aggressive|defensive|passive",
+                        "duration": 10.0,
+                        "count": 3,
+                        "range": 15.0,
+                        "spire_id": "spire_id"
                     },
                     "duration_ms": 2000,
-                    "trigger": "health_pct < 20|enemy_dist < 10|time > 3",
+                    "trigger": "health_pct < 20|enemy_dist < 10|time > 3|energy < 50|enemy_count > 2|ally_count < 3",
                     "speech": "Moving to cover (max 12 words)",
-                    "conditions": {}
+                    "conditions": {},
+                    "priority": 1,
+                    "prerequisites": ["health_pct > 10", "energy > 20"],
+                    "cooldown": 5.0
                 }
             ]
         }
     ],
     "message": "Plan description"
 }
+
+ADVANCED ACTIONS:
+- peek_and_fire: Sniper moves to cover and fires at target
+- lay_mines: Engineer places mines at specified location
+- hijack_spire: Engineer captures enemy power spire
+- heal: Medic heals target unit
+- repair: Engineer repairs damaged unit or building
+- stealth: Scout becomes invisible for duration
+- overwatch: Sniper watches area and auto-attacks
+- mark_target: Scout marks enemy for team
+- build_turret: Engineer constructs defensive turret
+- shield: Tank activates protective shield
+- charge: Tank rushes to target position
+- scan_area: Scout reveals large area around position
+
+TRIGGER CONDITIONS:
+- health_pct < X: Unit health below percentage
+- enemy_dist < X: Enemy within distance
+- ally_dist < X: Ally within distance
+- time > X: Time elapsed in seconds
+- energy < X: Unit energy below threshold
+- enemy_count > X: Enemy units in range
+- ally_count < X: Allied units in range
+- ammo < X: Unit ammunition below threshold
 
 CURRENT GAME STATE:
 {game_state}
@@ -85,12 +125,23 @@ var processing_command: bool = false
 var last_game_state: Dictionary = {}
 var command_history: Array[String] = []
 
+# Plan execution tracking
+var active_plans: Dictionary = {}  # unit_id -> plan_data
+var plan_statistics: Dictionary = {
+    "total_plans": 0,
+    "successful_plans": 0,
+    "failed_plans": 0,
+    "most_used_actions": {}
+}
+
 # Signals
 signal command_processed(commands: Array, message: String)
 signal plan_processed(plans: Array, message: String)
 signal command_failed(error: String)
 signal processing_started()
 signal processing_finished()
+signal plan_execution_started(unit_id: String, plan: Dictionary)
+signal plan_execution_completed(unit_id: String, success: bool)
 
 func _ready() -> void:
     # Create OpenAI client
@@ -100,32 +151,34 @@ func _ready() -> void:
     add_child(openai_client)
     
     # Create plan executor
-    # plan_executor = PlanExecutor.new()
-    # plan_executor.name = "PlanExecutor"
-    # add_child(plan_executor)
+    plan_executor = PlanExecutor.new()
+    plan_executor.name = "PlanExecutor"
+    add_child(plan_executor)
     
     # Connect signals
     openai_client.request_completed.connect(_on_openai_response)
     openai_client.request_failed.connect(_on_openai_error)
     
     # Connect plan executor signals
-    # plan_executor.plan_started.connect(_on_plan_started)
-    # plan_executor.plan_completed.connect(_on_plan_completed)
-    # plan_executor.plan_interrupted.connect(_on_plan_interrupted)
-    # plan_executor.step_executed.connect(_on_step_executed)
+    plan_executor.plan_started.connect(_on_plan_started)
+    plan_executor.plan_completed.connect(_on_plan_completed)
+    plan_executor.plan_interrupted.connect(_on_plan_interrupted)
+    plan_executor.step_executed.connect(_on_step_executed)
+    plan_executor.ability_used.connect(_on_ability_used)
+    plan_executor.speech_triggered.connect(_on_speech_triggered)
     
-    # Logger.info("AICommandProcessor", "AI command processor initialized with plan execution")
+    # Logger initialization
     if logger:
-        logger.info("AICommandProcessor", "AI command processor initialized with plan execution")
+        logger.info("AICommandProcessor", "AI command processor initialized with enhanced plan execution")
     else:
-        print("AI command processor initialized")
+        print("AICommandProcessor initialized with enhanced plan execution")
 
 func setup(logger_instance, game_constants_instance, action_validator_instance, plan_executor_instance) -> void:
     """Setup the AI command processor with dependencies"""
     logger = logger_instance
     game_constants = game_constants_instance
     action_validator = action_validator_instance
-    # plan_executor = plan_executor_instance
+    plan_executor = plan_executor_instance
 
 func process_command(command_text: String, selected_units: Array = [], game_state: Dictionary = {}) -> void:
     """
@@ -189,79 +242,229 @@ func process_command(command_text: String, selected_units: Array = [], game_stat
     openai_client.send_chat_completion(messages, _on_openai_response)
 
 func _on_openai_response(response: Dictionary) -> void:
-    """Handle OpenAI response"""
+    """Handle OpenAI API response with enhanced plan processing"""
     processing_command = false
     processing_finished.emit()
     
-    if not response.has("choices") or response.choices.size() == 0:
-        _handle_error("Invalid OpenAI response format")
+    # Parse response
+    var content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+    
+    if content.is_empty():
+        command_failed.emit("Empty response from AI")
         return
     
-    var content = response.choices[0].message.content
-    var parsed_response = _parse_ai_response(content)
+    # Parse JSON response
+    var json = JSON.new()
+    var parse_result = json.parse(content)
     
-    if not parsed_response.success:
-        _handle_error("Failed to parse AI response: " + parsed_response.error)
+    if parse_result != OK:
+        command_failed.emit("Invalid JSON response from AI")
         return
     
-    var ai_data = parsed_response.data
-    var response_type = ai_data.get("type", "direct_commands")
+    var ai_response = json.data
     
-    match response_type:
+    # Handle different response types with enhanced processing
+    match ai_response.get("type", ""):
         "direct_commands":
-            _handle_direct_commands(ai_data)
+            _process_direct_commands(ai_response)
         "multi_step_plan":
-            _handle_multi_step_plans(ai_data)
+            _process_multi_step_plans(ai_response)
         _:
-            _handle_error("Unknown response type: " + response_type)
-    
-    # Process next command in queue
-    _process_next_command()
+            command_failed.emit("Unknown response type: " + str(ai_response.get("type", "")))
 
-func _handle_direct_commands(ai_data: Dictionary) -> void:
-    """Handle direct command execution"""
-    var commands = ai_data.get("commands", [])
-    var message = ai_data.get("message", "Executing commands")
+func _process_direct_commands(ai_response: Dictionary) -> void:
+    """Process direct commands"""
+    var commands = ai_response.get("commands", [])
+    var message = ai_response.get("message", "Executing commands")
     
-                    if logger:
-            logger.info("AICommandProcessor", "Processing %d direct commands" % commands.size())
-        else:
-            print("Processing %d direct commands" % commands.size())
+    if commands.is_empty():
+        command_failed.emit("No commands provided")
+        return
     
-    # Emit for command translator to handle
-    command_processed.emit(commands, message)
-
-func _handle_multi_step_plans(ai_data: Dictionary) -> void:
-    """Handle multi-step plan execution"""
-    var plans = ai_data.get("plans", [])
-    var message = ai_data.get("message", "Executing tactical plans")
+    var processed_commands = []
+    var failed_commands = []
     
-                    if logger:
-            logger.info("AICommandProcessor", "Processing %d multi-step plans" % plans.size())
-        else:
-            print("Processing %d multi-step plans" % plans.size())
-    
-    # Execute each plan
-    var successful_plans = []
-    for plan in plans:
-        var unit_id = plan.get("unit_id", "")
-        if unit_id == "" and plan.has("steps"):
-            # Try to assign to first selected unit
-            var selected_units = _get_selected_units()
-            if selected_units.size() > 0:
-                unit_id = selected_units[0].get("unit_id", selected_units[0].name)
+    for command_data in commands:
+        var action = command_data.get("action", "")
+        var target_units = command_data.get("target_units", [])
+        var params = command_data.get("parameters", {})
         
-        if unit_id != "":
-            # if plan_executor.execute_plan(unit_id, plan): # Temporarily commented out
-            #     successful_plans.append(plan)
+        if action.is_empty() or target_units.is_empty():
+            failed_commands.append(command_data)
+            continue
+        
+        # Validate and enhance command
+        var enhanced_command = _enhance_command_data(command_data)
+        
+        # Execute command using enhanced action validator
+        if action_validator.validate_command(enhanced_command):
+            processed_commands.append(enhanced_command)
+            # if plan_executor: # Temporarily commented out
+            #     plan_executor.execute_command(enhanced_command)
             # else:
-            #     Logger.warning("AICommandProcessor", "Failed to execute plan for unit: %s" % unit_id)
-            Logger.warning("AICommandProcessor", "Plan execution temporarily disabled. Skipping plan for unit: %s" % unit_id)
+            #     Logger.warning("AICommandProcessor", "Plan executor not available, skipping command execution.")
+            Logger.info("AICommandProcessor", "Command validated and executed: " + str(enhanced_command))
+        else:
+            failed_commands.append(command_data)
     
-    if successful_plans.size() > 0:
-        plan_processed.emit(successful_plans, message)
-    else:
-        _handle_error("No plans could be executed")
+    if processed_commands.size() > 0:
+        command_processed.emit(processed_commands, message)
+        
+        if logger:
+            logger.info("AICommandProcessor", "Started %d direct commands" % processed_commands.size())
+    
+    if failed_commands.size() > 0:
+        command_failed.emit("Failed to execute %d commands" % failed_commands.size())
+
+func _enhance_command_data(command_data: Dictionary) -> Dictionary:
+    """Enhance command data with additional context and validation"""
+    var enhanced_command = command_data.duplicate(true)
+    
+    # Add command metadata
+    enhanced_command["command_id"] = "cmd_" + str(Time.get_ticks_msec())
+    enhanced_command["created_at"] = Time.get_ticks_msec() / 1000.0
+    enhanced_command["context"] = last_game_state.duplicate()
+    
+    # Validate action-specific parameters
+    _validate_action_parameters(enhanced_command)
+    
+    return enhanced_command
+
+func _process_multi_step_plans(ai_response: Dictionary) -> void:
+    """Process multi-step plans with enhanced validation and execution"""
+    var plans = ai_response.get("plans", [])
+    var message = ai_response.get("message", "Executing tactical plans")
+    
+    if plans.is_empty():
+        command_failed.emit("No plans provided")
+        return
+    
+    var processed_plans = []
+    var failed_plans = []
+    
+    for plan_data in plans:
+        var unit_id = plan_data.get("unit_id", "")
+        var steps = plan_data.get("steps", [])
+        
+        if unit_id.is_empty() or steps.is_empty():
+            failed_plans.append(plan_data)
+            continue
+        
+        # Validate and enhance plan
+        var enhanced_plan = _enhance_plan_data(plan_data)
+        
+        # Execute plan using enhanced plan executor
+        if plan_executor.execute_plan(unit_id, enhanced_plan):
+            processed_plans.append(enhanced_plan)
+            active_plans[unit_id] = enhanced_plan
+            plan_statistics.total_plans += 1
+            plan_execution_started.emit(unit_id, enhanced_plan)
+        else:
+            failed_plans.append(plan_data)
+    
+    if processed_plans.size() > 0:
+        plan_processed.emit(processed_plans, message)
+        
+        if logger:
+            logger.info("AICommandProcessor", "Started %d enhanced tactical plans" % processed_plans.size())
+    
+    if failed_plans.size() > 0:
+        command_failed.emit("Failed to execute %d plans" % failed_plans.size())
+
+func _enhance_plan_data(plan_data: Dictionary) -> Dictionary:
+    """Enhance plan data with additional context and validation"""
+    var enhanced_plan = plan_data.duplicate(true)
+    
+    # Add plan metadata
+    enhanced_plan["plan_id"] = "plan_" + str(Time.get_ticks_msec())
+    enhanced_plan["created_at"] = Time.get_ticks_msec() / 1000.0
+    enhanced_plan["context"] = last_game_state.duplicate()
+    
+    # Enhance individual steps
+    var enhanced_steps = []
+    for i in range(plan_data.get("steps", []).size()):
+        var step = plan_data.get("steps", [])[i]
+        var enhanced_step = _enhance_step_data(step, i)
+        enhanced_steps.append(enhanced_step)
+    
+    enhanced_plan["steps"] = enhanced_steps
+    
+    return enhanced_plan
+
+func _enhance_step_data(step_data: Dictionary, index: int) -> Dictionary:
+    """Enhance individual step data with validation and defaults"""
+    var enhanced_step = step_data.duplicate(true)
+    
+    # Add step metadata
+    enhanced_step["step_id"] = "step_%d_%d" % [index, Time.get_ticks_msec()]
+    enhanced_step["step_index"] = index
+    
+    # Ensure required fields have defaults
+    if not enhanced_step.has("duration_ms"):
+        enhanced_step["duration_ms"] = 0
+    
+    if not enhanced_step.has("trigger"):
+        enhanced_step["trigger"] = ""
+    
+    if not enhanced_step.has("speech"):
+        enhanced_step["speech"] = ""
+    
+    if not enhanced_step.has("priority"):
+        enhanced_step["priority"] = 0
+    
+    if not enhanced_step.has("prerequisites"):
+        enhanced_step["prerequisites"] = []
+    
+    if not enhanced_step.has("cooldown"):
+        enhanced_step["cooldown"] = 0.0
+    
+    # Validate action-specific parameters
+    _validate_action_parameters(enhanced_step)
+    
+    return enhanced_step
+
+func _validate_action_parameters(step: Dictionary) -> void:
+    """Validate and set defaults for action-specific parameters"""
+    var action = step.get("action", "")
+    var params = step.get("params", {})
+    
+    match action:
+        "peek_and_fire":
+            # Ensure sniper-specific cooldown
+            if step.get("cooldown", 0.0) == 0.0:
+                step["cooldown"] = 3.0
+        
+        "lay_mines":
+            # Ensure mine count parameter
+            if not params.has("count"):
+                params["count"] = 1
+        
+        "stealth":
+            # Ensure stealth duration
+            if not params.has("duration"):
+                params["duration"] = 10.0
+        
+        "overwatch":
+            # Ensure overwatch duration
+            if not params.has("duration"):
+                params["duration"] = 15.0
+        
+        "heal":
+            # Ensure heal prerequisites
+            if step.get("prerequisites", []).is_empty():
+                step["prerequisites"] = ["health_pct > 10"]
+        
+        "charge":
+            # Ensure charge cooldown
+            if step.get("cooldown", 0.0) == 0.0:
+                step["cooldown"] = 8.0
+        
+        "hijack_spire":
+            # Ensure hijack duration and cooldown
+            if step.get("cooldown", 0.0) == 0.0:
+                step["cooldown"] = 20.0
+    
+    step["params"] = params
 
 func _parse_ai_response(content: String) -> Dictionary:
     """Parse AI response JSON"""
@@ -337,52 +540,60 @@ func _on_openai_error(error: String) -> void:
     """Handle OpenAI error"""
     _handle_error("OpenAI request failed: " + error)
 
-# Plan executor signal handlers
+# Plan execution event handlers
 func _on_plan_started(unit_id: String, plan: Array) -> void:
-    """Handle plan start"""
+    """Handle plan execution started"""
     if logger:
-        logger.info("AICommandProcessor", "Plan started for unit %s with %d steps" % [unit_id, plan.size()])
-    else:
-        print("Plan started for unit %s with %d steps" % [unit_id, plan.size()])
+        logger.info("AICommandProcessor", "Plan execution started for unit %s with %d steps" % [unit_id, plan.size()])
 
 func _on_plan_completed(unit_id: String, success: bool) -> void:
-    """Handle plan completion"""
-    var status = "successfully" if success else "with errors"
-    if logger:
-        logger.info("AICommandProcessor", "Plan completed %s for unit %s" % [status, unit_id])
+    """Handle plan execution completed"""
+    if active_plans.has(unit_id):
+        active_plans.erase(unit_id)
+    
+    if success:
+        plan_statistics.successful_plans += 1
     else:
-        print("Plan completed %s for unit %s" % [status, unit_id])
+        plan_statistics.failed_plans += 1
+    
+    plan_execution_completed.emit(unit_id, success)
+    
+    if logger:
+        logger.info("AICommandProcessor", "Plan execution completed for unit %s (success: %s)" % [unit_id, success])
 
 func _on_plan_interrupted(unit_id: String, reason: String) -> void:
-    """Handle plan interruption"""
-    if logger:
-        logger.info("AICommandProcessor", "Plan interrupted for unit %s: %s" % [unit_id, reason])
-    else:
-        print("Plan interrupted for unit %s: %s" % [unit_id, reason])
-
-func _on_step_executed(unit_id: String, step) -> void: # step: PlanExecutor.PlanStep
-    """Handle step execution"""
-    if logger:
-        logger.info("AICommandProcessor", "Step executed for unit %s: %s" % [unit_id, step.action])
-    else:
-        print("Step executed for unit %s: %s" % [unit_id, step.action])
+    """Handle plan execution interrupted"""
+    if active_plans.has(unit_id):
+        active_plans.erase(unit_id)
     
-    # Show speech bubble if specified
-    if step.speech != "":
-        if logger:
-            logger.info("AICommandProcessor", "Unit %s says: %s" % [unit_id, step.speech])
-        else:
-            print("Unit %s says: %s" % [unit_id, step.speech])
-
-func _process_next_command() -> void:
-    """Process next command in queue"""
-    if command_queue.is_empty():
-        return
+    plan_statistics.failed_plans += 1
     
-    var next_command = command_queue.pop_front()
-    process_command(next_command.text, next_command.units, next_command.state)
+    if logger:
+        logger.warning("AICommandProcessor", "Plan execution interrupted for unit %s: %s" % [unit_id, reason])
 
-# Public interface
+func _on_step_executed(unit_id: String, step) -> void:
+    """Handle individual step execution"""
+    var action = step.action if step.has("action") else "unknown"
+    
+    # Update action statistics
+    if not plan_statistics.most_used_actions.has(action):
+        plan_statistics.most_used_actions[action] = 0
+    plan_statistics.most_used_actions[action] += 1
+    
+    if logger:
+        logger.debug("AICommandProcessor", "Step executed for unit %s: %s" % [unit_id, action])
+
+func _on_ability_used(unit_id: String, ability: String, success: bool) -> void:
+    """Handle ability usage"""
+    if logger:
+        logger.info("AICommandProcessor", "Ability '%s' used by unit %s (success: %s)" % [ability, unit_id, success])
+
+func _on_speech_triggered(unit_id: String, speech: String) -> void:
+    """Handle speech bubble triggered"""
+    if logger:
+        logger.debug("AICommandProcessor", "Unit %s says: %s" % [unit_id, speech])
+
+# Enhanced public interface
 func get_command_history() -> Array[String]:
     """Get recent command history"""
     return command_history.duplicate()
@@ -405,19 +616,41 @@ func get_queue_size() -> int:
 
 func get_active_plans() -> Dictionary:
     """Get all active plans"""
-    # if plan_executor: # Temporarily commented out
-    #     return plan_executor.get_active_plans()
-    return {}
+    return active_plans.duplicate()
 
-func interrupt_plan(unit_id: String, reason: String = "user_interrupt") -> bool:
+func get_plan_statistics() -> Dictionary:
+    """Get plan execution statistics"""
+    var stats = plan_statistics.duplicate()
+    
+    # Calculate success rate
+    var total_plans = plan_statistics.total_plans
+    if total_plans > 0:
+        stats["success_rate"] = float(plan_statistics.successful_plans) / float(total_plans) * 100.0
+    else:
+        stats["success_rate"] = 0.0
+    
+    return stats
+
+func interrupt_plan(unit_id: String, reason: String = "user_requested") -> bool:
     """Interrupt an active plan"""
-    # if plan_executor and plan_executor.has_active_plan(unit_id): # Temporarily commented out
-    #     plan_executor.interrupt_plan(unit_id, reason)
-    #     return true
+    if active_plans.has(unit_id) and plan_executor:
+        plan_executor.interrupt_plan(unit_id, reason)
+        return true
     return false
 
+func interrupt_all_plans() -> void:
+    """Interrupt all active plans"""
+    for unit_id in active_plans:
+        interrupt_plan(unit_id, "all_plans_interrupted")
+
 func get_plan_progress(unit_id: String) -> Dictionary:
-    """Get plan progress for a unit"""
-    # if plan_executor: # Temporarily commented out
-    #     return plan_executor.get_plan_progress(unit_id)
+    """Get detailed progress information for a unit's plan"""
+    if plan_executor:
+        return plan_executor.get_plan_progress(unit_id)
+    return {}
+
+func get_execution_stats() -> Dictionary:
+    """Get detailed execution statistics from plan executor"""
+    if plan_executor:
+        return plan_executor.get_execution_stats()
     return {} 

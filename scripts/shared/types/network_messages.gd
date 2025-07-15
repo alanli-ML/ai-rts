@@ -18,6 +18,181 @@ class NetworkMessage:
             "message_type": message_type
         }
 
+# Map generation messages
+class MapGenerationMessage extends NetworkMessage:
+    var map_seed: int
+    var map_size: Vector2i
+    var tile_size: float
+    var districts: Array
+    var roads: Array
+    var buildings: Array
+    var control_points: Array
+    var spawn_points: Dictionary
+    var metadata: Dictionary
+    
+    func _init(seed: int, size: Vector2i, tile_sz: float):
+        super._init("map_generation")
+        map_seed = seed
+        map_size = size
+        tile_size = tile_sz
+        districts = []
+        roads = []
+        buildings = []
+        control_points = []
+        spawn_points = {}
+        metadata = {}
+    
+    func to_dict() -> Dictionary:
+        var dict = super.to_dict()
+        dict["map_seed"] = map_seed
+        dict["map_size"] = [map_size.x, map_size.y]
+        dict["tile_size"] = tile_size
+        dict["districts"] = districts
+        dict["roads"] = roads
+        dict["buildings"] = buildings
+        dict["control_points"] = control_points
+        dict["spawn_points"] = spawn_points
+        dict["metadata"] = metadata
+        return dict
+
+# Individual placement data structures
+class DistrictData:
+    var district_id: String
+    var center_position: Vector2i
+    var district_type: int  # 0=Commercial, 1=Industrial, 2=Mixed, etc.
+    var bounds: Dictionary  # {x, y, width, height}
+    var strategic_value: int
+    var team_color_override: int  # -1 for none, 0+ for team colors
+    
+    func _init(id: String, center: Vector2i, type: int):
+        district_id = id
+        center_position = center
+        district_type = type
+        bounds = {}
+        strategic_value = 1
+        team_color_override = -1
+    
+    func to_dict() -> Dictionary:
+        return {
+            "district_id": district_id,
+            "center_position": [center_position.x, center_position.y],
+            "district_type": district_type,
+            "bounds": bounds,
+            "strategic_value": strategic_value,
+            "team_color_override": team_color_override
+        }
+
+class RoadPlacement:
+    var position: Vector2i
+    var asset_name: String
+    var rotation_degrees: float
+    var road_type: String  # "main_road", "street", "intersection"
+    var connections: Array  # Array of connected road positions
+    var lod_level: int  # 0=High, 1=Medium, 2=Low
+    
+    func _init(pos: Vector2i, asset: String, rotation: float = 0.0):
+        position = pos
+        asset_name = asset
+        rotation_degrees = rotation
+        road_type = "street"
+        connections = []
+        lod_level = 0
+    
+    func to_dict() -> Dictionary:
+        return {
+            "position": [position.x, position.y],
+            "asset_name": asset_name,
+            "rotation_degrees": rotation_degrees,
+            "road_type": road_type,
+            "connections": connections,
+            "lod_level": lod_level
+        }
+
+class BuildingPlacement:
+    var position: Vector2i
+    var asset_name: String
+    var rotation_degrees: float
+    var building_type: String
+    var scale: Vector3
+    var district_id: String
+    var lod_level: int
+    var team_affiliation: int  # -1 for neutral, 0+ for team-specific
+    
+    func _init(pos: Vector2i, asset: String, type: String):
+        position = pos
+        asset_name = asset
+        building_type = type
+        rotation_degrees = 0.0
+        scale = Vector3.ONE
+        district_id = ""
+        lod_level = 0
+        team_affiliation = -1
+    
+    func to_dict() -> Dictionary:
+        return {
+            "position": [position.x, position.y],
+            "asset_name": asset_name,
+            "rotation_degrees": rotation_degrees,
+            "building_type": building_type,
+            "scale": [scale.x, scale.y, scale.z],
+            "district_id": district_id,
+            "lod_level": lod_level,
+            "team_affiliation": team_affiliation
+        }
+
+class ControlPointData:
+    var control_point_id: String
+    var world_position: Vector3
+    var district_id: String
+    var strategic_value: int
+    var capture_radius: float
+    var initial_state: int  # 0=Neutral, 1=Team1, 2=Team2
+    var visual_overrides: Dictionary  # Custom visual properties
+    
+    func _init(id: String, pos: Vector3, district: String):
+        control_point_id = id
+        world_position = pos
+        district_id = district
+        strategic_value = 1
+        capture_radius = 5.0
+        initial_state = 0
+        visual_overrides = {}
+    
+    func to_dict() -> Dictionary:
+        return {
+            "control_point_id": control_point_id,
+            "world_position": [world_position.x, world_position.y, world_position.z],
+            "district_id": district_id,
+            "strategic_value": strategic_value,
+            "capture_radius": capture_radius,
+            "initial_state": initial_state,
+            "visual_overrides": visual_overrides
+        }
+
+class SpawnPointData:
+    var team_id: int
+    var positions: Array  # Array of Vector3 positions
+    var spawn_type: String  # "building", "district", "fixed"
+    var associated_building: String  # Building ID if spawn_type is "building"
+    
+    func _init(team: int, spawn_positions: Array):
+        team_id = team
+        positions = spawn_positions
+        spawn_type = "fixed"
+        associated_building = ""
+    
+    func to_dict() -> Dictionary:
+        var pos_arrays = []
+        for pos in positions:
+            pos_arrays.append([pos.x, pos.y, pos.z])
+        
+        return {
+            "team_id": team_id,
+            "positions": pos_arrays,
+            "spawn_type": spawn_type,
+            "associated_building": associated_building
+        }
+
 # Player connection messages
 class PlayerJoinMessage extends NetworkMessage:
     var player_name: String
@@ -194,6 +369,9 @@ static func create_game_state_message() -> GameStateMessage:
 static func create_match_result_message(winner: int, duration: float) -> MatchResultMessage:
     return MatchResultMessage.new(winner, duration)
 
+static func create_map_generation_message(seed: int, size: Vector2i, tile_size: float) -> MapGenerationMessage:
+    return MapGenerationMessage.new(seed, size, tile_size)
+
 static func parse_message_from_dict(data: Dictionary) -> NetworkMessage:
     var msg_type = data.get("message_type", "")
     
@@ -217,6 +395,18 @@ static func parse_message_from_dict(data: Dictionary) -> NetworkMessage:
             msg.timestamp = data.get("timestamp", 0.0)
             msg.sender_id = data.get("sender_id", -1)
             msg.game_context = data.get("game_context", {})
+            return msg
+        "map_generation":
+            var size_array = data.get("map_size", [20, 20])
+            var msg = MapGenerationMessage.new(data.get("map_seed", 0), Vector2i(size_array[0], size_array[1]), data.get("tile_size", 3.0))
+            msg.timestamp = data.get("timestamp", 0.0)
+            msg.sender_id = data.get("sender_id", -1)
+            msg.districts = data.get("districts", [])
+            msg.roads = data.get("roads", [])
+            msg.buildings = data.get("buildings", [])
+            msg.control_points = data.get("control_points", [])
+            msg.spawn_points = data.get("spawn_points", {})
+            msg.metadata = data.get("metadata", {})
             return msg
         _:
             var msg = NetworkMessage.new(msg_type)

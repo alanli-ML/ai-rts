@@ -49,18 +49,18 @@ func _ready() -> void:
 	# Load API key from environment or config
 	_load_api_key()
 	
-	Logger.info("OpenAIClient", "OpenAI client initialized")
+	print("OpenAI client initialized")
 
 func _load_api_key() -> void:
 	# Try to load from environment variable first
 	if OS.has_environment("OPENAI_API_KEY"):
 		api_key = OS.get_environment("OPENAI_API_KEY")
-		Logger.info("OpenAIClient", "API key loaded from environment")
+		print("API key loaded from environment")
 	else:
-		Logger.warning("OpenAIClient", "No API key found. Set OPENAI_API_KEY environment variable")
+		print("No API key found. Set OPENAI_API_KEY environment variable")
 		# For testing purposes, use a placeholder key
 		api_key = "sk-test-key-for-development"
-		Logger.info("OpenAIClient", "Using placeholder API key for testing")
+		print("Using placeholder API key for testing")
 
 func send_chat_completion(messages: Array[Dictionary], callback: Callable) -> void:
 	"""
@@ -71,12 +71,12 @@ func send_chat_completion(messages: Array[Dictionary], callback: Callable) -> vo
 		callback: Function to call when request completes
 	"""
 	if api_key.is_empty():
-		Logger.error("OpenAIClient", "API key not configured")
+		print("API key not configured")
 		request_failed.emit(APIError.INVALID_API_KEY, "API key not configured")
 		return
 	
 	if not _check_rate_limit():
-		Logger.warning("OpenAIClient", "Rate limit exceeded")
+		print("Rate limit exceeded")
 		rate_limit_exceeded.emit()
 		return
 	
@@ -146,12 +146,12 @@ func _send_request(request_info: Dictionary) -> void:
 	var error = http_request.request(request_info.url, headers, HTTPClient.METHOD_POST, json_data)
 	
 	if error != OK:
-		Logger.error("OpenAIClient", "Failed to send request: " + str(error))
+		print("Failed to send request: " + str(error))
 		active_requests -= 1
 		request_failed.emit(APIError.NETWORK_ERROR, "Failed to send request")
 		return
 	
-	Logger.info("OpenAIClient", "Request sent to OpenAI API")
+	print("Request sent to OpenAI API")
 
 func _on_request_completed(result: int, response_code: int, headers: PackedStringArray, body: PackedByteArray) -> void:
 	"""Handle completed HTTP request"""
@@ -163,7 +163,7 @@ func _on_request_completed(result: int, response_code: int, headers: PackedStrin
 	
 	# Calculate response time
 	var response_time = (Time.get_ticks_msec() / 1000.0) - request_time
-	Logger.info("OpenAIClient", "Request completed in " + str(response_time) + "s")
+	print("Request completed in " + str(response_time) + "s")
 	
 	# Handle HTTP errors
 	if response_code != 200:
@@ -178,7 +178,7 @@ func _on_request_completed(result: int, response_code: int, headers: PackedStrin
 				if error_data.has("error"):
 					error_message = error_data.error.get("message", error_message)
 		
-		Logger.error("OpenAIClient", "Request failed: " + error_message)
+		print("Request failed: " + error_message)
 		request_failed.emit(error_type, error_message)
 		
 		if callback.is_valid():
@@ -189,7 +189,7 @@ func _on_request_completed(result: int, response_code: int, headers: PackedStrin
 	
 	# Parse response
 	if body.size() == 0:
-		Logger.error("OpenAIClient", "Empty response body")
+		print("Empty response body")
 		request_failed.emit(APIError.UNKNOWN_ERROR, "Empty response")
 		if callback.is_valid():
 			callback.call(null, APIError.UNKNOWN_ERROR, "Empty response")
@@ -200,7 +200,7 @@ func _on_request_completed(result: int, response_code: int, headers: PackedStrin
 	var parse_result = json.parse(body.get_string_from_utf8())
 	
 	if parse_result != OK:
-		Logger.error("OpenAIClient", "Failed to parse JSON response")
+		print("Failed to parse JSON response")
 		request_failed.emit(APIError.UNKNOWN_ERROR, "Invalid JSON response")
 		if callback.is_valid():
 			callback.call(null, APIError.UNKNOWN_ERROR, "Invalid JSON response")
@@ -208,7 +208,7 @@ func _on_request_completed(result: int, response_code: int, headers: PackedStrin
 		return
 	
 	var response_data = json.data
-	Logger.info("OpenAIClient", "Request successful")
+	print("Request successful")
 	
 	# Emit success signal
 	request_completed.emit(response_data)
@@ -244,4 +244,4 @@ func get_usage_info() -> Dictionary:
 func clear_queue() -> void:
 	"""Clear all queued requests"""
 	request_queue.clear()
-	Logger.info("OpenAIClient", "Request queue cleared") 
+	print("Request queue cleared") 

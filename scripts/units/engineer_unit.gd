@@ -15,9 +15,59 @@ var mine_deployment_range: float = 10.0
 var deployed_mines: Array[Node3D] = []
 var max_mines: int = 3
 
+# Enhanced abilities
+var hijack_range: float = 8.0
+var hijack_duration: float = 5.0
+var hijack_cooldown: float = 20.0
+var hijack_cooldown_timer: float = 0.0
+var is_hijacking: bool = false
+var hijack_target: Node3D = null
+var hijack_timer: float = 0.0
+
+# Mine laying system
+var mine_type: String = "proximity"
+var mine_cooldown: float = 3.0
+var mine_cooldown_timer: float = 0.0
+var mine_damage: float = 50.0
+var mine_blast_radius: float = 8.0
+
+# Turret building system
+var turret_build_time: float = 8.0
+var turret_cooldown: float = 15.0
+var turret_cooldown_timer: float = 0.0
+var built_turrets: Array[Node3D] = []
+var max_turrets: int = 2
+
+# Repair system enhancement
+var repair_cooldown: float = 2.0
+var repair_cooldown_timer: float = 0.0
+var repair_amount: float = 20.0
+var can_repair_units: bool = true
+var can_repair_buildings: bool = true
+
+# Construction queue
+var construction_queue: Array[Dictionary] = []
+var construction_materials: Dictionary = {
+	"metal": 100.0,
+	"energy": 50.0
+}
+
+# Visual indicators
+var build_indicator: Node3D
+var repair_indicator: Node3D
+var hijack_indicator: Node3D
+
+# Signals
+signal mine_deployed(position: Vector3, mine_type: String)
+signal spire_hijacked(spire: Node3D, success: bool)
+signal turret_built(position: Vector3, turret_type: String)
+signal repair_completed(target: Node3D, health_restored: float)
+signal construction_started(project: Dictionary)
+signal construction_completed(project: Dictionary)
+
 func _ready() -> void:
 	archetype = "engineer"
-	system_prompt = "You are a versatile engineer unit. Your role is to build structures, repair damaged buildings, and deploy tactical equipment. You can fight when needed but excel at support and utility tasks."
+	system_prompt = "You are a versatile engineer unit. Your role is to build structures, repair damaged buildings, deploy tactical equipment, and perform sabotage operations. You can fight when needed but excel at support, utility, and construction tasks."
 	
 	# Call parent _ready
 	super._ready()
@@ -32,7 +82,7 @@ func _setup_engineer_abilities() -> void:
 	
 	# Medium movement speed
 	speed = 8.0
-	move_speed = 8.0
+	movement_speed = 8.0
 	
 	# Medium vision range
 	vision_range = 30.0
@@ -47,452 +97,600 @@ func _setup_engineer_abilities() -> void:
 	if not stats.is_empty():
 		build_speed = stats.build_speed
 	
+	# Create visual indicators
+	_create_visual_indicators()
+	
 	# Update visual for engineer
 	_update_engineer_visual()
 
+func _create_visual_indicators() -> void:
+	"""Create visual indicators for engineer abilities"""
+	# Build indicator
+	build_indicator = MeshInstance3D.new()
+	build_indicator.name = "BuildIndicator"
+	build_indicator.mesh = BoxMesh.new()
+	build_indicator.mesh.size = Vector3(0.5, 0.5, 0.5)
+	build_indicator.position = Vector3(0, 2, 0)
+	build_indicator.visible = false
+	
+	var build_material = StandardMaterial3D.new()
+	build_material.albedo_color = Color.BLUE
+	build_material.emission_enabled = true
+	build_material.emission = Color.BLUE * 0.3
+	build_indicator.material_override = build_material
+	
+	add_child(build_indicator)
+	
+	# Repair indicator
+	repair_indicator = MeshInstance3D.new()
+	repair_indicator.name = "RepairIndicator"
+	repair_indicator.mesh = CylinderMesh.new()
+	repair_indicator.mesh.height = 0.2
+	repair_indicator.mesh.top_radius = 0.8
+	repair_indicator.mesh.bottom_radius = 0.8
+	repair_indicator.position = Vector3(0, 0.1, 0)
+	repair_indicator.visible = false
+	
+	var repair_material = StandardMaterial3D.new()
+	repair_material.albedo_color = Color.GREEN
+	repair_material.flags_transparent = true
+	repair_material.albedo_color.a = 0.4
+	repair_indicator.material_override = repair_material
+	
+	add_child(repair_indicator)
+	
+	# Hijack indicator
+	hijack_indicator = MeshInstance3D.new()
+	hijack_indicator.name = "HijackIndicator"
+	hijack_indicator.mesh = SphereMesh.new()
+	hijack_indicator.mesh.radius = 0.5
+	hijack_indicator.position = Vector3(0, 2.5, 0)
+	hijack_indicator.visible = false
+	
+	var hijack_material = StandardMaterial3D.new()
+	hijack_material.albedo_color = Color.RED
+	hijack_material.emission_enabled = true
+	hijack_material.emission = Color.RED * 0.5
+	hijack_indicator.material_override = hijack_material
+	
+	add_child(hijack_indicator)
+
 func _update_engineer_visual() -> void:
-	if unit_model:
-		# Keep engineer normal size
-		unit_model.scale = Vector3(1.0, 1.0, 1.0)
+	# Find mesh instance for visual updates
+	var mesh_instance = find_child("UnitMesh") as MeshInstance3D
+	if mesh_instance:
+		# Make engineer look more robust
+		mesh_instance.scale = Vector3(1.1, 1.0, 1.1)
 		
 		# Different color scheme
-		var material = unit_model.material_override as StandardMaterial3D
+		var material = mesh_instance.material_override as StandardMaterial3D
 		if material:
 			if team_id == 1:
-				material.albedo_color = Color.ORANGE  # Orange/construction for team 1
+				material.albedo_color = Color.BLUE  # Blue for team 1
 			else:
-				material.albedo_color = Color.PURPLE  # Purple for team 2
-			
-			# Make material look industrial
-			material.metallic = 0.6
-			material.roughness = 0.7
+				material.albedo_color = Color.MAGENTA  # Magenta for team 2
 
 func _physics_process(delta: float) -> void:
 	super._physics_process(delta)
 	
+	# Update ability timers
+	_update_ability_timers(delta)
+	
 	# Handle building
 	if is_building and current_build_target:
-		_continue_building(delta)
+		_handle_building(delta)
 	
 	# Handle repairing
 	if is_repairing and current_repair_target:
-		_continue_repairing(delta)
+		_handle_repairing(delta)
+	
+	# Handle hijacking
+	if is_hijacking and hijack_target:
+		_handle_hijacking(delta)
 
-func _continue_building(delta: float) -> void:
+func _update_ability_timers(delta: float) -> void:
+	"""Update cooldown timers for abilities"""
+	if hijack_cooldown_timer > 0:
+		hijack_cooldown_timer -= delta
+	
+	if mine_cooldown_timer > 0:
+		mine_cooldown_timer -= delta
+	
+	if turret_cooldown_timer > 0:
+		turret_cooldown_timer -= delta
+	
+	if repair_cooldown_timer > 0:
+		repair_cooldown_timer -= delta
+	
+	if hijack_timer > 0:
+		hijack_timer -= delta
+		if hijack_timer <= 0:
+			_complete_hijack()
+
+func _handle_building(delta: float) -> void:
+	"""Handle building process"""
 	if not current_build_target:
-		stop_building()
+		is_building = false
 		return
 	
-	var distance = global_position.distance_to(current_build_target.global_position)
-	if distance > repair_range:
-		stop_building()
-		return
-	
-	# Check if we have enough energy
-	if energy < repair_energy_cost * delta:
-		stop_building()
-		return
-	
-	# Continue building (this would update building progress)
-	energy -= repair_energy_cost * delta
-	
-	# Visual feedback
-	_show_building_effect()
+	# Building progress logic would go here
+	# For now, just show visual indicator
+	if build_indicator:
+		build_indicator.visible = true
+		var tween = create_tween()
+		tween.tween_property(build_indicator, "rotation", build_indicator.rotation + Vector3(0, PI * 2, 0), 1.0)
 
-func _continue_repairing(delta: float) -> void:
+func _handle_repairing(delta: float) -> void:
+	"""Handle repair process"""
 	if not current_repair_target:
-		stop_repairing()
+		is_repairing = false
 		return
 	
-	var distance = global_position.distance_to(current_repair_target.global_position)
-	if distance > repair_range:
-		stop_repairing()
-		return
+	# Repair progress
+	var repair_this_frame = repair_rate * delta
 	
-	# Check if we have enough energy
-	if energy < repair_energy_cost * delta:
-		stop_repairing()
-		return
+	# Apply repair
+	if current_repair_target.has_method("repair"):
+		current_repair_target.repair(repair_this_frame)
 	
-	# Continue repairing
+	# Energy cost
 	energy -= repair_energy_cost * delta
 	
 	# Visual feedback
-	_show_repair_effect()
+	if repair_indicator:
+		repair_indicator.visible = true
+		var tween = create_tween()
+		tween.tween_property(repair_indicator, "scale", Vector3(1.1, 1.0, 1.1), 0.3)
+		tween.tween_property(repair_indicator, "scale", Vector3(1.0, 1.0, 1.0), 0.3)
 
-func can_build() -> bool:
-	return not is_building and not is_repairing and energy >= 10.0
+func _handle_hijacking(delta: float) -> void:
+	"""Handle hijacking process"""
+	if not hijack_target:
+		is_hijacking = false
+		return
+	
+	# Visual feedback during hijacking
+	if hijack_indicator:
+		hijack_indicator.visible = true
+		var progress = 1.0 - (hijack_timer / hijack_duration)
+		hijack_indicator.scale = Vector3(progress, progress, progress)
 
-func start_building(building_type: String, position: Vector3) -> bool:
-	if not can_build():
-		Logger.debug("EngineerUnit", "Engineer %s cannot build (busy or no energy)" % unit_id)
+# Enhanced Engineer Abilities
+func lay_mines(position: Vector3, count: int = 1) -> bool:
+	"""Deploy mines at specified position"""
+	if mine_cooldown_timer > 0:
+		print("Engineer %s: Mine laying on cooldown" % unit_id)
 		return false
 	
-	var distance = global_position.distance_to(position)
-	if distance > repair_range:
-		Logger.debug("EngineerUnit", "Engineer %s build position too far" % unit_id)
-		return false
-	
-	# Create building placeholder
-	var building = Node3D.new()
-	building.name = "Building_%s" % building_type
-	building.position = position
-	get_tree().current_scene.add_child(building)
-	
-	# Start building
-	is_building = true
-	current_build_target = building
-	
-	Logger.info("EngineerUnit", "Engineer %s started building %s at %s" % [unit_id, building_type, position])
-	return true
-
-func stop_building() -> void:
-	is_building = false
-	current_build_target = null
-	Logger.debug("EngineerUnit", "Engineer %s stopped building" % unit_id)
-
-func _show_building_effect() -> void:
-	# Visual effect for building
-	modulate = Color(1.2, 1.0, 0.8, 1.0)  # Orange tint
-	
-	# Restore after brief effect
-	await get_tree().create_timer(0.2).timeout
-	modulate = Color.WHITE
-
-func can_repair() -> bool:
-	return not is_building and not is_repairing and energy >= 5.0
-
-func start_repairing(target: Node3D) -> bool:
-	if not can_repair():
-		Logger.debug("EngineerUnit", "Engineer %s cannot repair (busy or no energy)" % unit_id)
-		return false
-	
-	var distance = global_position.distance_to(target.global_position)
-	if distance > repair_range:
-		Logger.debug("EngineerUnit", "Engineer %s repair target too far" % unit_id)
-		return false
-	
-	# Start repairing
-	is_repairing = true
-	current_repair_target = target
-	
-	Logger.info("EngineerUnit", "Engineer %s started repairing %s" % [unit_id, target.name])
-	return true
-
-func stop_repairing() -> void:
-	is_repairing = false
-	current_repair_target = null
-	Logger.debug("EngineerUnit", "Engineer %s stopped repairing" % unit_id)
-
-func _show_repair_effect() -> void:
-	# Visual effect for repairing
-	modulate = Color(0.8, 1.2, 1.0, 1.0)  # Cyan tint
-	
-	# Restore after brief effect
-	await get_tree().create_timer(0.2).timeout
-	modulate = Color.WHITE
-
-func deploy_mine(position: Vector3) -> bool:
 	if deployed_mines.size() >= max_mines:
-		Logger.debug("EngineerUnit", "Engineer %s cannot deploy more mines (max reached)" % unit_id)
+		print("Engineer %s: Maximum mines deployed" % unit_id)
+		return false
+	
+	if energy < 20.0:
+		print("Engineer %s: Not enough energy for mine deployment" % unit_id)
 		return false
 	
 	var distance = global_position.distance_to(position)
 	if distance > mine_deployment_range:
-		Logger.debug("EngineerUnit", "Engineer %s mine position too far" % unit_id)
+		print("Engineer %s: Mine position too far" % unit_id)
 		return false
 	
-	if energy < 20.0:
-		Logger.debug("EngineerUnit", "Engineer %s insufficient energy for mine" % unit_id)
-		return false
-	
-	# Create mine
-	var mine = _create_mine(position)
-	if mine:
-		deployed_mines.append(mine)
-		energy -= 20.0
+	# Deploy mines
+	for i in range(count):
+		if deployed_mines.size() >= max_mines:
+			break
 		
-		Logger.info("EngineerUnit", "Engineer %s deployed mine at %s" % [unit_id, position])
-		return true
+		var mine_position = position + Vector3(randf_range(-2, 2), 0, randf_range(-2, 2))
+		var mine = _create_mine(mine_position)
+		deployed_mines.append(mine)
+		
+		mine_deployed.emit(mine_position, mine_type)
+		print("Engineer %s: Mine deployed at %s" % [unit_id, mine_position])
 	
-	return false
-
-func _create_mine(position: Vector3) -> Node3D:
-	# Create a simple mine node
-	var mine = Node3D.new()
-	mine.name = "Mine_%s" % randf()
-	mine.position = position
+	# Set cooldown
+	mine_cooldown_timer = mine_cooldown
 	
-	# Add visual representation
-	var mine_visual = MeshInstance3D.new()
-	mine_visual.mesh = SphereMesh.new()
-	mine_visual.mesh.radius = 0.3
-	mine_visual.mesh.height = 0.6
+	# Energy cost
+	energy -= 15.0 * count
 	
-	var mine_material = StandardMaterial3D.new()
-	mine_material.albedo_color = Color.DARK_GRAY
-	mine_visual.material_override = mine_material
-	
-	mine.add_child(mine_visual)
-	
-	# Add detection area
-	var detection_area = Area3D.new()
-	var detection_shape = CollisionShape3D.new()
-	detection_shape.shape = SphereShape3D.new()
-	detection_shape.shape.radius = 2.0
-	
-	detection_area.add_child(detection_shape)
-	mine.add_child(detection_area)
-	
-	# Connect signals
-	detection_area.body_entered.connect(_on_mine_triggered.bind(mine))
-	
-	get_tree().current_scene.add_child(mine)
-	return mine
-
-func _on_mine_triggered(mine: Node3D, body: Node3D) -> void:
-	if body is Unit:
-		var unit = body as Unit
-		if unit.is_enemy_of(self):
-			# Explode mine
-			_explode_mine(mine)
-
-func _explode_mine(mine: Node3D) -> void:
-	var explosion_radius = 5.0
-	var explosion_damage = 50.0
-	
-	# Find all units in explosion radius
-	var all_units = get_tree().get_nodes_in_group("units")
-	var damaged_units = 0
-	
-	for node in all_units:
-		if node is Unit:
-			var unit = node as Unit
-			var distance = mine.global_position.distance_to(unit.global_position)
-			if distance <= explosion_radius:
-				unit.take_damage(explosion_damage)
-				damaged_units += 1
-	
-	# Remove mine from tracking
-	deployed_mines.erase(mine)
-	
-	# Visual effect (would add explosion particle effect here)
-	mine.queue_free()
-	
-	Logger.info("EngineerUnit", "Engineer %s mine exploded, damaged %d units" % [unit_id, damaged_units])
-
-func construct_turret(position: Vector3) -> bool:
-	if not can_build():
-		return false
-	
-	var distance = global_position.distance_to(position)
-	if distance > repair_range:
-		return false
-	
-	if energy < 40.0:
-		return false
-	
-	# Create turret
-	var turret = _create_turret(position)
-	if turret:
-		energy -= 40.0
-		Logger.info("EngineerUnit", "Engineer %s constructed turret at %s" % [unit_id, position])
-		return true
-	
-	return false
-
-func _create_turret(position: Vector3) -> Node3D:
-	# Create a simple turret node
-	var turret = Node3D.new()
-	turret.name = "Turret_%s" % randf()
-	turret.position = position
-	
-	# Add visual representation
-	var turret_visual = MeshInstance3D.new()
-	turret_visual.mesh = CylinderMesh.new()
-	turret_visual.mesh.top_radius = 0.8
-	turret_visual.mesh.bottom_radius = 1.0
-	turret_visual.mesh.height = 1.5
-	
-	var turret_material = StandardMaterial3D.new()
-	turret_material.albedo_color = Color.GRAY
-	turret_visual.material_override = turret_material
-	
-	turret.add_child(turret_visual)
-	
-	get_tree().current_scene.add_child(turret)
-	return turret
-
-func create_barrier(start_position: Vector3, end_position: Vector3) -> bool:
-	if not can_build():
-		return false
-	
-	if energy < 25.0:
-		return false
-	
-	# Create barrier segments
-	var barrier_segments = []
-	var segment_count = 5
-	
-	for i in range(segment_count):
-		var t = float(i) / (segment_count - 1)
-		var segment_position = start_position.lerp(end_position, t)
-		var segment = _create_barrier_segment(segment_position)
-		if segment:
-			barrier_segments.append(segment)
-	
-	if barrier_segments.size() > 0:
-		energy -= 25.0
-		Logger.info("EngineerUnit", "Engineer %s created barrier with %d segments" % [unit_id, barrier_segments.size()])
-		return true
-	
-	return false
-
-func _create_barrier_segment(position: Vector3) -> Node3D:
-	var barrier = Node3D.new()
-	barrier.name = "Barrier_%s" % randf()
-	barrier.position = position
-	
-	# Add visual
-	var barrier_visual = MeshInstance3D.new()
-	barrier_visual.mesh = BoxMesh.new()
-	barrier_visual.mesh.size = Vector3(2, 2, 0.5)
-	
-	var barrier_material = StandardMaterial3D.new()
-	barrier_material.albedo_color = Color.BROWN
-	barrier_visual.material_override = barrier_material
-	
-	barrier.add_child(barrier_visual)
-	
-	# Add collision
-	var collision_body = StaticBody3D.new()
-	var collision_shape = CollisionShape3D.new()
-	collision_shape.shape = BoxShape3D.new()
-	collision_shape.shape.size = Vector3(2, 2, 0.5)
-	
-	collision_body.add_child(collision_shape)
-	barrier.add_child(collision_body)
-	
-	get_tree().current_scene.add_child(barrier)
-	return barrier
-
-func salvage_wreckage(wreckage: Node3D) -> bool:
-	if not wreckage:
-		return false
-	
-	var distance = global_position.distance_to(wreckage.global_position)
-	if distance > repair_range:
-		return false
-	
-	if energy < 10.0:
-		return false
-	
-	# Salvage materials (restore energy)
-	energy += 15.0
-	energy = min(100.0, energy)
-	
-	# Remove wreckage
-	wreckage.queue_free()
-	
-	Logger.info("EngineerUnit", "Engineer %s salvaged wreckage" % unit_id)
 	return true
 
-func hack_enemy_structure(target: Node3D) -> bool:
-	if not target:
+func hijack_spire(spire: Node3D) -> bool:
+	"""Hijack enemy spire"""
+	if not spire or hijack_cooldown_timer > 0 or is_hijacking:
+		print("Engineer %s: Hijack on cooldown or already hijacking" % unit_id)
+		return false
+	
+	if energy < 50.0:
+		print("Engineer %s: Not enough energy for hijacking" % unit_id)
+		return false
+	
+	var distance = global_position.distance_to(spire.global_position)
+	if distance > hijack_range:
+		print("Engineer %s: Spire too far to hijack" % unit_id)
+		return false
+	
+	# Check if spire is enemy
+	if spire.has_method("get") and spire.get("team_id") == team_id:
+		print("Engineer %s: Cannot hijack allied spire" % unit_id)
+		return false
+	
+	# Start hijacking process
+	is_hijacking = true
+	hijack_target = spire
+	hijack_timer = hijack_duration
+	
+	# Move to spire if not close enough
+	if distance > 3.0:
+		move_to(spire.global_position)
+	
+	print("Engineer %s: Starting hijack of spire at %s" % [unit_id, spire.global_position])
+	return true
+
+func repair_unit(target: Unit) -> bool:
+	"""Repair target unit"""
+	if not target or repair_cooldown_timer > 0:
+		print("Engineer %s: Repair on cooldown or invalid target" % unit_id)
+		return false
+	
+	if not can_repair_units:
+		print("Engineer %s: Cannot repair units" % unit_id)
+		return false
+	
+	if target.team_id != team_id:
+		print("Engineer %s: Cannot repair enemy unit" % unit_id)
+		return false
+	
+	if target.current_health >= target.max_health:
+		print("Engineer %s: Target already at full health" % unit_id)
 		return false
 	
 	var distance = global_position.distance_to(target.global_position)
 	if distance > repair_range:
+		print("Engineer %s: Target too far to repair" % unit_id)
 		return false
 	
-	if energy < 30.0:
+	if energy < 25.0:
+		print("Engineer %s: Not enough energy for repair" % unit_id)
 		return false
 	
-	# Attempt to hack (success chance based on energy)
-	var success_chance = min(0.8, energy / 100.0)
-	if randf() < success_chance:
-		energy -= 30.0
-		Logger.info("EngineerUnit", "Engineer %s successfully hacked %s" % [unit_id, target.name])
-		return true
-	else:
-		energy -= 15.0  # Partial energy cost on failure
-		Logger.info("EngineerUnit", "Engineer %s failed to hack %s" % [unit_id, target.name])
-		return false
-
-func get_construction_options() -> Array[Dictionary]:
-	# Return available construction options
-	var options = []
+	# Perform repair
+	var health_restored = min(repair_amount, target.max_health - target.current_health)
+	target.heal(health_restored)
 	
-	if energy >= 40.0:
-		options.append({
-			"type": "turret",
-			"name": "Defense Turret",
-			"cost": 40.0,
-			"range": repair_range
-		})
-	
-	if energy >= 25.0:
-		options.append({
-			"type": "barrier",
-			"name": "Defensive Barrier",
-			"cost": 25.0,
-			"range": repair_range
-		})
-	
-	if energy >= 20.0 and deployed_mines.size() < max_mines:
-		options.append({
-			"type": "mine",
-			"name": "Explosive Mine",
-			"cost": 20.0,
-			"range": mine_deployment_range
-		})
-	
-	return options
-
-func get_repair_targets() -> Array[Node3D]:
-	# Find nearby damaged structures
-	var repair_targets = []
-	
-	# This would search for buildings, turrets, etc. that need repair
-	# For now, return empty array
-	
-	return repair_targets
-
-func emergency_repair_self() -> bool:
-	if energy < 20.0:
-		return false
-	
-	if get_health_percentage() >= 0.8:
-		return false
-	
-	# Heal self
-	heal(max_health * 0.3)
+	# Energy cost
 	energy -= 20.0
 	
-	# Visual effect
-	modulate = Color(1.0, 1.2, 1.0, 1.0)
-	await get_tree().create_timer(0.5).timeout
-	modulate = Color.WHITE
+	# Set cooldown
+	repair_cooldown_timer = repair_cooldown
 	
-	Logger.info("EngineerUnit", "Engineer %s performed emergency self-repair" % unit_id)
+	# Visual effect
+	_create_repair_effect(target.global_position)
+	
+	print("Engineer %s: Repaired %s for %.1f health" % [unit_id, target.unit_id, health_restored])
+	repair_completed.emit(target, health_restored)
+	
 	return true
 
-func _on_vision_body_entered(body: Node3D) -> void:
-	super._on_vision_body_entered(body)
+func build_turret(position: Vector3, turret_type: String = "basic") -> bool:
+	"""Build defensive turret"""
+	if turret_cooldown_timer > 0:
+		print("Engineer %s: Turret building on cooldown" % unit_id)
+		return false
 	
-	# Engineer-specific: Look for things to repair or salvage
-	if body.name.contains("Wreckage") or body.name.contains("Damaged"):
-		Logger.debug("EngineerUnit", "Engineer %s spotted salvageable wreckage" % unit_id)
+	if built_turrets.size() >= max_turrets:
+		print("Engineer %s: Maximum turrets built" % unit_id)
+		return false
+	
+	if energy < 60.0:
+		print("Engineer %s: Not enough energy for turret construction" % unit_id)
+		return false
+	
+	var distance = global_position.distance_to(position)
+	if distance > 15.0:
+		print("Engineer %s: Turret position too far" % unit_id)
+		return false
+	
+	# Check if position is valid
+	if not _is_valid_build_position(position):
+		print("Engineer %s: Invalid build position" % unit_id)
+		return false
+	
+	# Start building process
+	is_building = true
+	
+	# Move to build position
+	move_to(position)
+	
+	# Wait for positioning
+	await get_tree().create_timer(2.0).timeout
+	
+	# Build turret
+	var turret = _create_turret(position, turret_type)
+	built_turrets.append(turret)
+	
+	# Set cooldown
+	turret_cooldown_timer = turret_cooldown
+	
+	# Energy cost
+	energy -= 50.0
+	
+	is_building = false
+	
+	print("Engineer %s: Built %s turret at %s" % [unit_id, turret_type, position])
+	turret_built.emit(position, turret_type)
+	
+	return true
 
-func get_utility_report() -> Dictionary:
-	# Return status of engineer capabilities
+func start_construction(project: Dictionary) -> bool:
+	"""Start construction project"""
+	if is_building:
+		print("Engineer %s: Already building" % unit_id)
+		return false
+	
+	var required_materials = project.get("materials", {})
+	if not _has_required_materials(required_materials):
+		print("Engineer %s: Insufficient materials for construction" % unit_id)
+		return false
+	
+	# Add to construction queue
+	construction_queue.append(project)
+	
+	# Start building if not already building
+	if not is_building:
+		_start_next_construction()
+	
+	construction_started.emit(project)
+	return true
+
+func _complete_hijack() -> void:
+	"""Complete hijacking process"""
+	if not is_hijacking or not hijack_target:
+		return
+	
+	var success = true
+	
+	# Attempt to hijack the spire
+	if hijack_target.has_method("change_team"):
+		hijack_target.change_team(team_id)
+		print("Engineer %s: Successfully hijacked spire" % unit_id)
+	else:
+		success = false
+		print("Engineer %s: Failed to hijack spire" % unit_id)
+	
+	# Clean up
+	is_hijacking = false
+	hijack_target = null
+	hijack_timer = 0.0
+	
+	# Set cooldown
+	hijack_cooldown_timer = hijack_cooldown
+	
+	# Energy cost
+	energy -= 40.0
+	
+	# Hide indicator
+	if hijack_indicator:
+		hijack_indicator.visible = false
+	
+	spire_hijacked.emit(hijack_target, success)
+
+func _create_mine(position: Vector3) -> Node3D:
+	"""Create mine at position"""
+	var mine = MeshInstance3D.new()
+	mine.name = "Mine"
+	mine.mesh = SphereMesh.new()
+	mine.mesh.radius = 0.3
+	mine.mesh.height = 0.2
+	mine.position = position
+	
+	# Mine material
+	var material = StandardMaterial3D.new()
+	material.albedo_color = Color.DARK_GRAY
+	material.metallic = 0.8
+	material.roughness = 0.2
+	mine.material_override = material
+	
+	# Add mine to scene
+	get_tree().current_scene.add_child(mine)
+	
+	# Set up mine behavior
+	mine.set_meta("mine_damage", mine_damage)
+	mine.set_meta("blast_radius", mine_blast_radius)
+	mine.set_meta("owner_team", team_id)
+	mine.set_meta("mine_type", mine_type)
+	
+	return mine
+
+func _create_turret(position: Vector3, turret_type: String) -> Node3D:
+	"""Create turret at position"""
+	var turret = MeshInstance3D.new()
+	turret.name = "Turret"
+	turret.mesh = CylinderMesh.new()
+	turret.mesh.height = 2.0
+	turret.mesh.top_radius = 0.8
+	turret.mesh.bottom_radius = 1.0
+	turret.position = position
+	
+	# Turret material
+	var material = StandardMaterial3D.new()
+	if team_id == 1:
+		material.albedo_color = Color.BLUE
+	else:
+		material.albedo_color = Color.RED
+	material.metallic = 0.6
+	material.roughness = 0.3
+	turret.material_override = material
+	
+	# Add turret to scene
+	get_tree().current_scene.add_child(turret)
+	
+	# Set up turret behavior
+	turret.set_meta("turret_type", turret_type)
+	turret.set_meta("owner_team", team_id)
+	turret.set_meta("attack_range", 25.0)
+	turret.set_meta("attack_damage", 30.0)
+	turret.set_meta("health", 100.0)
+	turret.set_meta("max_health", 100.0)
+	
+	return turret
+
+func _create_repair_effect(position: Vector3) -> void:
+	"""Create visual repair effect"""
+	var effect = MeshInstance3D.new()
+	effect.name = "RepairEffect"
+	effect.mesh = SphereMesh.new()
+	effect.mesh.radius = 1.0
+	effect.position = position
+	
+	var material = StandardMaterial3D.new()
+	material.albedo_color = Color.GREEN
+	material.flags_transparent = true
+	material.albedo_color.a = 0.3
+	material.emission_enabled = true
+	material.emission = Color.GREEN * 0.5
+	effect.material_override = material
+	
+	get_tree().current_scene.add_child(effect)
+	
+	# Animate effect
+	var tween = create_tween()
+	tween.tween_property(effect, "scale", Vector3(2.0, 2.0, 2.0), 0.5)
+	tween.parallel().tween_property(effect, "material_override:albedo_color:a", 0.0, 0.5)
+	tween.tween_callback(func(): effect.queue_free())
+
+func _is_valid_build_position(position: Vector3) -> bool:
+	"""Check if position is valid for building"""
+	# Check if position is too close to other buildings
+	var buildings = get_tree().get_nodes_in_group("buildings")
+	for building in buildings:
+		if building.global_position.distance_to(position) < 10.0:
+			return false
+	
+	# Check if position is in valid terrain
+	# This would integrate with terrain system
+	return true
+
+func _has_required_materials(required: Dictionary) -> bool:
+	"""Check if engineer has required materials"""
+	for material in required:
+		if construction_materials.get(material, 0) < required[material]:
+			return false
+	return true
+
+func _start_next_construction() -> void:
+	"""Start next construction project in queue"""
+	if construction_queue.is_empty() or is_building:
+		return
+	
+	var project = construction_queue.pop_front()
+	is_building = true
+	
+	# This would implement actual construction logic
+	print("Engineer %s: Starting construction of %s" % [unit_id, project.get("name", "Unknown")])
+
+func _consume_materials(required: Dictionary) -> void:
+	"""Consume materials from inventory"""
+	for material in required:
+		construction_materials[material] -= required[material]
+
+func detonate_mine(mine: Node3D) -> void:
+	"""Detonate specific mine"""
+	if mine in deployed_mines:
+		deployed_mines.erase(mine)
+		
+		# Create explosion effect
+		_create_explosion_effect(mine.global_position)
+		
+		# Damage units in blast radius
+		var damage = mine.get_meta("mine_damage", mine_damage)
+		var radius = mine.get_meta("blast_radius", mine_blast_radius)
+		
+		var units = get_tree().get_nodes_in_group("units")
+		for unit in units:
+			var distance = mine.global_position.distance_to(unit.global_position)
+			if distance <= radius:
+				var damage_amount = damage * (1.0 - distance / radius)
+				unit.take_damage(damage_amount)
+		
+		# Remove mine from scene
+		mine.queue_free()
+		
+		print("Engineer %s: Mine detonated at %s" % [unit_id, mine.global_position])
+
+func _create_explosion_effect(position: Vector3) -> void:
+	"""Create explosion visual effect"""
+	var explosion = MeshInstance3D.new()
+	explosion.name = "Explosion"
+	explosion.mesh = SphereMesh.new()
+	explosion.mesh.radius = 0.5
+	explosion.position = position
+	
+	var material = StandardMaterial3D.new()
+	material.albedo_color = Color.ORANGE
+	material.emission_enabled = true
+	material.emission = Color.ORANGE * 2.0
+	explosion.material_override = material
+	
+	get_tree().current_scene.add_child(explosion)
+	
+	# Animate explosion
+	var tween = create_tween()
+	tween.tween_property(explosion, "scale", Vector3(5.0, 5.0, 5.0), 0.3)
+	tween.parallel().tween_property(explosion, "material_override:albedo_color:a", 0.0, 0.3)
+	tween.tween_callback(func(): explosion.queue_free())
+
+# Public ability interface for plan executor
+func get_available_abilities() -> Array[String]:
+	"""Get list of available abilities"""
+	var abilities = []
+	
+	if mine_cooldown_timer <= 0 and deployed_mines.size() < max_mines:
+		abilities.append("lay_mines")
+	
+	if hijack_cooldown_timer <= 0:
+		abilities.append("hijack_spire")
+	
+	if repair_cooldown_timer <= 0:
+		abilities.append("repair")
+	
+	if turret_cooldown_timer <= 0 and built_turrets.size() < max_turrets:
+		abilities.append("build_turret")
+	
+	abilities.append("start_construction")
+	
+	return abilities
+
+func get_ability_cooldown(ability: String) -> float:
+	"""Get cooldown time for specific ability"""
+	match ability:
+		"lay_mines":
+			return mine_cooldown_timer
+		"hijack_spire":
+			return hijack_cooldown_timer
+		"repair":
+			return repair_cooldown_timer
+		"build_turret":
+			return turret_cooldown_timer
+		_:
+			return 0.0
+
+func is_ability_available(ability: String) -> bool:
+	"""Check if ability is available"""
+	return get_ability_cooldown(ability) <= 0.0
+
+func get_construction_status() -> Dictionary:
+	"""Get current construction status"""
 	return {
-		"unit_id": unit_id,
-		"energy": energy,
-		"can_build": can_build(),
-		"can_repair": can_repair(),
-		"deployed_mines": deployed_mines.size(),
-		"max_mines": max_mines,
-		"construction_options": get_construction_options(),
-		"repair_targets": get_repair_targets().size()
-	} 
+		"building": is_building,
+		"queue_size": construction_queue.size(),
+		"materials": construction_materials
+	}
+
+func get_deployed_mines() -> Array[Node3D]:
+	"""Get list of deployed mines"""
+	return deployed_mines.duplicate()
+
+func get_built_turrets() -> Array[Node3D]:
+	"""Get list of built turrets"""
+	return built_turrets.duplicate() 

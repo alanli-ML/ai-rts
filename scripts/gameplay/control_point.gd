@@ -145,8 +145,7 @@ func _create_capture_area() -> void:
     collision_shape.name = "CollisionShape3D"
     var shape = CylinderShape3D.new()
     shape.height = 4.0  # Tall enough to detect units
-    shape.top_radius = capture_radius
-    shape.bottom_radius = capture_radius
+    shape.radius = capture_radius  # Use radius instead of top_radius/bottom_radius
     collision_shape.shape = shape
     collision_shape.position.y = 2.0  # Center the detection area
     

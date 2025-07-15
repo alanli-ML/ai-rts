@@ -34,7 +34,7 @@ func _ready() -> void:
 	selection_manager = _find_selection_manager()
 	game_manager = GameManager
 	
-	Logger.info("CommandTranslator", "Command translator initialized")
+	print("Command translator initialized")
 
 func _find_selection_manager() -> SelectionManager:
 	"""Find the selection manager in the scene"""
@@ -48,7 +48,7 @@ func _find_selection_manager() -> SelectionManager:
 		if node is SelectionManager:
 			return node
 	
-	Logger.warning("CommandTranslator", "Selection manager not found")
+			print("Selection manager not found")
 	return null
 
 func execute_commands(commands: Array) -> void:
@@ -85,7 +85,7 @@ func execute_command(command: Dictionary) -> int:
 	var target_units = _resolve_target_units(command.target_units)
 	
 	if target_units.is_empty():
-		Logger.warning("CommandTranslator", "No target units found for command: " + str(command.action))
+		print("No target units found for command: " + str(command.action))
 		units_not_found.emit(command.target_units)
 		command_failed.emit(command_id, "No target units found")
 		return command_id
@@ -114,7 +114,7 @@ func execute_command(command: Dictionary) -> int:
 			command_failed.emit(command_id, result)
 			return command_id
 	
-	Logger.info("CommandTranslator", "Command executed: " + str(command.action) + " - " + result)
+	print("Command executed: " + str(command.action) + " - " + result)
 	command_executed.emit(command_id, result)
 	
 	return command_id
@@ -326,7 +326,7 @@ func _move_unit(unit: Node, target_position: Vector3) -> void:
 	elif unit.has_method("navigate_to"):
 		unit.navigate_to(target_position)
 	else:
-		Logger.warning("CommandTranslator", "Unit has no move method: " + str(unit.name))
+					print("Unit has no move method: " + str(unit.name))
 
 func _calculate_formation_positions(units: Array, center_position: Vector3, formation_type: String) -> Array:
 	"""Calculate positions for units in formation"""
@@ -370,11 +370,11 @@ func cancel_command(command_id: int) -> bool:
 	for i in range(active_commands.size()):
 		if active_commands[i].id == command_id:
 			active_commands.remove_at(i)
-			Logger.info("CommandTranslator", "Command cancelled: " + str(command_id))
+			print("Command cancelled: " + str(command_id))
 			return true
 	return false
 
 func clear_all_commands() -> void:
 	"""Clear all active commands"""
 	active_commands.clear()
-	Logger.info("CommandTranslator", "All commands cleared") 
+	print("All commands cleared") 

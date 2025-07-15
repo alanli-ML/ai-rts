@@ -26,6 +26,10 @@ var game_hud: Node
 var speech_bubble_manager: Node
 var plan_progress_manager: Node
 
+# Procedural generation system
+var map_generator: Node
+var asset_loader: Node
+
 # Dependency state
 var is_initialized: bool = false
 var current_mode: String = "unknown"
@@ -58,6 +62,10 @@ const GameHUDClass = preload("res://scripts/ui/game_hud.gd")
 const SpeechBubbleManagerClass = preload("res://scripts/ui/speech_bubble_manager.gd")
 const PlanProgressManagerClass = preload("res://scripts/ui/plan_progress_manager.gd")
 
+# Preload procedural generation system classes
+const MapGeneratorClass = preload("res://scripts/procedural/map_generator.gd")
+const AssetLoaderClass = preload("res://scripts/procedural/asset_loader.gd")
+
 # Initialization
 func _ready() -> void:
     print("DependencyContainer: Initializing...")
@@ -81,6 +89,12 @@ func _create_shared_dependencies() -> void:
     
     # Create network messages (not a Node)
     network_messages = NetworkMessagesClass.new()
+    
+    # Create shared procedural generation systems
+    asset_loader = AssetLoaderClass.new()
+    asset_loader.name = "AssetLoader"
+    add_child(asset_loader)
+    asset_loader.setup(logger)
     
     logger.info("DependencyContainer", "Shared dependencies created")
 
@@ -114,10 +128,6 @@ func create_server_dependencies() -> void:
     action_validator.name = "ActionValidator"
     add_child(action_validator)
     
-    # plan_executor = PlanExecutorClass.new()
-    # plan_executor.name = "PlanExecutor"
-    # add_child(plan_executor)
-    
     # Create gameplay systems
     resource_manager = ResourceManagerClass.new()
     resource_manager.name = "ResourceManager"
@@ -127,6 +137,20 @@ func create_server_dependencies() -> void:
     node_capture_system.name = "NodeCaptureSystem"
     add_child(node_capture_system)
     
+    # Create procedural generation system (server-only)
+    map_generator = MapGeneratorClass.new()
+    map_generator.name = "MapGenerator"
+    add_child(map_generator)
+    map_generator.setup(logger, asset_loader)
+    
+    # Setup dependencies
+    _setup_server_dependencies()
+    
+    logger.info("DependencyContainer", "Server dependencies created")
+
+func _setup_server_dependencies() -> void:
+    """Setup server system dependencies after creation"""
+    
     # Setup core dependencies
     game_state.setup(logger, game_constants, network_messages)
     session_manager.setup(logger, game_state)
@@ -134,17 +158,14 @@ func create_server_dependencies() -> void:
     
     # Setup AI system dependencies
     ai_command_processor.setup(logger, game_constants, action_validator, null)
-    action_validator.setup(logger, game_constants)
-    # plan_executor.setup(logger, game_constants)
     
     # Setup gameplay system dependencies
-    resource_manager.setup(logger, game_constants)
-    node_capture_system.setup(logger, game_constants)
+    # node_capture_system uses _ready() for initialization
     
     # Connect systems
     _connect_server_systems()
     
-    logger.info("DependencyContainer", "Server dependencies created")
+    logger.info("DependencyContainer", "Server dependencies setup complete")
 
 func create_client_dependencies() -> void:
     """Create client-specific dependencies"""
@@ -199,13 +220,13 @@ func _connect_server_systems() -> void:
     # plan_executor.plan_step_completed.connect(ai_command_processor._on_plan_step_completed)
     # plan_executor.plan_failed.connect(ai_command_processor._on_plan_failed)
     
-    # Connect resource management
-    resource_manager.resource_changed.connect(game_state._on_resource_changed)
-    resource_manager.resource_depleted.connect(game_state._on_resource_depleted)
+    # Connect resource management - TODO: Add these signal handlers to ServerGameState
+    # resource_manager.resource_changed.connect(game_state._on_resource_changed)
+    # resource_manager.resource_depleted.connect(game_state._on_resource_depleted)
     
-    # Connect control points
-    node_capture_system.control_point_captured.connect(game_state._on_control_point_captured)
-    node_capture_system.victory_achieved.connect(game_state._on_victory_achieved)
+    # Connect control points - TODO: Add these signal handlers to ServerGameState
+    # node_capture_system.control_point_captured.connect(game_state._on_control_point_captured)
+    # node_capture_system.victory_achieved.connect(game_state._on_victory_achieved)
     
     logger.info("DependencyContainer", "Server systems connected")
 
@@ -258,6 +279,14 @@ func get_speech_bubble_manager():
 
 func get_plan_progress_manager():
     return plan_progress_manager
+
+func get_map_generator() -> Node:
+    """Get the MapGenerator instance"""
+    return map_generator
+
+func get_asset_loader() -> Node:
+    """Get the AssetLoader instance"""
+    return asset_loader
 
 func is_server_mode() -> bool:
     return current_mode == "server"

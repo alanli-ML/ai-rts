@@ -1,0 +1,435 @@
+# MapGenerator.gd - Server-sided procedural map generation system
+class_name MapGenerator
+extends Node
+
+# Load shared components
+const GameConstants = preload("res://scripts/shared/constants/game_constants.gd")
+const GameEnums = preload("res://scripts/shared/types/game_enums.gd")
+
+# Component dependencies
+var logger
+var asset_loader: Node
+var tile_system: Node
+var district_generator: Node
+var road_network: Node
+var building_placer: Node
+var lod_manager: Node
+
+# Map generation state
+var map_seed: int = 0
+var generation_progress: float = 0.0
+var is_generating: bool = false
+var generated_map_data: Dictionary = {}
+
+# Map configuration
+const MAP_SIZE: Vector2i = Vector2i(20, 20)  # 20x20 tile grid
+const TILE_SIZE: float = 3.0  # 3x3 unit tiles
+const DISTRICT_SIZE: int = 6  # 6x6 tiles per district
+const CONTROL_POINT_COUNT: int = 9
+
+# District types for variety
+enum DistrictType {
+    COMMERCIAL,
+    INDUSTRIAL,
+    MIXED,
+    RESIDENTIAL,
+    MILITARY
+}
+
+# Signals
+signal map_generation_started(seed: int)
+signal map_generation_progress(progress: float)
+signal map_generation_complete(map_data: Dictionary)
+signal district_generated(district_id: String, district_data: Dictionary)
+
+func _ready() -> void:
+    # Initialize components will be done via dependency injection
+    pass
+
+func setup(logger_ref, asset_loader_ref) -> void:
+    """Setup the MapGenerator with dependencies"""
+    logger = logger_ref
+    asset_loader = asset_loader_ref
+    
+    # Initialize sub-systems
+    _initialize_subsystems()
+    
+    if logger:
+        logger.info("MapGenerator", "Map generation system initialized")
+
+func _initialize_subsystems() -> void:
+    """Initialize all procedural generation subsystems"""
+    
+    # Create tile system
+    var TileSystemClass = preload("res://scripts/procedural/tile_system.gd")
+    tile_system = TileSystemClass.new()
+    tile_system.name = "TileSystem"
+    tile_system.setup(logger, MAP_SIZE, TILE_SIZE)
+    add_child(tile_system)
+    
+    # Create district generator
+    var DistrictGeneratorClass = preload("res://scripts/procedural/district_generator.gd")
+    district_generator = DistrictGeneratorClass.new()
+    district_generator.name = "DistrictGenerator"
+    district_generator.setup(logger, tile_system, asset_loader)
+    add_child(district_generator)
+    
+    # Create road network generator
+    var RoadNetworkClass = preload("res://scripts/procedural/road_network.gd")
+    road_network = RoadNetworkClass.new()
+    road_network.name = "RoadNetwork"
+    road_network.setup(logger, tile_system, asset_loader)
+    add_child(road_network)
+    
+    # Create building placer
+    var BuildingPlacerClass = preload("res://scripts/procedural/building_placer.gd")
+    building_placer = BuildingPlacerClass.new()
+    building_placer.name = "BuildingPlacer"
+    building_placer.setup(logger, tile_system, asset_loader)
+    add_child(building_placer)
+    
+    # Create LOD manager
+    var LODManagerClass = preload("res://scripts/procedural/lod_manager.gd")
+    lod_manager = LODManagerClass.new()
+    lod_manager.name = "LODManager"
+    lod_manager.setup(logger)
+    add_child(lod_manager)
+    
+    # Connect signals
+    district_generator.district_generated.connect(_on_district_generated)
+    road_network.road_network_complete.connect(_on_road_network_complete)
+    building_placer.building_placement_complete.connect(_on_building_placement_complete)
+
+func generate_map(seed: int = 0, control_points: Array = []) -> Dictionary:
+    """Generate a complete procedural map"""
+    
+    if is_generating:
+        logger.warning("MapGenerator", "Map generation already in progress")
+        return {}
+    
+    is_generating = true
+    map_seed = seed if seed != 0 else randi()
+    generation_progress = 0.0
+    
+    logger.info("MapGenerator", "Starting map generation with seed: %d" % map_seed)
+    map_generation_started.emit(map_seed)
+    
+    # Set random seed for deterministic generation
+    var rng = RandomNumberGenerator.new()
+    rng.seed = map_seed
+    
+    # Initialize map data structure
+    generated_map_data = {
+        "seed": map_seed,
+        "size": MAP_SIZE,
+        "tile_size": TILE_SIZE,
+        "districts": {},
+        "roads": {},
+        "buildings": {},
+        "control_points": {},
+        "spawn_points": {},
+        "metadata": {
+            "generation_time": Time.get_ticks_msec(),
+            "version": "1.0"
+        }
+    }
+    
+    # Phase 1: Initialize grid system
+    _update_progress(0.1, "Initializing tile system...")
+    tile_system.initialize_grid()
+    
+    # Phase 2: Generate control point positions
+    _update_progress(0.2, "Generating control points...")
+    var control_point_positions = _generate_control_point_positions(rng)
+    
+    # Phase 3: Generate districts around control points
+    _update_progress(0.3, "Generating districts...")
+    await _generate_districts(control_point_positions, rng)
+    
+    # Phase 4: Generate road network
+    _update_progress(0.5, "Generating road network...")
+    await _generate_road_network(control_point_positions, rng)
+    
+    # Phase 5: Place buildings
+    _update_progress(0.7, "Placing buildings...")
+    await _place_buildings(rng)
+    
+    # Phase 6: Generate unit spawn points
+    _update_progress(0.8, "Generating spawn points...")
+    _generate_spawn_points(rng)
+    
+    # Phase 7: Apply LOD optimization
+    _update_progress(0.9, "Applying LOD optimization...")
+    _apply_lod_optimization()
+    
+    # Phase 8: Finalize map data
+    _update_progress(1.0, "Finalizing map data...")
+    _finalize_map_data()
+    
+    is_generating = false
+    logger.info("MapGenerator", "Map generation complete")
+    map_generation_complete.emit(generated_map_data)
+    
+    return generated_map_data
+
+func _generate_control_point_positions(rng: RandomNumberGenerator) -> Array:
+    """Generate positions for control points in a 3x3 grid with slight randomization"""
+    var positions: Array = []
+    var grid_spacing = MAP_SIZE.x / 4  # Spacing between control points
+    var center_offset = Vector2i(MAP_SIZE.x / 2, MAP_SIZE.y / 2)
+    
+    for i in range(3):
+        for j in range(3):
+            var base_pos = Vector2i(
+                center_offset.x + (i - 1) * grid_spacing,
+                center_offset.y + (j - 1) * grid_spacing
+            )
+            
+            # Add slight randomization while keeping grid structure
+            var random_offset = Vector2i(
+                rng.randi_range(-2, 2),
+                rng.randi_range(-2, 2)
+            )
+            
+            var final_pos = base_pos + random_offset
+            
+            # Ensure position is within bounds
+            final_pos.x = clamp(final_pos.x, 3, MAP_SIZE.x - 3)
+            final_pos.y = clamp(final_pos.y, 3, MAP_SIZE.y - 3)
+            
+            positions.append(final_pos)
+    
+    return positions
+
+func _generate_districts(control_point_positions: Array, rng: RandomNumberGenerator) -> void:
+    """Generate districts around each control point"""
+    
+    for i in range(control_point_positions.size()):
+        var position = control_point_positions[i]
+        var district_type = _select_district_type(i, rng)
+        
+        var district_data = district_generator.generate_district(
+            position,
+            district_type,
+            DISTRICT_SIZE,
+            rng
+        )
+        
+        generated_map_data.districts["district_%d" % i] = district_data
+        generated_map_data.control_points["cp_%d" % i] = {
+            "position": position,
+            "district_type": district_type,
+            "strategic_value": _calculate_strategic_value(position, district_type)
+        }
+        
+        # Emit signal for progress tracking
+        district_generated.emit("district_%d" % i, district_data)
+        
+        # Small delay to prevent frame drops
+        await get_tree().process_frame
+
+func _select_district_type(index: int, rng: RandomNumberGenerator) -> DistrictType:
+    """Select district type based on position and randomization"""
+    
+    # Central district (index 4) is always mixed for balance
+    if index == 4:
+        return DistrictType.MIXED
+    
+    # Corner districts favor industrial
+    if index in [0, 2, 6, 8]:
+        return DistrictType.INDUSTRIAL if rng.randf() < 0.6 else DistrictType.COMMERCIAL
+    
+    # Edge districts favor commercial
+    if index in [1, 3, 5, 7]:
+        return DistrictType.COMMERCIAL if rng.randf() < 0.6 else DistrictType.MIXED
+    
+    # Default to mixed
+    return DistrictType.MIXED
+
+func _calculate_strategic_value(position: Vector2i, district_type: DistrictType) -> int:
+    """Calculate strategic value based on position and type"""
+    var base_value = 1
+    
+    # Center positions are more valuable
+    var center = Vector2i(MAP_SIZE.x / 2, MAP_SIZE.y / 2)
+    var distance_from_center = position.distance_to(center)
+    
+    if distance_from_center < 3:
+        base_value = 3  # Center district
+    elif distance_from_center < 6:
+        base_value = 2  # Adjacent to center
+    else:
+        base_value = 1  # Edge districts
+    
+    # District type modifiers
+    match district_type:
+        DistrictType.INDUSTRIAL:
+            base_value += 1  # Industrial districts provide more resources
+        DistrictType.MIXED:
+            base_value += 2  # Mixed districts are most valuable
+        DistrictType.COMMERCIAL:
+            base_value += 0  # Commercial districts are standard
+    
+    return base_value
+
+func _generate_road_network(control_point_positions: Array, rng: RandomNumberGenerator) -> void:
+    """Generate road network connecting districts"""
+    
+    var road_data = road_network.generate_network(
+        control_point_positions,
+        generated_map_data.districts,
+        rng
+    )
+    
+    generated_map_data.roads = road_data
+    await get_tree().process_frame
+
+func _place_buildings(rng: RandomNumberGenerator) -> void:
+    """Place buildings in each district"""
+    
+    for district_id in generated_map_data.districts.keys():
+        var district_data = generated_map_data.districts[district_id]
+        
+        var building_data = building_placer.place_buildings(
+            district_data,
+            generated_map_data.roads,
+            rng
+        )
+        
+        generated_map_data.buildings[district_id] = building_data
+        await get_tree().process_frame
+
+func _generate_spawn_points(rng: RandomNumberGenerator) -> void:
+    """Generate unit spawn points near appropriate buildings"""
+    
+    var spawn_points = {
+        "team_1": [],
+        "team_2": []
+    }
+    
+    # Find suitable spawn locations in different districts
+    var team_1_districts = [0, 1, 3]  # Left and top districts
+    var team_2_districts = [5, 7, 8]  # Right and bottom districts
+    
+    for team_district in team_1_districts:
+        if team_district < generated_map_data.districts.size():
+            var district_key = "district_%d" % team_district
+            if district_key in generated_map_data.districts:
+                var district_data = generated_map_data.districts[district_key]
+                var spawn_pos = _find_spawn_position_in_district(district_data, rng)
+                spawn_points.team_1.append(spawn_pos)
+    
+    for team_district in team_2_districts:
+        if team_district < generated_map_data.districts.size():
+            var district_key = "district_%d" % team_district
+            if district_key in generated_map_data.districts:
+                var district_data = generated_map_data.districts[district_key]
+                var spawn_pos = _find_spawn_position_in_district(district_data, rng)
+                spawn_points.team_2.append(spawn_pos)
+    
+    generated_map_data.spawn_points = spawn_points
+
+func _find_spawn_position_in_district(district_data: Dictionary, rng: RandomNumberGenerator) -> Vector3:
+    """Find a suitable spawn position within a district"""
+    
+    if "buildings" in district_data and district_data.buildings.size() > 0:
+        # Spawn near a building
+        var random_building = district_data.buildings[rng.randi() % district_data.buildings.size()]
+        var building_pos = random_building.position
+        return Vector3(building_pos.x * TILE_SIZE, 0, building_pos.y * TILE_SIZE) + Vector3(rng.randf_range(-3, 3), 0, rng.randf_range(-3, 3))
+    else:
+        # Spawn in district center
+        return Vector3(district_data.center.x * TILE_SIZE, 0, district_data.center.y * TILE_SIZE)
+
+func _apply_lod_optimization() -> void:
+    """Apply LOD optimization to generated content"""
+    
+    if lod_manager:
+        lod_manager.optimize_map_data(generated_map_data)
+
+func _finalize_map_data() -> void:
+    """Finalize map data with metadata"""
+    
+    generated_map_data.metadata.generation_time = Time.get_ticks_msec() - generated_map_data.metadata.generation_time
+    generated_map_data.metadata.districts_count = generated_map_data.districts.size()
+    generated_map_data.metadata.buildings_count = 0
+    
+    # Count total buildings
+    for district_buildings in generated_map_data.buildings.values():
+        generated_map_data.metadata.buildings_count += district_buildings.size()
+
+func _update_progress(progress: float, status: String) -> void:
+    """Update generation progress"""
+    generation_progress = progress
+    map_generation_progress.emit(progress)
+    
+    if logger:
+        logger.info("MapGenerator", "Generation progress: %.1f%% - %s" % [progress * 100, status])
+
+func get_map_data() -> Dictionary:
+    """Get the current generated map data"""
+    return generated_map_data
+
+func is_map_generated() -> bool:
+    """Check if map has been generated"""
+    return not generated_map_data.is_empty()
+
+func get_generation_progress() -> float:
+    """Get current generation progress"""
+    return generation_progress
+
+# Signal handlers
+func _on_district_generated(district_id: String, district_data: Dictionary) -> void:
+    """Handle district generation completion"""
+    if logger:
+        logger.debug("MapGenerator", "District %s generated with %d buildings" % [district_id, district_data.get("buildings", []).size()])
+
+func _on_road_network_complete(road_data: Dictionary) -> void:
+    """Handle road network generation completion"""
+    if logger:
+        logger.debug("MapGenerator", "Road network generated with %d segments" % road_data.get("segments", []).size())
+
+func _on_building_placement_complete(district_id: String, building_count: int) -> void:
+    """Handle building placement completion"""
+    if logger:
+        logger.debug("MapGenerator", "Building placement complete for %s: %d buildings" % [district_id, building_count])
+
+# Utility functions
+func world_to_tile(world_pos: Vector3) -> Vector2i:
+    """Convert world position to tile coordinates"""
+    if tile_system:
+        return tile_system.world_to_tile(world_pos)
+    return Vector2i.ZERO
+
+func tile_to_world(tile_pos: Vector2i) -> Vector3:
+    """Convert tile coordinates to world position"""
+    if tile_system:
+        return tile_system.tile_to_world(tile_pos)
+    return Vector3.ZERO
+
+func get_district_at_position(world_pos: Vector3) -> String:
+    """Get district ID at world position"""
+    var tile_pos = world_to_tile(world_pos)
+    
+    for district_id in generated_map_data.districts.keys():
+        var district_data = generated_map_data.districts[district_id]
+        var district_bounds = district_data.get("bounds", Rect2i())
+        
+        if district_bounds.has_point(tile_pos):
+            return district_id
+    
+    return ""
+
+func get_buildings_in_district(district_id: String) -> Array:
+    """Get all buildings in a specific district"""
+    return generated_map_data.buildings.get(district_id, [])
+
+func get_roads_in_district(district_id: String) -> Array:
+    """Get all roads in a specific district"""
+    var district_roads = []
+    
+    for road_segment in generated_map_data.roads.get("segments", []):
+        if road_segment.get("district_id") == district_id:
+            district_roads.append(road_segment)
+    
+    return district_roads 

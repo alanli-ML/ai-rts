@@ -1,181 +1,339 @@
-# AI-RTS MVP Implementation Plan - COMPLETED
+# AI-Driven RTS MVP Implementation Plan
 
 ## Overview
-This document outlines the completed implementation of the AI-RTS game, featuring cooperative team-based gameplay, OpenAI integration, dedicated server architecture, and AI-powered natural language commands.
+This document outlines a 12-week implementation plan for building an MVP of a prompt-driven RTS game in Godot 4, featuring OpenAI integration, multiplayer support, and personality-driven AI units.
 
-**Status**: ✅ **COMPLETED** - All phases successfully implemented  
-**Final Version**: 1.0.0 - Production Ready  
-**Completion Date**: December 2024  
+## Phase 1: Core Project Setup & Basic Systems (Week 1-2)
 
-## Phase 1: Core Project Setup & Basic Systems ✅ COMPLETED
-
-### 1.1 Project Structure Setup ✅
-- ✅ Created comprehensive folder hierarchy:
+### 1.1 Project Structure Setup
+- Create folder hierarchy:
   ```
   /scenes
-    /units          # Unit scene templates
-    /buildings      # Building prototypes
-    /maps           # Test maps and environments
-    /ui             # User interface scenes
+    /units
+    /buildings
+    /maps
+    /ui
   /scripts
-    /core           # Core game systems
-    /networking     # Multiplayer networking
-    /ai             # AI integration components
-    /utils          # Utility functions
-    /autoload       # Singleton systems
+    /core
+    /networking
+    /ai
+    /utils
   /resources
-    /models         # 3D assets
-    /materials      # Shader materials
-    /sounds         # Audio assets
-    /textures       # 2D graphics
-  /game-server      # Dedicated server implementation
+    /models     # Kenney.nl assets
+    /materials
+    /sounds
+  /autoload     # Singletons
   ```
 
-### 1.2 Core Singletons ✅
-- ✅ **GameManager.gd**: Complete game state management with cooperative team control
-- ✅ **NetworkManager.gd**: Multiplayer connection handling with ENet integration
-- ✅ **EventBus.gd**: Global signal dispatching system
-- ✅ **ConfigManager.gd**: Game settings and constants management
+### 1.2 Core Singletons
+- **GameManager.gd**: Overall game state management
+- **NetworkManager.gd**: Multiplayer connection handling
+- **EventBus.gd**: Global signal dispatching
+- **ConfigManager.gd**: Game settings and constants
 
-### 1.3 Scene Architecture ✅
-- ✅ **Main.tscn**: Root scene with comprehensive game state management
-- ✅ **Map.tscn**: Complete battlefield with spawn points and terrain
-- ✅ **RTSCamera.gd**: Professional RTS camera with pan/zoom/drag controls
-- ✅ **Unit.tscn**: Complete unit template with AI behavior
+### 1.3 Basic Scene Architecture
+- **Main.tscn**: Root scene with game state management
+- **Map.tscn**: Tilemap-based battlefield with 9 nodes
+- **CameraController.gd**: RTS-style camera with pan/zoom
 
-### 1.4 Input System ✅
-- ✅ Mouse controls for camera and multi-unit selection
-- ✅ Keyboard shortcuts for camera movement and commands
-- ✅ Text input system for natural language AI commands
-- ✅ Box selection system with visual feedback
+### 1.4 Input System
+- Mouse controls for camera and selection
+- Keyboard shortcuts for quick commands
+- Text input field for natural language commands
 
-### 1.5 Resource Management ✅
-- ✅ Comprehensive asset pipeline for 3D models and textures
-- ✅ Material system with team-based color coding
-- ✅ Optimized resource loading and management
+### 1.5 Resource Management
+- Import Kenney.nl 3D assets
+- Create toon shader material
+- Set up asset pipeline for models and textures
 
-## Phase 2: Unit System & AI Implementation ✅ COMPLETED
+## Phase 2: Unit System & Basic AI (Week 3-4)
 
-### 2.1 Unit Architecture ✅
-- ✅ **Base Unit Class**: CharacterBody3D with complete lifecycle management
-- ✅ **5 Unit Archetypes**: Scout, Soldier, Tank, Medic, Engineer with unique abilities
-- ✅ **AI State Machine**: Comprehensive behavior system (Idle, Moving, Attacking, Dead)
-- ✅ **Health & Combat**: Damage calculation, death mechanics, team-based combat
+### 2.1 Unit Base Architecture
+```gdscript
+# Unit.gd
+class_name Unit
+extends CharacterBody3D
 
-### 2.2 Vision System ✅
-- ✅ **Line-of-Sight Detection**: Realistic vision cones with enemy detection
-- ✅ **Fog of War**: Dynamic visibility system
-- ✅ **Team Recognition**: Proper friend/foe identification
-- ✅ **Vision Range**: Configurable detection distances per unit type
+@export var unit_id: String
+@export var archetype: String  # scout, tank, sniper, medic, engineer
+@export var system_prompt: String
+@export var max_health: float = 100.0
 
-### 2.3 Navigation & Movement ✅
-- ✅ **Pathfinding**: Godot NavigationAgent3D integration
-- ✅ **Collision Avoidance**: Unit-to-unit collision handling
-- ✅ **Formation System**: Line, circle, and wedge formations
-- ✅ **Movement Commands**: Click-to-move and AI-driven movement
+var current_health: float
+var morale: float = 1.0
+var energy: float = 100.0
+var vision_cone: Area3D
+var current_plan: Dictionary = {}
+```
 
-## Phase 3: Multiplayer & Networking ✅ COMPLETED
+### 2.2 Five Minion Archetypes
+1. **Scout**: Fast, low HP, wide vision
+2. **Tank**: Slow, high HP, short vision
+3. **Sniper**: Long range, narrow vision
+4. **Medic**: Support abilities, medium stats
+5. **Engineer**: Can build/repair, medium stats
 
-### 3.1 Cooperative Team System ✅
-- ✅ **Team-Based Architecture**: 2 teams with 2 players each
-- ✅ **Shared Unit Control**: Revolutionary cooperative control system
-- ✅ **Real-Time Synchronization**: Sub-100ms network updates
-- ✅ **Command Tracking**: Live teammate command history
+### 2.3 Vision System
+- **VisionCone.gd**: 120° cone, 30m range
+- Raycast-based occlusion checking
+- Generate sensor packets with visible entities
+- Implement fog of war visualization
 
-### 3.2 Dedicated Server Architecture ✅
-- ✅ **ENet-Based Server**: Scalable server supporting 100 clients
-- ✅ **Server-Authoritative**: All game logic runs on server
-- ✅ **Session Management**: Automatic matchmaking and cleanup
-- ✅ **Real-Time Physics**: Server-side collision and movement
+### 2.4 Finite State Machine
+```gdscript
+# FiniteStateMachine.gd
+class_name FiniteStateMachine
+extends Node
 
-### 3.3 Network Integration ✅
-- ✅ **MultiplayerSynchronizer**: Real-time state synchronization at 10Hz
-- ✅ **Client-Server Communication**: Bi-directional RPC system
-- ✅ **Authentication**: Player verification and session management
-- ✅ **Error Handling**: Comprehensive network error management
+enum State {IDLE, ALERT, MOVING, ATTACKING, RETREATING, BUILDING}
+var current_state: State = State.IDLE
+var state_timers: Dictionary = {}
 
-## Phase 4: AI Integration & Natural Language ✅ COMPLETED
+func transition_to(new_state: State) -> bool:
+    # Validate transition
+    # Apply cooldowns
+    # Emergency overrides (auto-retreat < 20% HP)
+```
 
-### 4.1 OpenAI Integration ✅
-- ✅ **OpenAI Client**: Complete API integration with rate limiting
-- ✅ **Natural Language Processing**: GPT-powered command interpretation
-- ✅ **Context Awareness**: AI understands game state and unit capabilities
-- ✅ **Command Translation**: AI responses converted to game commands
+## Phase 3: Multiplayer Foundation (Week 5-6)
 
-### 4.2 AI Command System ✅
-- ✅ **Command Parser**: Natural language to unit action conversion
-- ✅ **Formation Commands**: Complex multi-unit coordination
-- ✅ **Contextual Commands**: Situation-aware tactical suggestions
-- ✅ **Voice Integration**: Framework for voice-to-text commands
+### 3.1 Server Architecture
+- Godot High-Level Multiplayer API setup
+- Authoritative server model
+- Client-server communication protocol
 
-### 4.3 AI Behavior Enhancement ✅
-- ✅ **Enemy Detection**: AI-driven target acquisition
-- ✅ **Tactical Decision Making**: Intelligent unit behavior
-- ✅ **Cooperative AI**: Team coordination assistance
-- ✅ **Adaptive Behavior**: Context-sensitive AI responses
+### 3.2 Lock-step Synchronization
+```gdscript
+# NetworkSync.gd
+const TICK_RATE = 30  # Hz
+var tick_counter: int = 0
+var command_buffer: Dictionary = {}
 
-## Phase 5: Advanced Features & Polish ✅ COMPLETED
+func _physics_process(delta):
+    if tick_counter % 2 == 0:  # 30 Hz from 60 Hz
+        process_tick()
+        broadcast_state_update()
+```
 
-### 5.1 User Interface ✅
-- ✅ **Selection System**: Multi-unit selection with visual feedback
-- ✅ **Command Interface**: Text input and radial menu commands
-- ✅ **Team Status**: Real-time teammate activity display
-- ✅ **Visual Indicators**: Team colors and selection highlights
+### 3.3 Client Prediction & Interpolation
+- Implement client-side prediction for smooth movement
+- Interpolate remote unit positions
+- Handle rollback and reconciliation
 
-### 5.2 Testing & Validation ✅
-- ✅ **Comprehensive Test Suite**: 100% feature coverage
-- ✅ **Performance Testing**: 60 FPS with 17 units active
-- ✅ **Network Testing**: 100 client server capacity validated
-- ✅ **Integration Testing**: All systems working together
+### 3.4 Deterministic Simulation
+- Fixed timestep physics
+- Deterministic random number generation
+- State hashing for desync detection
 
-### 5.3 Documentation ✅
-- ✅ **Technical Documentation**: Complete API and system documentation
-- ✅ **User Guide**: Comprehensive usage instructions
-- ✅ **Deployment Guide**: Production deployment instructions
-- ✅ **Test Results**: Detailed testing and validation reports
+## Phase 4: LLM Integration & Command System (Week 7-8)
 
-## Final Implementation Summary
+### 4.1 OpenAI Bridge
+```gdscript
+# LLMBridge.gd
+class_name LLMBridge
+extends Node
 
-### ✅ **Core Features Achieved**
-- **Revolutionary Gameplay**: First cooperative RTS with shared unit control
-- **AI-Powered Commands**: Natural language unit control system
-- **Scalable Architecture**: Dedicated server supporting 100 clients
-- **Real-Time Multiplayer**: Smooth 2v2 cooperative gameplay
-- **Professional Quality**: Production-ready implementation
+const API_ENDPOINT = "https://api.openai.com/v1/chat/completions"
+var api_key: String
+var request_queue: Array = []
 
-### ✅ **Technical Achievements**
-- **Server-Authoritative**: All game logic runs on dedicated server
-- **Real-Time Synchronization**: 10Hz update rate with sub-100ms latency
-- **AI Integration**: OpenAI GPT-powered natural language processing
-- **Cross-Platform**: Windows, macOS, Linux support
-- **Docker Ready**: Containerized deployment preparation
+func batch_prompt_units(unit_packets: Array) -> void:
+    # Batch 8-32 units per request
+    # Format prompts with system prompts
+    # Send to OpenAI with function calling
+```
 
-### ✅ **Innovation Highlights**
-- **Shared Unit Control**: Multiple players controlling same units
-- **AI Command Interface**: Natural language game control
-- **Formation System**: Complex multi-unit coordination
-- **Vision Mechanics**: Realistic fog of war implementation
-- **Team Coordination**: Built-in cooperation tools
+### 4.2 Command Parser
+- Natural language to intent mapping
+- Quick command shortcuts
+- Command history and suggestions
 
-## Deployment Status
+### 4.3 Plan Validator
+```gdscript
+# ActionValidator.gd
+func validate_plan(plan: Dictionary) -> bool:
+    # Check plan schema
+    # Verify action whitelist
+    # Validate parameters
+    # Check duration limits (< 6s total)
+    # Moderate speech content
+```
 
-### ✅ **Production Ready**
-- **Version**: 1.0.0
-- **Status**: Complete and tested
-- **Deployment**: Ready for production
-- **Monitoring**: Performance validated
-- **Documentation**: Complete
+### 4.4 Plan Execution System
+```gdscript
+# PlanExecutor.gd
+var active_plans: Dictionary = {}  # unit_id -> plan
+var step_timers: Dictionary = {}
 
-### 🚀 **Next Steps**
-- Production deployment to cloud infrastructure
-- Beta testing with target audience
-- Performance monitoring and optimization
-- Feature enhancement based on user feedback
-- Community building and player onboarding
+func execute_step(unit_id: String, step: Dictionary):
+    # Parse action and parameters
+    # Check triggers (health_pct, enemy_dist, etc.)
+    # Dispatch to FSM
+    # Show speech bubble
+```
 
----
+## Phase 5: Core Gameplay Loop (Week 9-10)
 
-**Project Status**: ✅ **COMPLETED AND SUCCESSFUL**  
-**Innovation Level**: 🚀 **Revolutionary Gameplay Mechanics**  
-**Technical Excellence**: 💎 **Production Quality Implementation**  
-**Market Readiness**: 🎯 **Ready for Launch** 
+### 5.1 Node Capture System
+- 9 capturable nodes on the map
+- Capture progress visualization
+- Node ownership tracking
+
+### 5.2 Building System
+```gdscript
+# Building.gd
+enum BuildingType {POWER_SPIRE, DEFENSE_TOWER, RELAY_PAD}
+@export var building_type: BuildingType
+@export var construction_time: float = 5.0
+var construction_progress: float = 0.0
+```
+
+### 5.3 Combat System
+- Projectile-based combat
+- Damage calculation
+- Cover system implementation
+- Area denial (mines)
+
+### 5.4 Victory Conditions
+- Node control percentage (≥ 60%)
+- HQ destruction
+- 5-minute sudden death timer
+- Energy drain acceleration
+
+### 5.5 Action Implementation
+- **move_to**: A* pathfinding with local avoidance
+- **peek_and_fire**: Cover-based shooting
+- **lay_mines**: Area denial patterns
+- **hijack_enemy_spire**: Sabotage mechanics
+- **retreat**: Emergency movement to cover
+
+## Phase 6: Polish & MVP Features (Week 11-12)
+
+### 6.1 UI/UX Implementation
+- Main menu and lobby system
+- Unit loadout screen with personality editing
+- In-game HUD with unit status
+- Radial command menu
+- Free text command input
+
+### 6.2 Speech Bubble System
+```gdscript
+# SpeechBubble.gd
+extends Control
+
+@export var fade_duration: float = 2.0
+var billboard_mode: bool = true
+
+func show_speech(text: String):
+    # Limit to 12 words
+    # Position above unit
+    # Fade after duration
+```
+
+### 6.3 Post-Match Summary
+- Node flip timeline
+- Kill/death log
+- "Best Prompt" voting
+- "Funniest Line" voting
+- ELO rating calculation
+
+### 6.4 Performance Optimization
+- LOD system for units
+- Occlusion culling
+- Network packet optimization
+- GPU instancing for projectiles
+
+### 6.5 Testing & Debugging
+- Replay system implementation
+- Desync detection and logging
+- Performance profiling
+- Automated test scenarios
+
+## Technical Implementation Details
+
+### Network Architecture
+```
+Client → Command → Server → LLMBridge → OpenAI
+                     ↓
+              ActionValidator
+                     ↓
+              PlanExecutor → FSM → PathPlanner
+                     ↓
+            State Broadcast → All Clients
+```
+
+### Tick Rate Management
+- **60 Hz**: Physics, animations, local feedback
+- **30 Hz**: FSM updates, plan step activation
+- **0.5-2 Hz**: LLM brain ticks (adaptive based on load)
+
+### Data Flow
+1. Player inputs command
+2. Server batches unit prompts
+3. OpenAI returns JSON plans
+4. Validator approves plans
+5. Executor manages multi-step execution
+6. FSM enforces state transitions
+7. PathPlanner handles movement
+8. Clients receive state updates
+
+## MVP Deliverables Checklist
+
+- [ ] Online 1v1 matches lasting 15+ minutes
+- [ ] OpenAI integration with <1s median latency
+- [ ] 5 distinct minion archetypes
+- [ ] Editable system prompts per unit
+- [ ] 3 building types (Spire, Tower, Relay)
+- [ ] Single 9-node map with fog of war
+- [ ] Vision-based sensor packets
+- [ ] Multi-step plan execution with triggers
+- [ ] Speech bubble system
+- [ ] 4 core actions (move, peek_and_fire, lay_mines, hijack)
+- [ ] Radial + text command UI
+- [ ] Post-match summary screen
+- [ ] Local ELO rating system
+- [ ] Deterministic replay system
+- [ ] Fallback AI for network failures
+
+## Risk Mitigation
+
+1. **LLM Latency**: Implement aggressive batching and caching
+2. **Network Desync**: Hash state every tick, automatic resync
+3. **Cheating**: Server-authoritative model, plan validation
+4. **Performance**: LOD system, network optimization
+5. **Content Moderation**: Word filters, OpenAI moderation API
+
+## Development Tools & Setup
+
+### Required Tools
+- Godot 4.4+
+- Docker for server deployment
+- Redis for caching
+- Nginx for SSL proxy
+- OpenAI API key
+
+### Development Environment
+```bash
+# Clone repository
+git clone [repo-url]
+
+# Install Godot export templates
+godot --download-templates
+
+# Set up environment variables
+export OPENAI_API_KEY="your-key"
+export GAME_SERVER_PORT=7777
+
+# Run local server
+godot --headless --server
+```
+
+## Next Steps
+
+1. Set up project structure and Git repository
+2. Import Kenney.nl assets and create base materials
+3. Implement Unit base class with movement
+4. Create basic multiplayer lobby
+5. Begin OpenAI integration testing
+
+This implementation plan provides a structured approach to building the MVP over 12 weeks, with clear dependencies and deliverables for each phase. 

@@ -208,6 +208,12 @@ func create_client_dependencies() -> void:
     plan_progress_manager.name = "PlanProgressManager"
     add_child(plan_progress_manager)
     
+    # Create procedural generation system for client mode (for unified testing)
+    map_generator = MapGeneratorClass.new()
+    map_generator.name = "MapGenerator"
+    add_child(map_generator)
+    map_generator.setup(logger, asset_loader)
+    
     # Setup client dependencies
     display_manager.setup(logger, game_constants)
     client_main.setup(logger, display_manager)

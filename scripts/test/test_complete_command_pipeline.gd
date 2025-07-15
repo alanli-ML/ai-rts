@@ -13,11 +13,11 @@ var test_phase: int = 0
 # Test settings
 const TEST_UNIT_COUNT = 3
 const TEST_POSITIONS = [
-	Vector3(10, 0, 10),
-	Vector3(15, 0, 10), 
-	Vector3(20, 0, 10)
+	Vector3(-40, 0, -52),
+	Vector3(-35, 0, -52), 
+	Vector3(-30, 0, -52)
 ]
-const TARGET_POSITION = Vector3(50, 0, 50)
+const TARGET_POSITION = Vector3(0, 0, 0)  # Move toward map center
 
 # Test phases
 enum TestPhase {

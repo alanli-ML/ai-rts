@@ -144,13 +144,21 @@ func initialize_game_world() -> void:
     # Initialize ground plane material for better visibility
     procedural_world_renderer.initialize_ground_plane()
     
-    # Check if we should use procedural generation (server mode)
-    if dependency_container.is_server_mode():
-        logger.info("GameWorldManager", "Server mode detected - using procedural generation")
+    # Check if procedural generation is available (map generator exists)
+    var map_generator = dependency_container.get_map_generator()
+    if map_generator:
+        logger.info("GameWorldManager", "Map generator available - attempting procedural generation")
         await procedural_world_renderer.initialize_procedural_world(dependency_container)
+        
+        # Check if procedural generation actually succeeded by looking for procedural elements
+        var procedural_success = scene_3d.get_node_or_null("ProceduralBuildings") != null and scene_3d.get_node("ProceduralBuildings").get_child_count() > 0
+        
+        if not procedural_success:
+            logger.info("GameWorldManager", "Procedural generation incomplete - falling back to static world")
+            static_world_initializer.initialize_static_world()
     else:
-        logger.info("GameWorldManager", "Client mode detected - using static world")
-        # Fallback to static control points for client mode
+        logger.info("GameWorldManager", "No map generator - using static world")
+        # Fallback to static control points when no map generator
         static_world_initializer.initialize_static_world()
     
     world_initialized.emit()

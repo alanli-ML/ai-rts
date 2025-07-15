@@ -1,0 +1,75 @@
+[gd_scene load_steps=3 format=3 uid="uid://b8d1xqy7h8kkf"]
+
+[ext_resource type="Script" path="res://scripts/core/home_base_manager.gd" id="1_n1m8d"]
+[ext_resource type="Script" path="res://scripts/test/home_base_demo_test.gd" id="2_demo"]
+
+[node name="HomeBaseDemo" type="Node3D"]
+
+[node name="HomeBaseManager" type="Node3D" parent="."]
+script = ExtResource("1_n1m8d")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(0.707107, -0.5, 0.5, 0, 0.707107, 0.707107, -0.707107, -0.5, 0.5, 0, 40, 30)
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.707107, -0.5, 0.5, 0, 0.707107, 0.707107, -0.707107, -0.5, 0.5, 0, 10, 0)
+
+[node name="Ground" type="StaticBody3D" parent="."]
+
+[node name="GroundMesh" type="MeshInstance3D" parent="Ground"]
+mesh = SubResource("BoxMesh_ground")
+
+[node name="GroundCollision" type="CollisionShape3D" parent="Ground"]
+shape = SubResource("BoxShape3D_ground")
+
+[node name="HomeBaseDemoTest" type="Node" parent="."]
+script = ExtResource("2_demo")
+
+[node name="UI" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="InfoPanel" type="Panel" parent="UI"]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = -150.0
+offset_right = 400.0
+offset_bottom = -10.0
+
+[node name="InfoLabel" type="RichTextLabel" parent="UI/InfoPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = -10.0
+bbcode_enabled = true
+text = "[b]Home Base Demo[/b]
+
+[color=blue]Team 1 Home Base[/color]: Bottom-left corner (-40, 0, -40)
+[color=red]Team 2 Home Base[/color]: Top-right corner (40, 0, 40)
+
+[b]Controls:[/b]
+- Press [color=yellow]SPACE[/color] to run pipeline test
+- Units spawn near their team's home base
+- Buildings are colored by team
+
+[b]Features:[/b]
+✓ Team-colored buildings
+✓ Strategic spawn positions  
+✓ Command center + support buildings
+✓ Collision detection
+✓ Integration with unit spawning"
+
+[sub_resource type="BoxMesh" id="BoxMesh_ground"]
+size = Vector3(120, 1, 120)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ground"]
+size = Vector3(120, 1, 120) 

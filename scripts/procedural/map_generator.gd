@@ -22,11 +22,11 @@ var generation_progress: float = 0.0
 var is_generating: bool = false
 var generated_map_data: Dictionary = {}
 
-# Map configuration
-const MAP_SIZE: Vector2i = Vector2i(60, 60)  # 60x60 tile grid (3x expansion from 20x20)
-var dynamic_tile_size: float = 3.0  # Dynamic tile size based on assets
-const DISTRICT_SIZE: int = 18  # 18x18 tiles per district (3x expansion from 6x6)
-const CONTROL_POINT_COUNT: int = 25  # 25 control points in 5x5 grid (was 9 in 3x3)
+# Map configuration aligned with 200x200 ground plane
+const MAP_SIZE: Vector2i = Vector2i(60, 60)  # 60x60 tile grid
+var dynamic_tile_size: float = 3.33  # Optimized for 200x200 world units (60 * 3.33 = 200)
+const DISTRICT_SIZE: int = 20  # 20x20 tiles per district for better coverage 
+const CONTROL_POINT_COUNT: int = 25  # 25 control points in 5x5 grid
 
 # District types for variety
 enum DistrictType {
@@ -194,27 +194,27 @@ func generate_map(seed: int = 0, control_points: Array = []) -> Dictionary:
 func _generate_control_point_positions(rng: RandomNumberGenerator) -> Array:
     """Generate positions for control points in a 5x5 grid with slight randomization"""
     var positions: Array = []
-    var grid_spacing = MAP_SIZE.x / 6  # Spacing between control points (divide by 6 for 5x5 grid)
-    var center_offset = Vector2i(MAP_SIZE.x / 2, MAP_SIZE.y / 2)
+    var grid_spacing = MAP_SIZE.x / 4  # Correct spacing: 4 intervals for 5 points
+    var start_offset = grid_spacing / 2  # Start at quarter spacing from edge
     
-    for i in range(5):  # 5x5 grid instead of 3x3
+    for i in range(5):  # 5x5 grid
         for j in range(5):
             var base_pos = Vector2i(
-                center_offset.x + (i - 2) * grid_spacing,  # Center around -2 to +2
-                center_offset.y + (j - 2) * grid_spacing
+                start_offset + i * grid_spacing,  # Distribute evenly across full map
+                start_offset + j * grid_spacing
             )
             
             # Add slight randomization while keeping grid structure
             var random_offset = Vector2i(
-                rng.randi_range(-3, 3),  # Slightly larger randomization for bigger map
-                rng.randi_range(-3, 3)
+                rng.randi_range(-2, 2),  # Smaller randomization to keep within bounds
+                rng.randi_range(-2, 2)
             )
             
             var final_pos = base_pos + random_offset
             
-            # Ensure position is within bounds
-            final_pos.x = clamp(final_pos.x, 5, MAP_SIZE.x - 5)  # Larger buffer for bigger map
-            final_pos.y = clamp(final_pos.y, 5, MAP_SIZE.y - 5)
+            # Ensure position is within bounds with minimal buffer
+            final_pos.x = clamp(final_pos.x, 1, MAP_SIZE.x - 2)  # Minimal buffer for edge districts
+            final_pos.y = clamp(final_pos.y, 1, MAP_SIZE.y - 2)
             
             positions.append(final_pos)
     

@@ -107,14 +107,14 @@ func create_aligned_ground_plane(map_data: Dictionary) -> void:
     """Create a ground plane that is properly aligned with the procedural map"""
     logger.info("ProceduralWorldRenderer", "Creating aligned ground plane for procedural map")
     
-    # Get map dimensions
-    var tile_size = map_data.get("tile_size", 3.0)
-    var grid_size = map_data.get("size", Vector2i(20, 20))
-    var world_width = grid_size.x * tile_size
-    var world_height = grid_size.y * tile_size
+    # Get map dimensions for logging
+    var tile_size = map_data.get("tile_size", 3.33)
+    var grid_size = map_data.get("size", Vector2i(60, 60))
+    var _world_width = grid_size.x * tile_size  # Calculated for validation
+    var _world_height = grid_size.y * tile_size  # Should be ~200x200
     
-    # Calculate map center (procedural map starts at 0,0 and goes to world_width, world_height)
-    var map_center = Vector3(world_width * 0.5, 0, world_height * 0.5)
+    # Center procedural map at origin (0,0,0) to align with ground plane and home bases
+    var map_center = Vector3(0, 0, 0)
     
     # Remove existing ground plane if it exists
     var existing_ground = scene_3d.get_node_or_null("GroundPlane")
@@ -125,9 +125,9 @@ func create_aligned_ground_plane(map_data: Dictionary) -> void:
     var ground_plane = MeshInstance3D.new()
     ground_plane.name = "GroundPlane"
     
-    # Create plane mesh sized to match map with some margin
+    # Create plane mesh sized to exactly match the 200x200 static ground plane
     var plane_mesh = PlaneMesh.new()
-    plane_mesh.size = Vector2(world_width * 1.2, world_height * 1.2)  # 20% margin
+    plane_mesh.size = Vector2(200, 200)  # Exact match with static ground plane
     ground_plane.mesh = plane_mesh
     
     # Position the ground plane at the map center
@@ -160,11 +160,13 @@ func apply_procedural_control_points(control_points_data: Dictionary, tile_size:
         var cp_data = control_points_data[cp_id]
         var tile_position = cp_data.get("position", Vector2i(0, 0))
         
-        # Convert tile position to world position using actual tile size
+        # Convert tile position to world position using centered coordinate system
+        var center_offset = Vector2i(30, 30)  # Half of 60x60 grid
+        var centered_tile_pos = tile_position - center_offset
         var world_position = Vector3(
-            tile_position.x * tile_size,
+            centered_tile_pos.x * tile_size,
             0,
-            tile_position.y * tile_size
+            centered_tile_pos.y * tile_size
         )
         
         # Create or update control point
@@ -246,11 +248,14 @@ func apply_procedural_roads(roads_data: Dictionary) -> void:
             var segment = roads_data.segments[i]
             var position = segment.get("position", Vector2i(0, 0))
             
-            # Create road segment at tile position
+            # Create road segment at tile position using centered coordinate system
+            # Center the grid around origin to align with 200x200 ground plane
+            var center_offset = Vector2i(30, 30)  # Half of 60x60 grid
+            var centered_pos = position - center_offset
             var world_pos = Vector3(
-                position.x * tile_size,
-                0,  # At ground level
-                position.y * tile_size
+                centered_pos.x * tile_size,
+                0,
+                centered_pos.y * tile_size
             )
             
             # Use square road asset for everything
@@ -306,14 +311,13 @@ func apply_procedural_roads(roads_data: Dictionary) -> void:
     logger.info("ProceduralWorldRenderer", "Applied %d square road tiles to 3D world" % created_segments)
 
 func apply_procedural_buildings(buildings_data: Dictionary) -> void:
-    """Apply procedural buildings to the 3D world"""
-    logger.info("ProceduralWorldRenderer", "Applying procedural buildings using Kenny assets")
-    logger.info("ProceduralWorldRenderer", "Buildings data keys: %s" % str(buildings_data.keys()))
+    """Fill the entire map with buildings, ignoring districts and just avoiding roads"""
+    logger.info("ProceduralWorldRenderer", "Filling entire 200x200 map with buildings (ignoring districts)")
     
     # Get dynamic tile size from map data
-    var tile_size = 3.0  # Default fallback
+    var tile_size = 3.33  # Match the 200x200 grid alignment
     if "tile_size" in buildings_data:
-        tile_size = buildings_data.get("tile_size", 3.0)
+        tile_size = buildings_data.get("tile_size", 3.33)
     
     # Create a buildings container if it doesn't exist
     var procedural_buildings_container = scene_3d.get_node("ProceduralBuildings")
@@ -327,82 +331,81 @@ func apply_procedural_buildings(buildings_data: Dictionary) -> void:
     for child in procedural_buildings_container.get_children():
         child.queue_free()
     
-    var building_count = 0
+    # Get road positions to avoid
+    var road_positions = _extract_road_positions_from_scene()
+    logger.info("ProceduralWorldRenderer", "Found %d road positions to avoid" % road_positions.size())
     
-    # Create buildings from each district
-    for district_id in buildings_data:
-        # Skip non-district keys like "tile_size"
-        if district_id == "tile_size" or not buildings_data[district_id] is Array:
-            continue
+    var building_count = 0
+    var grid_size = 60  # 60x60 tile grid
+    var rng = RandomNumberGenerator.new()
+    rng.randomize()
+    
+    # Scan the entire 60x60 grid and place buildings where there are no roads
+    for x in range(grid_size):
+        for y in range(grid_size):
+            var tile_pos = Vector2i(x, y)
+            var tile_key = str(x) + "," + str(y)
             
-        var district_buildings = buildings_data[district_id]
-        logger.info("ProceduralWorldRenderer", "Processing district %s with %d buildings" % [district_id, district_buildings.size()])
-        
-        for building_data in district_buildings:
-            if building_count >= 40:  # Limit to 40 buildings for performance
-                break
+            # Skip if there's a road at this position
+            if road_positions.has(tile_key):
+                continue
             
-            var tile_position = building_data.get("position", Vector2i(0, 0))
-            var building_type = building_data.get("type", "commercial")
-            var building_size = building_data.get("size", Vector2i(2, 2))
+            # Skip some tiles randomly to avoid completely filling everything
+            if rng.randf() < 0.3:  # 30% chance to skip (creates some variety)
+                continue
             
-            # Convert to world position
+            # Convert tile position to world position using centered coordinate system
+            var center_offset = Vector2i(30, 30)  # Half of 60x60 grid
+            var centered_tile_pos = tile_pos - center_offset
             var world_position = Vector3(
-                tile_position.x * tile_size,
-                0,
-                tile_position.y * tile_size
+                centered_tile_pos.x * tile_size,
+                0.1,  # Slightly above ground
+                centered_tile_pos.y * tile_size
             )
             
-            # Get specific building type and calculated rotation
-            var specific_building_type = building_data.get("type", building_type)
-            var calculated_rotation = building_data.get("rotation", 0)
-            var building_size_data = building_data.get("size", Vector2i(2, 2))
+            # Only place buildings within reasonable bounds (avoid extreme edges)
+            if abs(world_position.x) > 95 or abs(world_position.z) > 95:
+                continue
             
-            # Load appropriate building asset based on specific type
-            var building_scene = world_asset_manager.load_building_asset_by_type(specific_building_type)
+            # Randomly choose building type and size
+            var building_types = ["commercial", "industrial", "office", "shop", "factory", "warehouse"]
+            var building_type = building_types[rng.randi() % building_types.size()]
+            var building_size = Vector2i(rng.randi_range(1, 3), rng.randi_range(1, 3))
+            
+            # Load appropriate building asset
+            var building_scene = world_asset_manager.load_building_asset_by_type(building_type)
             
             if building_scene:
-                # Use intelligent Kenny asset
+                # Use Kenny asset
                 var building = building_scene.instantiate()
-                building.name = "Building_%d_%s" % [building_count, specific_building_type]
+                building.name = "Building_%d_%s" % [building_count, building_type]
                 building.position = world_position
                 
-                # Use optimal scale from building placement system (2x scaling)
-                if building_data.has("optimal_scale") and building_data.optimal_scale != null:
-                    building.scale = building_data.optimal_scale
-                    logger.info("ProceduralWorldRenderer", "Applied 2x scaling %s to building %s" % [building_data.optimal_scale, specific_building_type])
-                else:
-                    # Fallback: Apply 2x scaling for better road proportions
-                    building.scale = Vector3(2.0, 2.0, 2.0)
-                    logger.info("ProceduralWorldRenderer", "Applied fallback 2x scaling to building %s" % specific_building_type)
+                # Apply 2x scaling for better proportions
+                building.scale = Vector3(2.0, 2.0, 2.0)
                 
-                # Use intelligent rotation from procedural generation
-                building.rotation_degrees.y = calculated_rotation
+                # Random rotation
+                building.rotation_degrees.y = rng.randi_range(0, 3) * 90
                 
                 procedural_buildings_container.call_deferred("add_child", building)
                 building_count += 1
                 
-                var connectivity_status = building_data.get("connectivity_valid", true)
-                var scaling_status = building_data.get("metadata", {}).get("scaled_2x", false)
-                logger.info("ProceduralWorldRenderer", "Created scaled building %d: %s (size: %s, rotation: %d°, 2x scale: %s) at %s" % [building_count, specific_building_type, building_size_data, calculated_rotation, scaling_status, world_position])
+                if building_count % 100 == 0:  # Log progress every 100 buildings
+                    logger.info("ProceduralWorldRenderer", "Placed %d buildings so far..." % building_count)
             else:
-                # Fallback to generic mesh if Kenny asset fails
+                # Create fallback mesh building
                 var building = MeshInstance3D.new()
                 building.name = "Building_%d_%s_fallback" % [building_count, building_type]
                 building.position = world_position
                 
-                # Create building mesh with 2x scaling considerations
+                # Create building mesh
                 var box_mesh = BoxMesh.new()
-                var height = randf_range(4.0, 12.0)  # Random height between 4-12 units
-                
-                # Apply 2x scaling to mesh size for consistency with Kenny assets
-                var base_size_x = building_size.x * tile_size * 0.8
-                var base_size_z = building_size.y * tile_size * 0.8
+                var height = rng.randf_range(4.0, 12.0)
                 
                 box_mesh.size = Vector3(
-                    base_size_x * 2.0,  # 2x width
-                    height * 2.0,       # 2x height
-                    base_size_z * 2.0   # 2x depth
+                    building_size.x * tile_size * 0.7,  # Slightly smaller than tile
+                    height,
+                    building_size.y * tile_size * 0.7
                 )
                 building.mesh = box_mesh
                 
@@ -413,10 +416,10 @@ func apply_procedural_buildings(buildings_data: Dictionary) -> void:
                         material.albedo_color = Color.LIGHT_BLUE
                     "industrial":
                         material.albedo_color = Color.DARK_GRAY
-                    "shop":
-                        material.albedo_color = Color.CYAN
                     "office":
                         material.albedo_color = Color.BLUE
+                    "shop":
+                        material.albedo_color = Color.CYAN
                     "factory":
                         material.albedo_color = Color.BROWN
                     "warehouse":
@@ -424,11 +427,10 @@ func apply_procedural_buildings(buildings_data: Dictionary) -> void:
                     _:
                         material.albedo_color = Color.WHITE
                 
-                # Add some variation and visibility
-                material.roughness = randf_range(0.3, 0.8)
-                material.metallic = randf_range(0.1, 0.4)
+                material.roughness = rng.randf_range(0.3, 0.8)
+                material.metallic = rng.randf_range(0.1, 0.4)
                 
-                # Add subtle emission for better visibility
+                # Add emission for visibility
                 material.emission_enabled = true
                 material.emission = material.albedo_color * 0.1
                 material.emission_energy = 0.5
@@ -437,13 +439,38 @@ func apply_procedural_buildings(buildings_data: Dictionary) -> void:
                 
                 procedural_buildings_container.call_deferred("add_child", building)
                 building_count += 1
-                
-                logger.info("ProceduralWorldRenderer", "Created fallback building %d: %s at %s" % [building_count, building_type, world_position])
+            
+            # Stop if we've placed enough buildings
+            if building_count >= 2000:  # Much higher limit for full coverage
+                break
         
-        if building_count >= 40:
+        if building_count >= 2000:
             break
     
-    logger.info("ProceduralWorldRenderer", "Applied %d procedural buildings to 3D world" % building_count)
+    logger.info("ProceduralWorldRenderer", "Filled map with %d buildings across entire 200x200 area" % building_count)
+
+func _extract_road_positions_from_scene() -> Dictionary:
+    """Extract road positions from the scene's ProceduralRoads container to avoid placing buildings on roads"""
+    var road_positions = {}
+    
+    # Try to get road data from the scene's ProceduralRoads container
+    var roads_container = scene_3d.get_node_or_null("ProceduralRoads")
+    if roads_container:
+        for road_child in roads_container.get_children():
+            if road_child.has_method("get_position") or road_child.position != Vector3.ZERO:
+                var world_pos = road_child.position
+                var tile_size = 3.33
+                var center_offset = Vector2i(30, 30)
+                
+                # Convert world position back to tile coordinates
+                var tile_x = int(round(world_pos.x / tile_size)) + center_offset.x
+                var tile_y = int(round(world_pos.z / tile_size)) + center_offset.y
+                
+                var tile_key = str(tile_x) + "," + str(tile_y)
+                road_positions[tile_key] = Vector2i(tile_x, tile_y)
+    
+    logger.info("ProceduralWorldRenderer", "Extracted %d road positions for building avoidance" % road_positions.size())
+    return road_positions
 
 func position_rts_camera_for_procedural_map(map_data: Dictionary) -> void:
     """Position the RTS camera to view the procedural map using dynamic map data"""
@@ -518,19 +545,19 @@ func get_district_color(district_type: int) -> Color:
             return Color.WHITE
 
 func initialize_ground_plane() -> void:
-    """Initialize the ground plane with a visible material"""
-    var ground_mesh = scene_3d.get_node("Ground/GroundMesh")
+    """Initialize the ground plane with a visible material aligned with the grid system"""
+    var ground_mesh = scene_3d.get_node_or_null("Ground/GroundMesh")
     if ground_mesh:
-        # Create a visible ground material
+        # Update existing ground plane material to match procedural system
         var ground_material = StandardMaterial3D.new()
         ground_material.albedo_color = Color(0.2, 0.6, 0.2)  # Green grass color
         ground_material.roughness = 0.8
         ground_material.metallic = 0.0
         ground_mesh.material_override = ground_material
-        logger.info("ProceduralWorldRenderer", "Ground plane material applied")
+        logger.info("ProceduralWorldRenderer", "Ground plane material applied to existing ground")
     else:
-        # Create a new ground plane if it doesn't exist
-        var ground_container = scene_3d.get_node("Ground")
+        # Create a new ground plane sized for the full grid system (200x200 to cover home bases)
+        var ground_container = scene_3d.get_node_or_null("Ground")
         if not ground_container:
             ground_container = Node3D.new()
             ground_container.name = "Ground"
@@ -539,7 +566,7 @@ func initialize_ground_plane() -> void:
         var ground_mesh_instance = MeshInstance3D.new()
         ground_mesh_instance.name = "GroundMesh"
         var plane_mesh = PlaneMesh.new()
-        plane_mesh.size = Vector2(120, 120)  # Large ground plane
+        plane_mesh.size = Vector2(200, 200)  # Large enough to cover home bases at ±40
         ground_mesh_instance.mesh = plane_mesh
         ground_mesh_instance.position = Vector3(0, -0.5, 0)  # Slightly below world origin
         
@@ -551,7 +578,7 @@ func initialize_ground_plane() -> void:
         ground_mesh_instance.material_override = ground_material
         
         ground_container.call_deferred("add_child", ground_mesh_instance)
-        logger.info("ProceduralWorldRenderer", "Ground plane created and material applied")
+        logger.info("ProceduralWorldRenderer", "Ground plane created: 200x200 units to cover home base grid")
 
 func cleanup() -> void:
     """Cleanup procedural world renderer resources"""

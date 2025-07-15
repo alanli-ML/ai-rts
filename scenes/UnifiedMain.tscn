@@ -5,17 +5,15 @@
 [ext_resource type="Script" path="res://scripts/ui/speech_bubble_manager.gd" id="3_speech_bubble"]
 [ext_resource type="Script" path="res://scripts/ui/plan_progress_manager.gd" id="4_plan_progress"]
 [ext_resource type="PackedScene" uid="uid://bsxvmkqjk6vd7" path="res://scenes/units/Unit.tscn" id="5_unit"]
-[ext_resource type="Script" path="res://scripts/test/ai_demo_with_units.gd" id="7_ai_demo"]
-[ext_resource type="Script" path="res://scripts/test/comprehensive_unit_control_test.gd" id="8_comprehensive_test"]
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_plane"]
-size = Vector2(2, 2)
+size = Vector2(200, 200)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ground"]
-albedo_color = Color(0.3, 0.7, 0.3, 1)
+albedo_color = Color(0.2, 0.6, 0.2, 1)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_box"]
-size = Vector3(2, 0.1, 2)
+size = Vector3(200, 0.1, 200)
 
 [sub_resource type="Environment" id="Environment_main"]
 background_mode = 1
@@ -397,12 +395,12 @@ shadow_enabled = true
 [node name="Ground" type="StaticBody3D" parent="GameUI/GameWorldContainer/GameWorld/3DView"]
 
 [node name="GroundMesh" type="MeshInstance3D" parent="GameUI/GameWorldContainer/GameWorld/3DView/Ground"]
-transform = Transform3D(30, 0, 0, 0, 1, 0, 0, 0, 30, 0, 0, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
 mesh = SubResource("PlaneMesh_plane")
 surface_material_override/0 = SubResource("StandardMaterial3D_ground")
 
 [node name="GroundCollision" type="CollisionShape3D" parent="GameUI/GameWorldContainer/GameWorld/3DView/Ground"]
-transform = Transform3D(30, 0, 0, 0, 1, 0, 0, 0, 30, 0, 0, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
 shape = SubResource("BoxShape3D_box")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="GameUI/GameWorldContainer/GameWorld/3DView"]
@@ -410,42 +408,23 @@ environment = SubResource("Environment_main")
 
 [node name="ControlPoints" type="Node3D" parent="GameUI/GameWorldContainer/GameWorld/3DView"]
 
-[node name="ControlPoint1" type="Node3D" parent="GameUI/GameWorldContainer/GameWorld/3DView/ControlPoints"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 0, -10)
 
-[node name="ControlPoint2" type="Node3D" parent="GameUI/GameWorldContainer/GameWorld/3DView/ControlPoints"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -10)
-
-[node name="ControlPoint3" type="Node3D" parent="GameUI/GameWorldContainer/GameWorld/3DView/ControlPoints"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 0, -10)
-
-[node name="ControlPoint4" type="Node3D" parent="GameUI/GameWorldContainer/GameWorld/3DView/ControlPoints"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 0, 0)
-
-[node name="ControlPoint5" type="Node3D" parent="GameUI/GameWorldContainer/GameWorld/3DView/ControlPoints"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
-
-[node name="ControlPoint6" type="Node3D" parent="GameUI/GameWorldContainer/GameWorld/3DView/ControlPoints"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 0, 0)
-
-[node name="ControlPoint7" type="Node3D" parent="GameUI/GameWorldContainer/GameWorld/3DView/ControlPoints"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 0, 10)
-
-[node name="ControlPoint8" type="Node3D" parent="GameUI/GameWorldContainer/GameWorld/3DView/ControlPoints"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 10)
-
-[node name="ControlPoint9" type="Node3D" parent="GameUI/GameWorldContainer/GameWorld/3DView/ControlPoints"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 0, 10)
 
 [node name="Buildings" type="Node3D" parent="GameUI/GameWorldContainer/GameWorld/3DView"]
+
+[node name="HomeBases" type="Node3D" parent="GameUI/GameWorldContainer/GameWorld/3DView/Buildings"]
+
+[node name="ProceduralRoads" type="Node3D" parent="GameUI/GameWorldContainer/GameWorld/3DView"]
+
+[node name="ProceduralBuildings" type="Node3D" parent="GameUI/GameWorldContainer/GameWorld/3DView"]
 
 [node name="Units" type="Node3D" parent="GameUI/GameWorldContainer/GameWorld/3DView"]
 
 [node name="Team1Units" type="Node3D" parent="GameUI/GameWorldContainer/GameWorld/3DView/Units"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -15, 0, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0, -52)
 
 [node name="Team2Units" type="Node3D" parent="GameUI/GameWorldContainer/GameWorld/3DView/Units"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15, 0, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0, 28)
 
 [node name="TestingSuite" type="Control" parent="."]
 visible = false
@@ -504,10 +483,4 @@ layout_mode = 2
 [node name="CloseTestingButton" type="Button" parent="TestingSuite/TestingPanel/TestingContainer/TestingButtons"]
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Close Testing"
-
-[node name="AIDemoWithUnits" type="Node" parent="."]
-script = ExtResource("7_ai_demo")
-
-[node name="ComprehensiveUnitControlTest" type="Node" parent="."]
-script = ExtResource("8_comprehensive_test") 
+text = "Close Testing" 

@@ -12,10 +12,10 @@ var road_dimensions: Dictionary = {}
 var building_dimensions: Dictionary = {}
 var character_dimensions: Dictionary = {}
 
-# Calculated tile size based on asset dimensions
-var optimal_tile_size: float = 3.0
-var road_tile_size: float = 3.0
-var building_base_size: float = 3.0
+# Calculated tile size optimized for 200x200 ground plane alignment
+var optimal_tile_size: float = 3.33  # Aligned with 60x60 grid = 200x200 world units
+var road_tile_size: float = 3.33
+var building_base_size: float = 3.33
 
 # Signals
 signal dimensions_analyzed()
@@ -186,16 +186,20 @@ func _calculate_optimal_tile_size() -> void:
     if building_sizes.size() > 0:
         building_base_size = _calculate_average(building_sizes)
     
-    # Set optimal tile size with connectivity considerations
-    # Kenny road assets are small (~0.5-1.0 units) but need larger tiles for proper connectivity
-    var calculated_tile_size = road_tile_size if road_tile_size > 0 else 3.0
+    # Set optimal tile size with ground plane alignment priority
+    # Kenny road assets are small (~0.5-1.0 units) but we prioritize 200x200 ground plane alignment
+    var _calculated_tile_size = road_tile_size if road_tile_size > 0 else 3.33
     
     # Apply minimum tile size for road connectivity (Kenny roads need at least 2.0 units spacing)
     var minimum_road_tile_size = 2.5  # Ensure proper road connectivity
-    optimal_tile_size = max(calculated_tile_size, minimum_road_tile_size)
+    var ground_plane_aligned_size = 3.33  # Optimized for 60x60 grid = 200x200 world units
     
-    # Round to reasonable precision
-    optimal_tile_size = round(optimal_tile_size * 4.0) / 4.0  # Round to nearest 0.25
+    # Prioritize ground plane alignment while maintaining road connectivity
+    optimal_tile_size = max(ground_plane_aligned_size, minimum_road_tile_size)
+    
+    # Preserve precise alignment value
+    if abs(optimal_tile_size - 3.33) < 0.1:  # If close to our target, use exact value
+        optimal_tile_size = 3.33
     
     if logger:
         logger.info("AssetDimensionManager", "Calculated optimal tile size: %.2f (road: %.2f, building: %.2f, minimum enforced: %.2f)" % [optimal_tile_size, road_tile_size, building_base_size, minimum_road_tile_size])

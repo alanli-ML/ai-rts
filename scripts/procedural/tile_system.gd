@@ -40,18 +40,20 @@ func initialize_grid() -> void:
         logger.info("TileSystem", "Grid initialized with %d tiles" % (grid_size.x * grid_size.y))
 
 func world_to_tile(world_pos: Vector3) -> Vector2i:
-    """Convert world position to tile coordinates"""
+    """Convert world position to tile coordinates (centered grid)"""
+    var center_offset = Vector2i(grid_size.x / 2, grid_size.y / 2)
     return Vector2i(
-        int(world_pos.x / tile_size),
-        int(world_pos.z / tile_size)
+        int(world_pos.x / tile_size) + center_offset.x,
+        int(world_pos.z / tile_size) + center_offset.y
     )
 
 func tile_to_world(tile_pos: Vector2i) -> Vector3:
-    """Convert tile coordinates to world position"""
+    """Convert tile coordinates to world position (centered grid)"""
+    var center_offset = Vector2i(grid_size.x / 2, grid_size.y / 2)
     return Vector3(
-        tile_pos.x * tile_size,
+        (tile_pos.x - center_offset.x) * tile_size,
         0,
-        tile_pos.y * tile_size
+        (tile_pos.y - center_offset.y) * tile_size
     )
 
 func set_tile(tile_pos: Vector2i, tile_type: String, asset_data: Dictionary = {}) -> bool:

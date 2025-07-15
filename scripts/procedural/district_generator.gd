@@ -53,7 +53,7 @@ func generate_district(center_pos: Vector2i, district_type: int, size: int, rng:
 func _generate_district_layout(district_data: Dictionary, rng: RandomNumberGenerator) -> void:
     """Generate the basic layout for a district"""
     var bounds = district_data.bounds
-    var building_count = rng.randi_range(3, 8)
+    var building_count = rng.randi_range(8, 15)  # Increased for better map coverage
     
     # Generate some sample buildings
     for i in range(building_count):

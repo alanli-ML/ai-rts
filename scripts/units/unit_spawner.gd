@@ -34,7 +34,17 @@ func _ready() -> void:
 	Logger.info("UnitSpawner", "Unit spawner initialized")
 
 func _setup_spawn_points() -> void:
-	# Get spawn points from the map
+	# Try to get spawn points from HomeBaseManager first
+	var home_base_manager = _find_home_base_manager()
+	if home_base_manager:
+		for team_id in [1, 2]:
+			var spawn_pos = home_base_manager.get_team_spawn_position(team_id)
+			if spawn_pos != Vector3.ZERO:
+				spawn_points[team_id] = spawn_pos
+		Logger.debug("UnitSpawner", "Using HomeBaseManager spawn points: %s" % spawn_points)
+		return
+	
+	# Fallback: Get spawn points from the map
 	var spawn_nodes = get_tree().get_nodes_in_group("spawn_points")
 	
 	for spawn_node in spawn_nodes:
@@ -43,13 +53,26 @@ func _setup_spawn_points() -> void:
 		elif spawn_node.name.contains("Team2"):
 			spawn_points[2] = spawn_node.global_position
 	
-	# Default spawn points if none found
+	# Use home base positions as defaults (bottom-left and top-right corners)
 	if not spawn_points.has(1):
-		spawn_points[1] = Vector3(10, 0, 10)
+		spawn_points[1] = Vector3(-40, 0, -52)  # Team 1: In front of bottom-left home base
 	if not spawn_points.has(2):
-		spawn_points[2] = Vector3(90, 0, 90)
+		spawn_points[2] = Vector3(40, 0, 28)    # Team 2: In front of top-right home base
 	
 	Logger.debug("UnitSpawner", "Spawn points configured: %s" % spawn_points)
+
+func _find_home_base_manager() -> Node:
+	"""Find HomeBaseManager in the scene"""
+	var managers = get_tree().get_nodes_in_group("home_base_managers")
+	if managers.size() > 0:
+		return managers[0]
+	
+	# Try to find by name
+	var scene_root = get_tree().current_scene
+	if scene_root:
+		return scene_root.find_child("HomeBaseManager", true, false)
+	
+	return null
 
 func spawn_unit(archetype: String, team_id: int, custom_position: Vector3 = Vector3.ZERO) -> Unit:
 	# Check unit limits

@@ -77,11 +77,32 @@ func _create_team_unit(archetype: String, team_id: int, position: Vector3) -> No
 
 func _get_team_spawn_position(team_id: int) -> Vector3:
 	"""Get spawn position for team"""
+	# Try to get spawn position from HomeBaseManager first
+	var home_base_manager = _find_home_base_manager()
+	if home_base_manager:
+		var spawn_pos = home_base_manager.get_team_spawn_position(team_id)
+		if spawn_pos != Vector3.ZERO:
+			return spawn_pos
+	
+	# Fallback to new home base positions (bottom-left and top-right corners)
 	var spawn_positions = {
-		1: Vector3(10, 0, 10),   # Team 1 spawn
-		2: Vector3(90, 0, 90)    # Team 2 spawn
+		1: Vector3(-40, 0, -52),  # Team 1 spawn: In front of bottom-left home base
+		2: Vector3(40, 0, 28)     # Team 2 spawn: In front of top-right home base
 	}
 	return spawn_positions.get(team_id, Vector3.ZERO)
+
+func _find_home_base_manager() -> Node:
+	"""Find HomeBaseManager in the scene"""
+	var managers = get_tree().get_nodes_in_group("home_base_managers")
+	if managers.size() > 0:
+		return managers[0]
+	
+	# Try to find by name
+	var scene_root = get_tree().current_scene
+	if scene_root:
+		return scene_root.find_child("HomeBaseManager", true, false)
+	
+	return null
 
 func _generate_formation_positions(center: Vector3, count: int) -> Array:
 	"""Generate positions in a formation around the center point"""

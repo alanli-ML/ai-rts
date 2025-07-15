@@ -58,7 +58,7 @@ func _test_unit_spawning() -> void:
 			unit.unit_id = "pipeline_test_unit"
 			unit.archetype = "scout"
 			unit.team_id = 1
-			unit.position = Vector3(10, 0, 10)
+			unit.position = Vector3(-40, 0, -52)  # Use new home base spawn position
 			
 			# Add to scene
 			add_child(unit)
@@ -86,7 +86,7 @@ func _test_unit_command(unit: Unit) -> void:
 	
 	# Send command via EventBus
 	var event_bus = get_node("/root/EventBus")
-	var target_pos = Vector3(30, 0, 30)
+	var target_pos = Vector3(-20, 0, -30)  # Move toward center from home base
 	var command = "move_to:%s,%s,%s" % [target_pos.x, target_pos.y, target_pos.z]
 	
 	print("Sending command: %s" % command)

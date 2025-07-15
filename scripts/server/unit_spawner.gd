@@ -49,10 +49,10 @@ var unit_types: Dictionary = {
     }
 }
 
-# Spawn positions for teams
+# Spawn positions for teams (updated to home base positions)
 var team_spawn_positions: Dictionary = {
-    0: Vector3(-20, 0, 0),  # Team 0 spawn
-    1: Vector3(20, 0, 0)    # Team 1 spawn  
+    1: Vector3(-40, 0, -52),  # Team 1 spawn: In front of bottom-left home base
+    2: Vector3(40, 0, 28)     # Team 2 spawn: In front of top-right home base
 }
 
 # Signals

@@ -111,6 +111,10 @@ func _start_client_mode() -> void:
     # Initialize client systems
     _initialize_client_systems()
     
+    # Initialize the game world to show buildings and terrain
+    logger.info("UnifiedMain", "Initializing game world for client mode")
+    await game_world_manager.initialize_game_world()
+    
     # Show mode selection
     ui_manager.show_mode_selection()
     

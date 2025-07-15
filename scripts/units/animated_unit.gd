@@ -7,6 +7,9 @@ var character_model: Node3D
 var current_character_variant: String = "character-a"
 var character_mesh_instances: Array[MeshInstance3D] = []
 
+# Trigger system properties
+@export var triggers: Array[ActionTrigger] = []
+
 # Dependencies
 var logger
 var texture_manager: Node  # Changed from TextureManager to Node
@@ -90,6 +93,26 @@ func _ready() -> void:
 	
 	# Get logger from dependency container
 	_setup_logger()
+	
+	# Register default triggers
+	_register_default_triggers()
+	
+	# Register with TriggerEvaluationEngine
+	var dep_container = get_node_or_null("/root/DependencyContainer")
+	if dep_container and dep_container.has_method("get_trigger_evaluation_engine"):
+		var trigger_engine = dep_container.get_trigger_evaluation_engine()
+		if trigger_engine:
+			trigger_engine.register_unit(self)
+		else:
+			if logger:
+				logger.warning("AnimatedUnit", "TriggerEvaluationEngine not found in DependencyContainer.")
+			else:
+				print("AnimatedUnit: TriggerEvaluationEngine not found in DependencyContainer.")
+	else:
+		if logger:
+			logger.warning("AnimatedUnit", "DependencyContainer not found for trigger registration.")
+		else:
+			print("AnimatedUnit: DependencyContainer not found for trigger registration.")
 	
 	# Setup weapon system
 	_setup_weapon_system()
@@ -977,6 +1000,64 @@ func debug_character_info() -> Dictionary:
 
 # Add a flag to track movement state for animation controller
 var was_moving: bool = false 
+
+# Trigger System Methods
+func get_triggers() -> Array[ActionTrigger]:
+	return triggers
+
+# Virtual function for subclasses to implement
+func _register_default_triggers() -> void:
+	# Base implementation is empty. Subclasses should override this.
+	pass
+
+# Add required methods for trigger conditions
+func get_nearest_enemy_distance() -> float:
+	var min_dist = INF
+	var all_units = get_tree().get_nodes_in_group("units")
+	for other_unit in all_units:
+		if other_unit != self and other_unit.has_method("get_team_id") and other_unit.get_team_id() != self.team_id:
+			var dist = global_position.distance_to(other_unit.global_position)
+			if dist < min_dist:
+				min_dist = dist
+	return min_dist
+
+func get_nearest_ally_distance() -> float:
+	var min_dist = INF
+	var all_units = get_tree().get_nodes_in_group("units")
+	for other_unit in all_units:
+		if other_unit != self and other_unit.has_method("get_team_id") and other_unit.get_team_id() == self.team_id:
+			var dist = global_position.distance_to(other_unit.global_position)
+			if dist < min_dist:
+				min_dist = dist
+	return min_dist
+
+func get_enemy_count_in_range(range_val: float) -> int:
+	var count = 0
+	var all_units = get_tree().get_nodes_in_group("units")
+	for other_unit in all_units:
+		if other_unit != self and other_unit.has_method("get_team_id") and other_unit.get_team_id() != self.team_id:
+			if global_position.distance_to(other_unit.global_position) <= range_val:
+				count += 1
+	return count
+
+func get_ally_count_in_range(range_val: float) -> int:
+	var count = 0
+	var all_units = get_tree().get_nodes_in_group("units")
+	for other_unit in all_units:
+		if other_unit != self and other_unit.has_method("get_team_id") and other_unit.get_team_id() == self.team_id:
+			if global_position.distance_to(other_unit.global_position) <= range_val:
+				count += 1
+	return count
+
+func _exit_tree() -> void:
+	# Unregister from TriggerEvaluationEngine
+	var dep_container = get_node_or_null("/root/DependencyContainer")
+	if dep_container and dep_container.has_method("get_trigger_evaluation_engine"):
+		var trigger_engine = dep_container.get_trigger_evaluation_engine()
+		if trigger_engine and trigger_engine.has_method("unregister_unit"):
+			trigger_engine.unregister_unit(unit_id)
+
+	super._exit_tree()
 
 # Add the missing methods for movement, damage, and death integration
 

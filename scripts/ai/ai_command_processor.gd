@@ -10,113 +10,8 @@ var openai_client = null
 var langsmith_client = null
 var selection_manager: EnhancedSelectionSystem = null
 var plan_executor: Node = null
-
-# Command processing settings
-@export var system_prompt_template: String = """
-You are an AI assistant for a cooperative Real-Time Strategy (RTS) game. 
-Players can give you natural language commands to control units.
-
-GAME CONTEXT:
-- This is a 2v2 cooperative RTS where teammates share control of 5 units
-- Unit types: scout, sniper, medic, engineer, tank
-- Players can select units and give movement, attack, and ability commands
-- Units have different capabilities and roles
-
-UNIT CAPABILITIES:
-- Scout: stealth, mark_target, scan_area (fast reconnaissance)
-- Sniper: peek_and_fire, overwatch (long-range precision)
-- Medic: heal (unit healing and support)
-- Engineer: repair, lay_mines, build_turret, hijack_spire (construction/sabotage)
-- Tank: charge, shield (heavy assault and defense)
-
-COMMAND MODES:
-You can respond with either DIRECT COMMANDS or MULTI-STEP PLANS.
-
-DIRECT COMMANDS (for simple actions):
-{
-    "type": "direct_commands",
-    "commands": [
-        {
-            "action": "move_to|attack|retreat|patrol|use_ability|formation|stance",
-            "target_units": ["selected"|"all"|"type:scout"|"unit_id"],
-            "parameters": {
-                "position": [x, y, z],
-                "target_id": "unit_id",
-                "formation": "line|column|wedge|scattered",
-                "stance": "aggressive|defensive|passive"
-            }
-        }
-    ],
-    "message": "Confirmation message"
-}
-
-MULTI-STEP PLANS (for complex tactical sequences):
-{
-    "type": "multi_step_plan",
-    "plans": [
-        {
-            "unit_id": "unit_id",
-            "steps": [
-                {
-                    "action": "move_to|attack|peek_and_fire|lay_mines|hijack_enemy_spire|retreat|patrol|use_ability|formation|stance",
-                    "params": {
-                        "position": [x, y, z],
-                        "target_id": "unit_id",
-                        "target_position": [x, y, z],
-                        "formation": "line|column|wedge|scattered",
-                        "stance": "aggressive|defensive|passive",
-                        "duration": 10.0,
-                        "count": 3,
-                        "range": 15.0,
-                        "spire_id": "spire_id"
-                    },
-                    "duration_ms": 2000,
-                    "trigger": "health_pct < 20|enemy_dist < 10|time > 3|energy < 50|enemy_count > 2|ally_count < 3",
-                    "speech": "Moving to cover (max 12 words)",
-                    "conditions": {},
-                    "priority": 1,
-                    "prerequisites": ["health_pct > 10", "energy > 20"],
-                    "cooldown": 5.0
-                }
-            ]
-        }
-    ],
-    "message": "Plan description"
-}
-
-ALLOWED ACTIONS (use these exact names):
-- move_to: Move units to specified position [x, y, z]
-- attack: Attack target unit or position
-- peek_and_fire: Sniper moves to cover and fires at target
-- lay_mines: Engineer places mines at specified location
-- hijack_enemy_spire: Engineer captures enemy power spire
-- retreat: Units fall back to safer position
-- patrol: Units patrol between waypoints
-- use_ability: Use unit-specific special ability
-- formation: Change unit formation (line|column|wedge|scattered)
-- stance: Change combat stance (aggressive|defensive|passive)
-
-TRIGGER CONDITIONS:
-- health_pct < X: Unit health below percentage
-- enemy_dist < X: Enemy within distance
-- ally_dist < X: Ally within distance
-- time > X: Time elapsed in seconds
-- energy < X: Unit energy below threshold
-- enemy_count > X: Enemy units in range
-- ally_count < X: Allied units in range
-- ammo < X: Unit ammunition below threshold
-
-CURRENT GAME STATE:
-{game_state}
-
-SELECTED UNITS:
-{selected_units}
-
-Use DIRECT COMMANDS for simple actions like "attack that unit" or "move here".
-Use MULTI-STEP PLANS for complex tactical sequences like "scout ahead, then attack if safe" or "retreat if health is low".
-
-Parse the following command:
-"""
+var tier_selector: TierSelector = null
+var prompt_generator: PromptGenerator = null
 
 # Internal variables
 var command_queue: Array[Dictionary] = []
@@ -143,11 +38,17 @@ signal plan_execution_started(unit_id: String, plan: Dictionary)
 signal plan_execution_completed(unit_id: String, success: bool)
 
 func _ready() -> void:
-    # Create OpenAI client
+    # Create AI system components
     var OpenAIClientScript = load("res://scripts/ai/openai_client.gd")
     openai_client = OpenAIClientScript.new()
     openai_client.name = "OpenAI_Client"
     add_child(openai_client)
+
+    # Create tier selector and prompt generator
+    var TierSelectorClass = load("res://scripts/ai/tier_selector.gd")
+    tier_selector = TierSelectorClass.new()
+    var PromptGeneratorClass = load("res://scripts/ai/prompt_generator.gd")
+    prompt_generator = PromptGeneratorClass.new()
     
     # Setup LangSmith client if available (defer to ensure DependencyContainer is ready)
     call_deferred("_setup_langsmith_client")
@@ -275,22 +176,26 @@ func process_command(command_text: String, selected_units: Array = [], game_stat
     # Update game state
     last_game_state = game_state
     
-    # Build context
-    var context = _build_context(selected_units, game_state)
+    # Determine control tier
+    var control_tier = tier_selector.determine_control_tier(selected_units)
+    
+    # Build context for prompt generator
+    var prompt_context = {
+        "squad_composition": _build_context(selected_units, game_state).selected_units,
+        "game_state": game_state,
+        "user_command": command_text
+    }
+
+    # Generate the prompt
+    var system_prompt = prompt_generator.generate_prompt(control_tier, prompt_context)
     
     # Create messages for OpenAI
     var messages = [
         {
             "role": "system",
-            "content": system_prompt_template.format({
-                "game_state": JSON.stringify(context.game_state),
-                "selected_units": JSON.stringify(context.selected_units)
-            })
-        },
-        {
-            "role": "user",
-            "content": command_text
+            "content": system_prompt
         }
+        # The user command is now part of the system prompt context for better LLM performance.
     ]
     
     # Send to OpenAI with LangSmith tracing

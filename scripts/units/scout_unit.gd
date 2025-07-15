@@ -452,3 +452,17 @@ func get_ability_cooldown(ability: String) -> float:
 func is_ability_available(ability: String) -> bool:
 	"""Check if ability is available"""
 	return get_ability_cooldown(ability) <= 0.0 
+
+func _register_default_triggers() -> void:
+	# Example trigger: Activate stealth when health is low
+	var stealth_action = UnitAction.new("activate_stealth", {"duration": 8.0})
+	var low_health_condition = TriggerCondition.new("health_pct", TriggerCondition.Operator.LESS_THAN, 40.0)
+	var stealth_trigger = ActionTrigger.new([low_health_condition], stealth_action, 10)
+	triggers.append(stealth_trigger)
+
+	# Example trigger: Retreat when outnumbered
+	var retreat_action = UnitAction.new("retreat")
+	var outnumbered_condition_1 = TriggerCondition.new("enemy_count", TriggerCondition.Operator.GREATER_THAN_OR_EQUAL_TO, 3.0)
+	var outnumbered_condition_2 = TriggerCondition.new("ally_count", TriggerCondition.Operator.LESS_THAN_OR_EQUAL_TO, 1.0)
+	var retreat_trigger = ActionTrigger.new([outnumbered_condition_1, outnumbered_condition_2], retreat_action, 5)
+	triggers.append(retreat_trigger)

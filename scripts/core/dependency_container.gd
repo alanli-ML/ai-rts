@@ -18,6 +18,7 @@ var ai_command_processor: Node
 var action_validator: Node
 var plan_executor: Node
 var langsmith_client: Node
+var trigger_evaluation_engine: Node
 var resource_manager: Node
 var node_capture_system: Node
 var building_system: Node
@@ -49,10 +50,11 @@ const DisplayManagerClass = preload("res://scripts/client/display_manager.gd")
 const ClientMainClass = preload("res://scripts/client/client_main.gd")
 
 # Preload new AI system classes
-const TestAICommandProcessorClass = preload("res://scripts/ai/test_ai_command_processor.gd")
+const AICommandProcessorClass = preload("res://scripts/ai/ai_command_processor.gd")
 const ActionValidatorClass = preload("res://scripts/ai/action_validator.gd")
 const PlanExecutorClass = preload("res://scripts/ai/plan_executor.gd")
 const LangSmithClientClass = preload("res://scripts/ai/langsmith_client.gd")
+const TriggerEvaluationEngineClass = preload("res://scripts/ai/trigger_evaluation_engine.gd")
 
 # Preload new gameplay system classes
 const ResourceManagerClass = preload("res://scripts/gameplay/resource_manager.gd")
@@ -125,7 +127,7 @@ func create_server_dependencies() -> void:
     add_child(dedicated_server)
     
     # Create AI systems
-    ai_command_processor = TestAICommandProcessorClass.new()
+    ai_command_processor = AICommandProcessorClass.new()
     ai_command_processor.name = "AICommandProcessor"
     add_child(ai_command_processor)
     
@@ -137,6 +139,11 @@ func create_server_dependencies() -> void:
     langsmith_client = LangSmithClientClass.new()
     langsmith_client.name = "LangSmithClient"
     add_child(langsmith_client)
+    
+    # Create Trigger Evaluation Engine
+    trigger_evaluation_engine = TriggerEvaluationEngineClass.new()
+    trigger_evaluation_engine.name = "TriggerEvaluationEngine"
+    add_child(trigger_evaluation_engine)
     
     # Create gameplay systems
     resource_manager = ResourceManagerClass.new()
@@ -207,6 +214,11 @@ func create_client_dependencies() -> void:
     plan_progress_manager = PlanProgressManagerClass.new()
     plan_progress_manager.name = "PlanProgressManager"
     add_child(plan_progress_manager)
+    
+    # Create Trigger Evaluation Engine for client-side evaluation if needed for UI/FX
+    trigger_evaluation_engine = TriggerEvaluationEngineClass.new()
+    trigger_evaluation_engine.name = "TriggerEvaluationEngine"
+    add_child(trigger_evaluation_engine)
     
     # Create procedural generation system for client mode (for unified testing)
     map_generator = MapGeneratorClass.new()
@@ -299,6 +311,10 @@ func get_plan_progress_manager():
 func get_langsmith_client() -> Node:
     """Get the LangSmith client instance"""
     return langsmith_client
+
+func get_trigger_evaluation_engine() -> Node:
+    """Get the TriggerEvaluationEngine instance"""
+    return trigger_evaluation_engine
 
 func get_map_generator() -> Node:
     """Get the MapGenerator instance"""

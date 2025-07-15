@@ -10,8 +10,10 @@ var openai_client = null
 var langsmith_client = null
 var selection_manager: EnhancedSelectionSystem = null
 var plan_executor: Node = null
-var tier_selector: TierSelector = null
-var prompt_generator: PromptGenerator = null
+# TODO: Implement TierSelector class for Two-Tier AI Control System
+# var tier_selector: TierSelector = null
+# TODO: Implement PromptGenerator class for Two-Tier AI Control System  
+# var prompt_generator: PromptGenerator = null
 
 # Internal variables
 var command_queue: Array[Dictionary] = []
@@ -44,11 +46,11 @@ func _ready() -> void:
     openai_client.name = "OpenAI_Client"
     add_child(openai_client)
 
-    # Create tier selector and prompt generator
-    var TierSelectorClass = load("res://scripts/ai/tier_selector.gd")
-    tier_selector = TierSelectorClass.new()
-    var PromptGeneratorClass = load("res://scripts/ai/prompt_generator.gd")
-    prompt_generator = PromptGeneratorClass.new()
+    # TODO: Create tier selector and prompt generator when Two-Tier AI Control System is implemented
+    # var TierSelectorClass = load("res://scripts/ai/tier_selector.gd")
+    # tier_selector = TierSelectorClass.new()
+    # var PromptGeneratorClass = load("res://scripts/ai/prompt_generator.gd")
+    # prompt_generator = PromptGeneratorClass.new()
     
     # Setup LangSmith client if available (defer to ensure DependencyContainer is ready)
     call_deferred("_setup_langsmith_client")
@@ -176,8 +178,8 @@ func process_command(command_text: String, selected_units: Array = [], game_stat
     # Update game state
     last_game_state = game_state
     
-    # Determine control tier
-    var control_tier = tier_selector.determine_control_tier(selected_units)
+    # TODO: Determine control tier when Two-Tier AI Control System is implemented
+    # var control_tier = tier_selector.determine_control_tier(selected_units)
     
     # Build context for prompt generator
     var prompt_context = {
@@ -186,8 +188,11 @@ func process_command(command_text: String, selected_units: Array = [], game_stat
         "user_command": command_text
     }
 
-    # Generate the prompt
-    var system_prompt = prompt_generator.generate_prompt(control_tier, prompt_context)
+    # TODO: Generate the prompt using tier-specific templates when Two-Tier AI Control System is implemented
+    # var system_prompt = prompt_generator.generate_prompt(control_tier, prompt_context)
+    
+    # For now, use a basic system prompt (TODO: implement tier-specific prompts)
+    var system_prompt = "You are an AI assistant that helps control units in a real-time strategy game. Respond with valid action commands based on the user's request and current game context."
     
     # Create messages for OpenAI
     var messages = [

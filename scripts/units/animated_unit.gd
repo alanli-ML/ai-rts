@@ -7,8 +7,8 @@ var character_model: Node3D
 var current_character_variant: String = "character-a"
 var character_mesh_instances: Array[MeshInstance3D] = []
 
-# Trigger system properties
-@export var triggers: Array[ActionTrigger] = []
+# TODO: Trigger system properties (for Two-Tier AI Control System)
+# @export var triggers: Array[ActionTrigger] = []
 
 # Dependencies
 var logger
@@ -94,8 +94,8 @@ func _ready() -> void:
 	# Get logger from dependency container
 	_setup_logger()
 	
-	# Register default triggers
-	_register_default_triggers()
+	# TODO: Register default triggers when Two-Tier AI Control System is implemented
+	# _register_default_triggers()
 	
 	# Register with TriggerEvaluationEngine
 	var dep_container = get_node_or_null("/root/DependencyContainer")
@@ -1001,14 +1001,14 @@ func debug_character_info() -> Dictionary:
 # Add a flag to track movement state for animation controller
 var was_moving: bool = false 
 
-# Trigger System Methods
-func get_triggers() -> Array[ActionTrigger]:
-	return triggers
+# TODO: Trigger System Methods (for Two-Tier AI Control System)
+# func get_triggers() -> Array[ActionTrigger]:
+#	return triggers
 
-# Virtual function for subclasses to implement
-func _register_default_triggers() -> void:
-	# Base implementation is empty. Subclasses should override this.
-	pass
+# TODO: Virtual function for subclasses to implement
+# func _register_default_triggers() -> void:
+#	# Base implementation is empty. Subclasses should override this.
+#	pass
 
 # Add required methods for trigger conditions
 func get_nearest_enemy_distance() -> float:
@@ -1057,7 +1057,7 @@ func _exit_tree() -> void:
 		if trigger_engine and trigger_engine.has_method("unregister_unit"):
 			trigger_engine.unregister_unit(unit_id)
 
-	super._exit_tree()
+	# Note: No need to call super._exit_tree() as base Unit class doesn't define it
 
 # Add the missing methods for movement, damage, and death integration
 

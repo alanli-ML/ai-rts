@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://bxu7w8k9l2n5p"]
+
+[ext_resource type="Script" path="res://scripts/units/animated_unit.gd" id="1_animated_unit"]
+
+[node name="AnimatedUnit" type="CharacterBody3D"]
+script = ExtResource("1_animated_unit") 

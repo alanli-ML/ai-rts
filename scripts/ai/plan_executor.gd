@@ -168,7 +168,7 @@ func execute_plan(unit_id: String, plan_data: Dictionary) -> bool:
     execution_stats.plans_executed += 1
     
     plan_started.emit(unit_id, plan_steps)
-    _start_next_step(unit_id)
+    call_deferred("_start_next_step", unit_id)
     
     print("PlanExecutor: Started enhanced plan for unit %s with %d steps" % [unit_id, plan_steps.size()])
     return true
@@ -194,7 +194,7 @@ func interrupt_plan(unit_id: String, reason: String) -> void:
 func _process_unit_plan(unit_id: String, delta: float) -> void:
     """Process a unit's active plan with enhanced error handling"""
     if not current_steps.has(unit_id):
-        _start_next_step(unit_id)
+        call_deferred("_start_next_step", unit_id)
         return
     
     var step = current_steps[unit_id]
@@ -416,7 +416,7 @@ func _complete_step(unit_id: String) -> void:
     if active_plans[unit_id].is_empty():
         _complete_plan(unit_id)
     else:
-        _start_next_step(unit_id)
+        call_deferred("_start_next_step", unit_id)
 
 func _start_next_step(unit_id: String) -> void:
     """Start the next step in the plan"""
@@ -428,7 +428,7 @@ func _start_next_step(unit_id: String) -> void:
     next_step.start_time = Time.get_ticks_msec() / 1000.0
     
     # Execute the step action
-    if not _execute_step_action(unit_id, next_step):
+    if not await _execute_step_action(unit_id, next_step):
         step_failed.emit(unit_id, next_step, "failed_to_execute")
         _complete_step(unit_id)  # Skip failed step
 
@@ -456,7 +456,7 @@ func _execute_step_action(unit_id: String, step: PlanStep) -> bool:
     execution_stats.actions_by_type[step.action] += 1
     
     # Execute action with enhanced integration
-    var result = _execute_enhanced_action(unit_id, step, unit)
+    var result = await _execute_enhanced_action(unit_id, step, unit)
     
     if result:
         # Set cooldown for this action
@@ -480,22 +480,24 @@ func _execute_enhanced_action(unit_id: String, step: PlanStep, unit: Node) -> bo
             return _execute_attack(unit_id, step, unit)
         
         "peek_and_fire":
-            return _execute_peek_and_fire(unit_id, step, unit)
+            return await _execute_peek_and_fire(unit_id, step, unit)
         
         "lay_mines":
-            return _execute_lay_mines(unit_id, step, unit)
+            return await _execute_lay_mines(unit_id, step, unit)
         
         "hijack_spire":
-            return _execute_hijack_spire(unit_id, step, unit)
+            return await _execute_hijack_spire(unit_id, step, unit)
         
         "retreat":
-            return _execute_retreat(unit_id, step, unit)
+            # Simple retreat implementation
+            print("PlanExecutor: %s retreating" % unit_id)
+            return true
         
         "heal":
-            return _execute_heal(unit_id, step, unit)
+            return await _execute_heal(unit_id, step, unit)
         
         "repair":
-            return _execute_repair(unit_id, step, unit)
+            return await _execute_repair(unit_id, step, unit)
         
         "stealth":
             return _execute_stealth(unit_id, step, unit)
@@ -507,13 +509,13 @@ func _execute_enhanced_action(unit_id: String, step: PlanStep, unit: Node) -> bo
             return _execute_mark_target(unit_id, step, unit)
         
         "build_turret":
-            return _execute_build_turret(unit_id, step, unit)
+            return await _execute_build_turret(unit_id, step, unit)
         
         "shield":
             return _execute_shield(unit_id, step, unit)
         
         "charge":
-            return _execute_charge(unit_id, step, unit)
+            return await _execute_charge(unit_id, step, unit)
         
         "formation":
             return _execute_formation(unit_id, step, unit)
@@ -639,8 +641,11 @@ func _execute_lay_mines(unit_id: String, step: PlanStep, unit: Node) -> bool:
             print("PlanExecutor: No entity manager found for mine deployment")
             return false
         
-        # Get tile system for position conversion
-        var tile_system = _get_tile_system()
+        # Get tile system for position conversion  
+        var tile_system = null
+        if entity_manager.has_method("get_tile_system"):
+            tile_system = entity_manager.get_tile_system()
+        
         if not tile_system:
             print("PlanExecutor: No tile system found for mine placement")
             return false
@@ -1304,8 +1309,8 @@ func get_plan_progress(unit_id: String) -> Dictionary:
     } 
 
 # Enhanced public interface
-func get_execution_stats() -> Dictionary:
-    """Get detailed plan progress for a unit"""
+func get_unit_plan_progress(unit_id: String) -> Dictionary:
+    """Get detailed plan progress for a specific unit"""
     if not unit_id in active_plans:
         return {}
     

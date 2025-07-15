@@ -193,6 +193,28 @@ func _find_closest_enemy_to_ally(ally: Unit) -> Unit:
 	
 	return closest_enemy
 
+func charge_to(target_position: Vector3) -> void:
+	"""Tank charge ability - fast movement to target position"""
+	if current_state == GameEnums.UnitState.DEAD:
+		return
+	
+	print("Tank %s: Charging to position %s" % [unit_id, target_position])
+	
+	# Temporarily increase movement speed for charge
+	var original_speed = movement_speed
+	movement_speed *= 2.0  # Double speed for charge
+	
+	# Move to target position
+	move_to(target_position)
+	
+	# Schedule speed restoration after charge duration
+	await get_tree().create_timer(3.0).timeout
+	
+	# Restore original speed
+	movement_speed = original_speed
+	
+	print("Tank %s: Charge completed" % unit_id)
+
 func slam_attack() -> void:
 	# Tank performs a powerful area attack
 	var slam_radius = 5.0

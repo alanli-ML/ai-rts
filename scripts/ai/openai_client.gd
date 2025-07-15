@@ -229,9 +229,7 @@ func _on_request_completed(result: int, response_code: int, headers: PackedStrin
 		print("Request failed: " + error_message)
 		request_failed.emit(error_type, error_message)
 		
-		if callback.is_valid():
-			callback.call(null, error_type, error_message)
-		
+		# Don't call callback on error - let signal handle it
 		_process_queue()
 		return
 	
@@ -239,8 +237,7 @@ func _on_request_completed(result: int, response_code: int, headers: PackedStrin
 	if body.size() == 0:
 		print("Empty response body")
 		request_failed.emit(APIError.UNKNOWN_ERROR, "Empty response")
-		if callback.is_valid():
-			callback.call(null, APIError.UNKNOWN_ERROR, "Empty response")
+		# Don't call callback on error - let signal handle it
 		_process_queue()
 		return
 	
@@ -250,8 +247,7 @@ func _on_request_completed(result: int, response_code: int, headers: PackedStrin
 	if parse_result != OK:
 		print("Failed to parse JSON response")
 		request_failed.emit(APIError.UNKNOWN_ERROR, "Invalid JSON response")
-		if callback.is_valid():
-			callback.call(null, APIError.UNKNOWN_ERROR, "Invalid JSON response")
+		# Don't call callback on error - let signal handle it
 		_process_queue()
 		return
 	
@@ -261,9 +257,9 @@ func _on_request_completed(result: int, response_code: int, headers: PackedStrin
 	# Emit success signal
 	request_completed.emit(response_data)
 	
-	# Call callback
+	# Call callback with only response data (matching expected signature)
 	if callback.is_valid():
-		callback.call(response_data, APIError.NONE, "")
+		callback.call(response_data)
 	
 	# Process next request in queue
 	_process_queue()

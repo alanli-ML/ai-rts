@@ -319,12 +319,25 @@ func _find_system_references():
 		pathfinding_system = pathfinding_systems[0]
 
 func _setup_ui_components():
-	"""Setup UI components"""
+	"""Setup UI components in the correct viewport"""
+	# Find the game world SubViewport and add selection UI there
+	call_deferred("_setup_selection_ui")
+
+func _setup_selection_ui():
+	"""Setup selection UI in the correct viewport (ported from SelectionManager)"""
 	# Create canvas layer
 	canvas_layer = CanvasLayer.new()
 	canvas_layer.name = "SelectionUI"
 	canvas_layer.layer = 100  # High layer for UI
-	add_child(canvas_layer)
+	
+	# Try to find the game world SubViewport
+	var game_world_viewport = _find_game_world_viewport()
+	if game_world_viewport:
+		print("EnhancedSelectionSystem: Found game world SubViewport, adding selection UI there")
+		game_world_viewport.add_child(canvas_layer)
+	else:
+		print("EnhancedSelectionSystem: Using main viewport for selection UI")
+		add_child(canvas_layer)
 	
 	# Create UI container
 	ui_container = Control.new()
@@ -375,19 +388,19 @@ func _handle_mouse_button(event: InputEventMouseButton):
 	"""Handle mouse button events"""
 	if event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
-			_start_selection(event.position)
+			_start_selection(_transform_mouse_position(event.position))
 		else:
-			_finish_selection(event.position)
+			_finish_selection(_transform_mouse_position(event.position))
 	elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-		_handle_right_click(event.position)
+		_handle_right_click(_transform_mouse_position(event.position))
 
 func _handle_mouse_motion(event: InputEventMouseMotion):
 	"""Handle mouse motion events"""
 	if is_box_selecting:
-		box_end_position = event.position
+		box_end_position = _transform_mouse_position(event.position)
 		_update_box_selection()
 	else:
-		_update_hover(event.position)
+		_update_hover(_transform_mouse_position(event.position))
 
 func _handle_keyboard_input(event: InputEventKey):
 	"""Handle keyboard input"""
@@ -925,4 +938,77 @@ func get_selection_statistics() -> Dictionary:
 		"active_indicators": selection_indicators.size(),
 		"active_health_bars": health_bars.size(),
 		"hovered_unit": hovered_unit != null
-	} 
+	}
+
+# ========== COORDINATE TRANSFORMATION METHODS (Ported from SelectionManager) ==========
+
+func _find_game_world_viewport() -> SubViewport:
+	"""Find the game world SubViewport in the scene tree"""
+	# Look for the specific path structure: GameUI/GameWorldContainer/GameWorld
+	var main_scene = get_tree().current_scene
+	if not main_scene:
+		return null
+	
+	# Try multiple possible paths
+	var possible_paths = [
+		"GameUI/GameWorldContainer/GameWorld",
+		"MenuContainer/GameUI/GameWorldContainer/GameWorld",
+		"GameWorldContainer/GameWorld"
+	]
+	
+	for path in possible_paths:
+		var viewport = main_scene.get_node_or_null(path)
+		if viewport and viewport is SubViewport:
+			return viewport as SubViewport
+	
+	# If not found by path, search recursively
+	return _find_subviewport_recursive(main_scene)
+
+func _find_subviewport_recursive(node: Node) -> SubViewport:
+	"""Recursively search for SubViewport nodes"""
+	if node is SubViewport:
+		var subviewport = node as SubViewport
+		# Check if it contains 3D content (has Camera3D child)
+		if _has_camera3d_child(subviewport):
+			return subviewport
+	
+	for child in node.get_children():
+		var result = _find_subviewport_recursive(child)
+		if result:
+			return result
+	
+	return null
+
+func _has_camera3d_child(node: Node) -> bool:
+	"""Check if node or its children contain a Camera3D"""
+	if node is Camera3D:
+		return true
+	
+	for child in node.get_children():
+		if _has_camera3d_child(child):
+			return true
+	
+	return false
+
+func _transform_mouse_position(global_mouse_pos: Vector2) -> Vector2:
+	"""Transform mouse coordinates from main viewport to SubViewport space"""
+	var game_viewport = _find_game_world_viewport()
+	if not game_viewport:
+		# No SubViewport found, return original coordinates
+		return global_mouse_pos
+	
+	# Find the Control node that contains the SubViewport to get its offset
+	var viewport_container = game_viewport.get_parent()
+	if not viewport_container or not viewport_container is Control:
+		# Can't determine offset, return original coordinates
+		print("EnhancedSelectionSystem: Warning - SubViewport parent is not a Control node")
+		return global_mouse_pos
+	
+	# Get the global position of the SubViewport container
+	var container_control = viewport_container as Control
+	var global_rect = container_control.get_global_rect()
+	
+	# Transform coordinates from main viewport to SubViewport space
+	var local_pos = global_mouse_pos - global_rect.position
+	
+	return local_pos 

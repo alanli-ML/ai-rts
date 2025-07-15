@@ -33,17 +33,18 @@ enum GamePhase {
     ENDED
 }
 
-# Command types
+# Command types - Updated to match ActionValidator ALLOWED_ACTIONS
 enum CommandType {
-    MOVE,
+    MOVE_TO,
     ATTACK,
-    STOP,
-    GUARD,
+    PEEK_AND_FIRE,
+    LAY_MINES,
+    HIJACK_ENEMY_SPIRE,
+    RETREAT,
     PATROL,
-    FOLLOW,
-    HEAL,
-    BUILD,
-    SPECIAL
+    USE_ABILITY,
+    FORMATION,
+    STANCE
 }
 
 # Team IDs
@@ -112,13 +113,14 @@ static func get_building_type_string(type: BuildingType) -> String:
 
 static func get_command_type_string(type: CommandType) -> String:
     match type:
-        CommandType.MOVE: return "MOVE"
+        CommandType.MOVE_TO: return "MOVE_TO"
         CommandType.ATTACK: return "ATTACK"
-        CommandType.STOP: return "STOP"
-        CommandType.GUARD: return "GUARD"
+        CommandType.PEEK_AND_FIRE: return "PEEK_AND_FIRE"
+        CommandType.LAY_MINES: return "LAY_MINES"
+        CommandType.HIJACK_ENEMY_SPIRE: return "HIJACK_ENEMY_SPIRE"
+        CommandType.RETREAT: return "RETREAT"
         CommandType.PATROL: return "PATROL"
-        CommandType.FOLLOW: return "FOLLOW"
-        CommandType.HEAL: return "HEAL"
-        CommandType.BUILD: return "BUILD"
-        CommandType.SPECIAL: return "SPECIAL"
+        CommandType.USE_ABILITY: return "USE_ABILITY"
+        CommandType.FORMATION: return "FORMATION"
+        CommandType.STANCE: return "STANCE"
         _: return "UNKNOWN" 

@@ -21,7 +21,7 @@
 - **✅ DependencyContainer**: Manages all dependencies with proper injection
 - **✅ GameMode**: Handles runtime mode detection and switching
 - **✅ UnifiedMain**: Single entry point that adapts to runtime environment
-- **✅ Enhanced Unit System**: Comprehensive unit implementation with vision, combat, selection
+- **✅ Enhanced Unit System**: Comprehensive unit implementation with vision, combat, selection (unified system)
 - **✅ Shared Components**: GameConstants, GameEnums, NetworkMessages, Logger
 
 ### **3. Server Architecture Complete**
@@ -35,6 +35,14 @@
 - **✅ ClientMain**: Client-specific logic and initialization
 - **✅ Network Client**: Connection to dedicated server
 - **✅ UI Framework**: Menu system and game interface foundation
+
+### **5. Selection System Optimization (LATEST)**
+- **✅ System Consolidation**: Migrated from SelectionManager to unified EnhancedSelectionSystem
+- **✅ SubViewport Coordinate Fix**: Mouse selection box properly anchored to 3D world viewport
+- **✅ Coordinate Transformation**: Proper mouse coordinate mapping between main viewport and game SubViewport
+- **✅ Enhanced UI Integration**: Selection UI components placed in correct viewport for pixel-perfect alignment
+- **✅ Code Cleanup**: Removed legacy systems and updated all references across the codebase
+- **✅ Performance Optimization**: Single selection system reduces overhead and complexity
 
 ---
 
@@ -62,7 +70,7 @@ Single Unified Project
 - **Full State Machine**: Comprehensive state management
 - **Vision Cone Detection**: 120° field of view with enemy/ally tracking
 - **Combat System**: Range-based attacks with cooldowns
-- **Selection Indicators**: Visual feedback for unit selection
+- **Selection Indicators**: Visual feedback for unit selection (unified system with coordinate fix)
 - **AI Integration**: Command processing and behavior systems
 - **Archetype Support**: Scout, Tank, Sniper, Medic, Engineer variants
 

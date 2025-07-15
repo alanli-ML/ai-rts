@@ -61,10 +61,10 @@ signal unit_destroyed(unit_id: String)
 
 func _ready() -> void:
     # Load unit scene
-    server_unit_scene = preload("res://scenes/ServerUnit.tscn")
+    server_unit_scene = preload("res://scenes/units/Unit.tscn")
     
     if not server_unit_scene:
-        print("Error: Could not load ServerUnit scene")
+        print("Error: Could not load Unit scene")
         return
     
     print("UnitSpawner initialized")

@@ -65,6 +65,8 @@ var update_animations: bool = true
 
 # Movement settings
 var movement_threshold: float = 0.5
+var turning_speed: float = 5.0  # Radians per second for smooth turning
+var target_rotation: float = 0.0  # Target Y rotation
 
 # Signals
 signal character_loaded(character_variant: String)
@@ -104,10 +106,35 @@ func _ready() -> void:
 	# Equip weapon after character is loaded
 	_equip_archetype_weapon()
 	
+	# Initialize rotation and configure turning speed based on archetype
+	target_rotation = rotation.y
+	_configure_turning_speed()
+	
 	if logger:
 		logger.info("AnimatedUnit", "Animated unit %s (%s) ready with character %s" % [unit_id, archetype, current_character_variant])
 	else:
 		print("AnimatedUnit: Animated unit %s (%s) ready with character %s" % [unit_id, archetype, current_character_variant])
+
+func _configure_turning_speed() -> void:
+	"""Configure turning speed based on unit archetype"""
+	match archetype:
+		"scout":
+			turning_speed = 8.0  # Fast turning for scouts
+		"soldier":
+			turning_speed = 6.0  # Medium turning for soldiers
+		"sniper":
+			turning_speed = 4.0  # Slower, more deliberate turning for snipers
+		"tank":
+			turning_speed = 3.0  # Slow turning for heavy units
+		"medic":
+			turning_speed = 5.0  # Moderate turning for medics
+		"engineer":
+			turning_speed = 5.5  # Slightly faster for engineers
+		_:
+			turning_speed = 5.0  # Default turning speed
+	
+	if logger:
+		logger.debug("AnimatedUnit", "Unit %s (%s) configured with turning speed: %.1f rad/s" % [unit_id, archetype, turning_speed])
 
 func _setup_weapon_system() -> void:
 	"""Setup the weapon system components"""
@@ -244,36 +271,186 @@ func _remove_placeholder_elements() -> void:
 		print("AnimatedUnit: Removed %d placeholder elements" % children_to_remove.size())
 
 func _create_character_collision_shape(scale_factor: float) -> void:
-	"""Create collision shape that matches the character model dimensions"""
+	"""Create optimized collision shape from character meshes for accurate hit detection"""
 	
-	# Create new collision shape for the character
+	if not character_model:
+		if logger:
+			logger.error("AnimatedUnit", "Cannot create collision shape: character model not loaded")
+		return
+	
+	# Wait for character model to be fully processed
+	await get_tree().process_frame
+	
+	# Find all mesh instances in the character model
+	var mesh_instances = _find_all_mesh_instances(character_model)
+	
+	if mesh_instances.is_empty():
+		if logger:
+			logger.warning("AnimatedUnit", "No mesh instances found, creating fallback collision shape")
+		_create_fallback_collision_shape(scale_factor)
+		return
+	
+	# Create a unified collision shape that represents the entire character
+	# This is more efficient than multiple collision shapes and works better with selection
 	var collision_shape = CollisionShape3D.new()
-	collision_shape.name = "CharacterCollisionShape3D"  # Use different name than placeholder
+	collision_shape.name = "CharacterCollisionShape3D"
 	
-	# Use a box shape that better represents the character dimensions
-	var box_shape = BoxShape3D.new()
-	# Kenny characters are roughly 1 unit wide, 2 units tall, 1 unit deep
-	# Scale according to the character model scale
-	box_shape.size = Vector3(
-		1.0 * scale_factor,   # Width
-		2.0 * scale_factor,   # Height 
-		1.0 * scale_factor    # Depth
-	)
-	collision_shape.shape = box_shape
+	# Calculate the combined bounds of all character meshes
+	var combined_aabb = _calculate_combined_character_bounds(mesh_instances)
 	
-	# Position the collision shape to match character center
-	collision_shape.position.y = 1.0 * scale_factor  # Center at character height/2
+	if combined_aabb.size.length() > 0:
+		# Try to create a convex collision shape from the main character mesh
+		var main_mesh = _find_main_character_mesh(mesh_instances)
+		if main_mesh and _create_convex_collision_from_mesh(collision_shape, main_mesh, scale_factor):
+			if logger:
+				logger.info("AnimatedUnit", "Created convex collision shape from character mesh")
+		else:
+			# Fallback to capsule shape based on actual character bounds
+			_create_optimized_capsule_collision(collision_shape, combined_aabb, scale_factor)
+			if logger:
+				logger.info("AnimatedUnit", "Created optimized capsule collision from character bounds")
+	else:
+		# Final fallback to standard collision shape
+		_create_fallback_collision_shape(scale_factor)
+		return
 	
-	# Add collision shape to unit using call_deferred to avoid timing issues
-	call_deferred("add_child", collision_shape)
+	# Add the collision shape to the unit
+	add_child(collision_shape)
 	
-	# Set collision layers for selection detection after the shape is added
+	# Set collision layers for selection detection
 	call_deferred("_configure_collision_layers")
 	
 	if logger:
-		logger.info("AnimatedUnit", "Created character collision shape: size %s, position %s" % [box_shape.size, collision_shape.position])
+		logger.info("AnimatedUnit", "Created optimized character collision shape for selection")
 	else:
-		print("AnimatedUnit: Created character collision shape: size %s, position %s" % [box_shape.size, collision_shape.position])
+		print("AnimatedUnit: Created optimized character collision shape for selection")
+
+func _find_all_mesh_instances(node: Node) -> Array[MeshInstance3D]:
+	"""Recursively find all MeshInstance3D nodes in the character model"""
+	var mesh_instances: Array[MeshInstance3D] = []
+	
+	if node is MeshInstance3D:
+		mesh_instances.append(node as MeshInstance3D)
+	
+	for child in node.get_children():
+		mesh_instances.append_array(_find_all_mesh_instances(child))
+	
+	return mesh_instances
+
+func _calculate_combined_character_bounds(mesh_instances: Array[MeshInstance3D]) -> AABB:
+	"""Calculate the combined bounding box of all character meshes"""
+	var combined_aabb = AABB()
+	var first_mesh = true
+	
+	for mesh_instance in mesh_instances:
+		if mesh_instance.mesh:
+			var mesh_aabb = mesh_instance.get_aabb()
+			# Transform AABB by mesh instance transform
+			var transformed_aabb = mesh_instance.transform * mesh_aabb
+			
+			if first_mesh:
+				combined_aabb = transformed_aabb
+				first_mesh = false
+			else:
+				combined_aabb = combined_aabb.merge(transformed_aabb)
+	
+	if logger:
+		logger.debug("AnimatedUnit", "Combined character bounds: %s" % combined_aabb)
+	
+	return combined_aabb
+
+func _find_main_character_mesh(mesh_instances: Array[MeshInstance3D]) -> MeshInstance3D:
+	"""Find the main character mesh (typically the largest one)"""
+	var main_mesh: MeshInstance3D = null
+	var largest_volume = 0.0
+	
+	for mesh_instance in mesh_instances:
+		if mesh_instance.mesh:
+			var aabb = mesh_instance.get_aabb()
+			var volume = aabb.size.x * aabb.size.y * aabb.size.z
+			
+			if volume > largest_volume:
+				largest_volume = volume
+				main_mesh = mesh_instance
+	
+	if logger and main_mesh:
+		logger.debug("AnimatedUnit", "Found main character mesh: %s (volume: %.2f)" % [main_mesh.name, largest_volume])
+	
+	return main_mesh
+
+func _create_convex_collision_from_mesh(collision_shape: CollisionShape3D, mesh_instance: MeshInstance3D, _scale_factor: float) -> bool:
+	"""Try to create a convex collision shape from the main character mesh"""
+	var mesh = mesh_instance.mesh
+	if not mesh or mesh.get_surface_count() == 0:
+		return false
+	
+	var arrays = mesh.surface_get_arrays(0)
+	if not arrays[Mesh.ARRAY_VERTEX]:
+		return false
+	
+	var vertices = arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array
+	if vertices.size() == 0:
+		return false
+	
+	# Create convex shape from vertices
+	var convex_shape = ConvexPolygonShape3D.new()
+	
+	# Transform vertices (mesh_instance.transform already includes character_model scaling)
+	var transformed_vertices = PackedVector3Array()
+	for vertex in vertices:
+		# Apply the mesh instance's local transform to get world-space vertices
+		var transformed_vertex = mesh_instance.transform * vertex
+		transformed_vertices.append(transformed_vertex)
+	
+	convex_shape.points = transformed_vertices
+	collision_shape.shape = convex_shape
+	
+	# Position collision shape correctly (no additional positioning needed since vertices are transformed)
+	collision_shape.position = Vector3.ZERO
+	
+	if logger:
+		logger.debug("AnimatedUnit", "Created convex collision from mesh with %d vertices" % vertices.size())
+	
+	return true
+
+func _create_optimized_capsule_collision(collision_shape: CollisionShape3D, character_aabb: AABB, _scale_factor: float) -> void:
+	"""Create an optimized capsule collision shape based on character bounds"""
+	var capsule_shape = CapsuleShape3D.new()
+	
+	# Use character bounds to determine capsule dimensions
+	# Note: character_aabb already includes the character_model scaling
+	var char_width = max(character_aabb.size.x, character_aabb.size.z)
+	var char_height = character_aabb.size.y
+	
+	# Set capsule properties based on actual character dimensions (no additional scaling needed)
+	capsule_shape.radius = (char_width / 2.0) * 0.8  # Slightly smaller for better gameplay
+	capsule_shape.height = char_height
+	
+	collision_shape.shape = capsule_shape
+	
+	# Position the collision shape to match character center
+	collision_shape.position = character_aabb.get_center()
+	collision_shape.position.y = char_height / 2.0  # Adjust for ground positioning
+	
+	if logger:
+		logger.debug("AnimatedUnit", "Created optimized capsule: radius %.2f, height %.2f" % [capsule_shape.radius, capsule_shape.height])
+
+func _create_fallback_collision_shape(scale_factor: float) -> void:
+	"""Create a fallback collision shape when mesh-based collision fails"""
+	var collision_shape = CollisionShape3D.new()
+	collision_shape.name = "FallbackCollisionShape3D"
+	
+	# Create a capsule shape as fallback (better than box for characters)
+	var capsule_shape = CapsuleShape3D.new()
+	capsule_shape.height = 2.0 * scale_factor
+	capsule_shape.radius = 0.5 * scale_factor
+	collision_shape.shape = capsule_shape
+	collision_shape.position.y = 1.0 * scale_factor  # Center at character height/2
+	
+	add_child(collision_shape)
+	
+	if logger:
+		logger.warning("AnimatedUnit", "Created fallback capsule collision: height %s, radius %s" % [capsule_shape.height, capsule_shape.radius])
 
 func _configure_collision_layers() -> void:
 	"""Configure collision layers for proper selection detection"""
@@ -285,6 +462,21 @@ func _configure_collision_layers() -> void:
 	# Layer 1 is used by the selection system for raycast detection
 	collision_layer = 1  # This unit exists on layer 1 (selection layer)
 	collision_mask = 2   # This unit collides with layer 2 (environment/terrain)
+	
+	# Verify collision shape is working for selection
+	var collision_shape = get_node_or_null("CharacterCollisionShape3D")
+	if collision_shape:
+		if logger:
+			logger.debug("AnimatedUnit", "Verified character collision shape for selection: %s" % collision_shape.name)
+	else:
+		if logger:
+			logger.warning("AnimatedUnit", "Character collision shape not found - selection may not work properly")
+	
+	# Ensure unit is in the "units" group for selection system
+	if not is_in_group("units"):
+		add_to_group("units")
+		if logger:
+			logger.debug("AnimatedUnit", "Added unit to 'units' group for selection detection")
 	
 	if logger:
 		logger.info("AnimatedUnit", "Configured collision layers: layer %d, mask %d" % [collision_layer, collision_mask])
@@ -823,6 +1015,15 @@ func _handle_movement(delta: float) -> void:
 	# Move towards target
 	global_position = global_position.move_toward(movement_target, movement_distance)
 	
+	# Calculate target rotation to face movement direction
+	if direction.length() > 0.1:
+		# Calculate Y rotation to face the movement direction
+		# Using atan2 to get the correct angle for facing the target
+		target_rotation = atan2(direction.x, direction.z)
+	
+	# Smoothly rotate toward target rotation
+	_update_smooth_rotation(delta)
+	
 	# Update animation controller with movement data
 	if animation_controller:
 		if not was_moving:
@@ -832,6 +1033,46 @@ func _handle_movement(delta: float) -> void:
 			# Update speed if it changed significantly
 			if abs(animation_controller.current_speed - movement_speed) > 0.5:
 				animation_controller.update_speed(movement_speed)
+
+func _update_smooth_rotation(delta: float) -> void:
+	"""Smoothly rotate the unit toward the target rotation"""
+	# Get current Y rotation
+	var current_rotation = rotation.y
+	
+	# Calculate the shortest angular distance to target
+	var angle_diff = target_rotation - current_rotation
+	
+	# Wrap the angle difference to [-PI, PI] for shortest rotation
+	while angle_diff > PI:
+		angle_diff -= 2 * PI
+	while angle_diff < -PI:
+		angle_diff += 2 * PI
+	
+	# Check if we're close enough to the target (avoid micro-adjustments)
+	if abs(angle_diff) < 0.01:
+		rotation.y = target_rotation
+		return
+	
+	# Calculate rotation step for this frame
+	var rotation_step = turning_speed * delta
+	
+	# Limit rotation step to not overshoot the target
+	if abs(angle_diff) < rotation_step:
+		rotation.y = target_rotation
+	else:
+		# Rotate toward target
+		rotation.y += sign(angle_diff) * rotation_step
+	
+	# Keep rotation in valid range [0, 2π]
+	rotation.y = fmod(rotation.y + 2 * PI, 2 * PI)
+	
+	if logger and abs(angle_diff) > 0.1:
+		logger.debug("AnimatedUnit", "Unit %s rotating: current=%.2f°, target=%.2f°, diff=%.2f°" % [
+			unit_id, 
+			rad_to_deg(current_rotation), 
+			rad_to_deg(target_rotation), 
+			rad_to_deg(angle_diff)
+		])
 
 # Override damage handling from base Unit class
 func take_damage(damage: float) -> void:

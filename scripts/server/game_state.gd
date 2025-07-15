@@ -292,8 +292,42 @@ func process_ai_command(command: String, selected_units: Array, player_id: Strin
     """Process an AI command"""
     logger.info("ServerGameState", "Processing AI command: %s" % command)
     
-    # TODO: Implement AI command processing
-    # This would integrate with the AI system
+    # Get AI command processor from dependency container
+    var dependency_container = get_node("/root/DependencyContainer")
+    if not dependency_container:
+        logger.error("ServerGameState", "Cannot find DependencyContainer for AI command processing")
+        return
+    
+    var ai_command_processor = dependency_container.get_ai_command_processor()
+    if not ai_command_processor:
+        logger.error("ServerGameState", "AI command processor not available")
+        return
+    
+    # Convert selected_units to actual unit objects if they're IDs
+    var unit_objects = []
+    for unit_data in selected_units:
+        if unit_data is String:
+            # Unit ID provided, get the actual unit
+            var unit = get_unit(unit_data)
+            if unit:
+                unit_objects.append(unit)
+        else:
+            # Assume it's already a unit object
+            unit_objects.append(unit_data)
+    
+    # Build game state context for AI
+    var game_state_context = {
+        "match_state": match_state,
+        "game_time": game_time,
+        "team_resources": team_resources,
+        "player_id": player_id,
+        "units_count": units.size(),
+        "buildings_count": buildings.size()
+    }
+    
+    # Send to AI command processor
+    ai_command_processor.process_command(command, unit_objects, game_state_context)
+    logger.info("ServerGameState", "AI command forwarded to processor")
 
 # Signal handlers
 func _on_unit_destroyed(unit_id: String) -> void:

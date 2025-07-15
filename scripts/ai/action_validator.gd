@@ -20,6 +20,64 @@ const VALID_STANCES = ["aggressive", "defensive", "passive"]
 # Speech content filtering
 const INAPPROPRIATE_WORDS = ["shit", "fuck", "damn", "hell", "stupid", "noob", "ez", "rekt"]
 
+func validate_command(command: Dictionary) -> bool:
+    """
+    Validate a single command
+    
+    Args:
+        command: Dictionary with command data
+        
+    Returns:
+        bool: True if command is valid, False otherwise
+    """
+    # Check basic command structure
+    if not command.has("action"):
+        print("ActionValidator: Command missing 'action' field")
+        return false
+    
+    var action = command.get("action", "")
+    if action.is_empty():
+        print("ActionValidator: Command action is empty")
+        return false
+    
+    # Check if action is allowed
+    if action not in ALLOWED_ACTIONS:
+        print("ActionValidator: Invalid action '%s'" % action)
+        return false
+    
+    # Validate parameters if present
+    if command.has("parameters"):
+        var params = command.get("parameters", {})
+        if not _validate_command_parameters(action, params):
+            return false
+    
+    return true
+
+func _validate_command_parameters(action: String, params: Dictionary) -> bool:
+    """Validate parameters for a specific command action"""
+    match action:
+        "move_to":
+            if params.has("position"):
+                var pos = params.position
+                if pos is Array and pos.size() >= 2:
+                    var x = pos[0]
+                    var z = pos[1] if pos.size() > 1 else 0
+                    if x < MIN_COORDINATE or x > MAX_COORDINATE or z < MIN_COORDINATE or z > MAX_COORDINATE:
+                        print("ActionValidator: Position out of bounds: [%s, %s]" % [x, z])
+                        return false
+        "formation":
+            if params.has("formation"):
+                if params.formation not in VALID_FORMATIONS:
+                    print("ActionValidator: Invalid formation: %s" % params.formation)
+                    return false
+        "stance":
+            if params.has("stance"):
+                if params.stance not in VALID_STANCES:
+                    print("ActionValidator: Invalid stance: %s" % params.stance)
+                    return false
+    
+    return true
+
 func validate_plan(plan: Dictionary) -> Dictionary:
     """
     Validate a multi-step AI plan

@@ -14,8 +14,20 @@ var selection_system: EnhancedSelectionSystem = null
 var current_demo_step: int = 0
 var demo_steps: Array = []
 
+# Testing control
+var testing_enabled: bool = false
+
 func _ready() -> void:
 	print("\n🎮 AI-RTS DEMO WITH UNITS INITIALIZING...")
+	
+	# Check if this should be enabled (only in dedicated test scenes)
+	var scene_name = get_tree().current_scene.name if get_tree().current_scene else ""
+	testing_enabled = scene_name.contains("Test") or scene_name.contains("Demo")
+	
+	if testing_enabled:
+		print("AIDemoWithUnits: Testing enabled for scene: %s" % scene_name)
+	else:
+		print("AIDemoWithUnits: Testing disabled for scene: %s. Use T key to enable." % scene_name)
 	
 	# Wait for unified main to finish setup
 	await get_tree().create_timer(2.0).timeout
@@ -278,6 +290,18 @@ func _setup_demo_steps() -> void:
 func _input(event: InputEvent) -> void:
 	"""Handle input for the demo"""
 	if event is InputEventKey and event.pressed:
+		# Always allow T key to toggle testing mode
+		if event.keycode == KEY_T and Input.is_action_pressed("ctrl"):
+			testing_enabled = !testing_enabled
+			print("AIDemoWithUnits: Testing mode %s" % ("enabled" if testing_enabled else "disabled"))
+			if testing_enabled:
+				_print_demo_instructions()
+			return
+		
+		# Only handle other inputs if testing is enabled
+		if not testing_enabled:
+			return
+			
 		match event.keycode:
 			KEY_D:
 				start_ai_demo()

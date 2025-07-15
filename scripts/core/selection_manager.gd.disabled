@@ -67,11 +67,11 @@ func _ready() -> void:
     add_child(canvas_layer)
     canvas_layer.add_child(selection_box_drawer)
     
-    # Connect to EventBus signals
-    EventBus.unit_spawned.connect(_on_unit_spawned)
-    EventBus.unit_died.connect(_on_unit_died)
+    # Connect to EventBus signals - DISABLED for testing
+    # EventBus.unit_spawned.connect(_on_unit_spawned)
+    # EventBus.unit_died.connect(_on_unit_died)
     
-    Logger.info("SelectionManager", "Selection Manager initialized")
+    print("SelectionManager: Selection Manager initialized")
 
 func _input(event: InputEvent) -> void:
     if not camera:
@@ -113,12 +113,12 @@ func _find_camera() -> void:
                     break
     
     if camera:
-        Logger.debug("SelectionManager", "Found camera: %s" % camera.name)
+        print("SelectionManager: Found camera: %s" % camera.name)
     else:
-        Logger.warning("SelectionManager", "No camera found for selection system")
+        print("SelectionManager WARNING: No camera found for selection system")
 
 func _on_left_click_pressed(position: Vector2) -> void:
-    Logger.debug("SelectionManager", "Left click pressed at %s" % position)
+    print("SelectionManager: Left click pressed at %s" % position)
     box_start_position = position
     box_end_position = position
     is_box_selecting = true
@@ -136,7 +136,7 @@ func _on_left_click_pressed(position: Vector2) -> void:
     last_click_time = current_time
 
 func _on_left_click_released(position: Vector2) -> void:
-    Logger.debug("SelectionManager", "Left click released at %s" % position)
+    print("SelectionManager: Left click released at %s" % position)
     if not is_box_selecting:
         return
     
@@ -144,15 +144,15 @@ func _on_left_click_released(position: Vector2) -> void:
     selection_box_drawer.visible = false
     
     var drag_distance = box_start_position.distance_to(position)
-    Logger.debug("SelectionManager", "Drag distance: %f (min: %f)" % [drag_distance, min_drag_distance])
+    print("SelectionManager: Drag distance: %f (min: %f)" % [drag_distance, min_drag_distance])
     
     if drag_distance < min_drag_distance:
         # Single click selection
-        Logger.debug("SelectionManager", "Processing single click selection")
+        print("SelectionManager: Processing single click selection")
         _handle_single_selection(position)
     else:
         # Box selection
-        Logger.debug("SelectionManager", "Processing box selection")
+        print("SelectionManager: Processing box selection")
         _handle_box_selection()
 
 func _on_right_click(position: Vector2) -> void:
@@ -163,7 +163,8 @@ func _on_right_click(position: Vector2) -> void:
     var world_position = _get_world_position_from_screen(position)
     if world_position:
         for unit in selected_units:
-            EventBus.emit_unit_command(unit.name, "move_to:%s,%s" % [world_position.x, world_position.z])
+            # EventBus.emit_unit_command(unit.name, "move_to:%s,%s" % [world_position.x, world_position.z])
+            pass
 
 func _handle_single_selection(position: Vector2) -> void:
     var unit = _get_unit_at_position(position)

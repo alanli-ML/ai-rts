@@ -3,13 +3,16 @@
 class_name ClientDisplayManager
 extends Node
 
+# Load shared components
+const GameConstants = preload("res://scripts/shared/constants/game_constants.gd")
+
 # Display state (received from server)
 var displayed_units: Dictionary = {}  # unit_id -> DisplayUnit
 var displayed_buildings: Dictionary = {}  # building_id -> DisplayBuilding
 var game_state: Dictionary = {}
 
 # Input handling
-var selection_manager: SelectionManager
+var selection_manager: EnhancedSelectionSystem
 var camera_controller: Node
 var ui_manager: Node
 
@@ -28,7 +31,7 @@ signal connection_status_changed(connected: bool)
 
 func _ready() -> void:
 	# Initialize components
-	selection_manager = SelectionManager.new()
+	selection_manager = EnhancedSelectionSystem.new()
 	add_child(selection_manager)
 	
 	# Setup server connection
@@ -510,45 +513,7 @@ class Set:
 	func clear() -> void:
 		items.clear()
 
-# Simple SelectionManager class
-class SelectionManager extends Node:
-	var selected_units: Array = []
-	
-	signal selection_changed(selected_units: Array)
-	
-	func select_units(units: Array) -> void:
-		# Deselect previous units
-		for unit in selected_units:
-			if unit.has_method("deselect"):
-				unit.deselect()
-		
-		# Select new units
-		selected_units = units.duplicate()
-		for unit in selected_units:
-			if unit.has_method("select"):
-				unit.select()
-		
-		selection_changed.emit(selected_units)
-	
-	func add_to_selection(units: Array) -> void:
-		for unit in units:
-			if unit not in selected_units:
-				selected_units.append(unit)
-				if unit.has_method("select"):
-					unit.select()
-		
-		selection_changed.emit(selected_units)
-	
-	func clear_selection() -> void:
-		for unit in selected_units:
-			if unit.has_method("deselect"):
-				unit.deselect()
-		
-		selected_units.clear()
-		selection_changed.emit(selected_units)
-	
-	func get_selected_units() -> Array:
-		return selected_units.duplicate()
+
 
 # Server connection class
 class ServerConnection extends Node:

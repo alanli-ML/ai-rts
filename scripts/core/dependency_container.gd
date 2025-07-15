@@ -17,6 +17,7 @@ var client_main: Node
 var ai_command_processor: Node
 var action_validator: Node
 var plan_executor: Node
+var langsmith_client: Node
 var resource_manager: Node
 var node_capture_system: Node
 var building_system: Node
@@ -50,7 +51,8 @@ const ClientMainClass = preload("res://scripts/client/client_main.gd")
 # Preload new AI system classes
 const TestAICommandProcessorClass = preload("res://scripts/ai/test_ai_command_processor.gd")
 const ActionValidatorClass = preload("res://scripts/ai/action_validator.gd")
-# const PlanExecutorClass = preload("res://scripts/ai/plan_executor.gd")
+const PlanExecutorClass = preload("res://scripts/ai/plan_executor.gd")
+const LangSmithClientClass = preload("res://scripts/ai/langsmith_client.gd")
 
 # Preload new gameplay system classes
 const ResourceManagerClass = preload("res://scripts/gameplay/resource_manager.gd")
@@ -83,6 +85,9 @@ func _create_shared_dependencies() -> void:
     logger = LoggerClass.new()
     logger.name = "Logger"
     add_child(logger)
+    
+    # TEMPORARY: Disable INFO level logs from procedural generation system
+    logger.set_log_level(logger.LogLevel.WARNING)
     
     # Create game constants (not a Node)
     game_constants = GameConstantsClass.new()
@@ -127,6 +132,11 @@ func create_server_dependencies() -> void:
     action_validator = ActionValidatorClass.new()
     action_validator.name = "ActionValidator"
     add_child(action_validator)
+    
+    # Create LangSmith client for LLM observability
+    langsmith_client = LangSmithClientClass.new()
+    langsmith_client.name = "LangSmithClient"
+    add_child(langsmith_client)
     
     # Create gameplay systems
     resource_manager = ResourceManagerClass.new()
@@ -279,6 +289,10 @@ func get_speech_bubble_manager():
 
 func get_plan_progress_manager():
     return plan_progress_manager
+
+func get_langsmith_client() -> Node:
+    """Get the LangSmith client instance"""
+    return langsmith_client
 
 func get_map_generator() -> Node:
     """Get the MapGenerator instance"""

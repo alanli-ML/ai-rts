@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3 uid="uid://c7pq6qcyhqjl7"]
+[gd_scene load_steps=11 format=3 uid="uid://c7pq6qcyhqjl7"]
 
 [ext_resource type="Script" path="res://scripts/unified_main.gd" id="1_qx7kp"]
 [ext_resource type="Script" path="res://scripts/ui/game_hud.gd" id="2_game_hud"]
@@ -6,12 +6,22 @@
 [ext_resource type="Script" path="res://scripts/ui/plan_progress_manager.gd" id="4_plan_progress"]
 [ext_resource type="PackedScene" uid="uid://bsxvmkqjk6vd7" path="res://scenes/units/Unit.tscn" id="5_unit"]
 [ext_resource type="Script" path="res://scripts/test/ai_demo_with_units.gd" id="7_ai_demo"]
+[ext_resource type="Script" path="res://scripts/test/comprehensive_unit_control_test.gd" id="8_comprehensive_test"]
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_plane"]
 size = Vector2(2, 2)
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ground"]
+albedo_color = Color(0.3, 0.7, 0.3, 1)
+
 [sub_resource type="BoxShape3D" id="BoxShape3D_box"]
 size = Vector3(2, 0.1, 2)
+
+[sub_resource type="Environment" id="Environment_main"]
+background_mode = 1
+background_color = Color(0.5, 0.7, 1, 1)
+ambient_light_color = Color(0.8, 0.8, 1, 1)
+ambient_light_energy = 0.3
 
 [node name="UnifiedMain" type="Node"]
 script = ExtResource("1_qx7kp")
@@ -389,10 +399,14 @@ shadow_enabled = true
 [node name="GroundMesh" type="MeshInstance3D" parent="GameUI/GameWorldContainer/GameWorld/3DView/Ground"]
 transform = Transform3D(30, 0, 0, 0, 1, 0, 0, 0, 30, 0, 0, 0)
 mesh = SubResource("PlaneMesh_plane")
+surface_material_override/0 = SubResource("StandardMaterial3D_ground")
 
 [node name="GroundCollision" type="CollisionShape3D" parent="GameUI/GameWorldContainer/GameWorld/3DView/Ground"]
 transform = Transform3D(30, 0, 0, 0, 1, 0, 0, 0, 30, 0, 0, 0)
 shape = SubResource("BoxShape3D_box")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="GameUI/GameWorldContainer/GameWorld/3DView"]
+environment = SubResource("Environment_main")
 
 [node name="ControlPoints" type="Node3D" parent="GameUI/GameWorldContainer/GameWorld/3DView"]
 
@@ -493,4 +507,7 @@ size_flags_horizontal = 3
 text = "Close Testing"
 
 [node name="AIDemoWithUnits" type="Node" parent="."]
-script = ExtResource("7_ai_demo") 
+script = ExtResource("7_ai_demo")
+
+[node name="ComprehensiveUnitControlTest" type="Node" parent="."]
+script = ExtResource("8_comprehensive_test") 

@@ -220,3 +220,5 @@ func set_quick_commands(commands: Array[Dictionary]) -> void:
 		var button = _create_radial_button(command_data)
 		radial_buttons.append(button)
 		radial_menu.add_child(button) 
+
+ 

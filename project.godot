@@ -18,9 +18,12 @@ config/icon="res://icon.svg"
 
 [autoload]
 
-#Coreautoloads(loadedfirst,nodependencies)GameMode="res://scripts/core/game_mode.gd"
+# Core autoloads (loaded first, no dependencies)
+# GameMode="res://scripts/core/game_mode.gd"
+Logger="res://scripts/utils/logger.gd"
 DependencyContainer="res://scripts/core/dependency_container.gd"
-#EventBusforloosecouplingEventBus="res://scripts/autoload/event_bus.gd"
+# EventBus for loose coupling
+EventBus="res://scripts/autoload/event_bus.gd"
 
 [display]
 

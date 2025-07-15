@@ -61,20 +61,3 @@ func error(category: String, message: String) -> void:
 func _exit_tree() -> void:
     if _log_file and _log_file.is_open():
         _log_file.close() 
-        _log(LogLevel.DEBUG, category, message)
-
-func info(category: String, message: String) -> void:
-    if _log_level <= LogLevel.INFO:
-        _log(LogLevel.INFO, category, message)
-
-func warning(category: String, message: String) -> void:
-    if _log_level <= LogLevel.WARNING:
-        _log(LogLevel.WARNING, category, message)
-
-func error(category: String, message: String) -> void:
-    if _log_level <= LogLevel.ERROR:
-        _log(LogLevel.ERROR, category, message)
-
-func _exit_tree() -> void:
-    if _log_file and _log_file.is_open():
-        _log_file.close() 

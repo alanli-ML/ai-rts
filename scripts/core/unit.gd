@@ -101,6 +101,9 @@ func _ready() -> void:
     # Register with game systems
     _register_unit()
     
+    # Connect to EventBus for command handling
+    _connect_to_event_bus()
+    
     print("Unit %s (%s) initialized for team %d" % [unit_id, archetype, team_id])
 
 func _create_child_nodes() -> void:
@@ -215,6 +218,20 @@ func _register_unit() -> void:
         if event_bus.has_signal("unit_spawned"):
             event_bus.unit_spawned.emit(self)
 
+func _connect_to_event_bus() -> void:
+    """Connect to EventBus for command handling"""
+    if has_node("/root/EventBus"):
+        var event_bus = get_node("/root/EventBus")
+        if event_bus.has_signal("unit_command_issued"):
+            # Connect to the command signal
+            if not event_bus.unit_command_issued.is_connected(_on_unit_command_issued):
+                event_bus.unit_command_issued.connect(_on_unit_command_issued)
+                print("Unit %s: Connected to EventBus command system" % unit_id)
+        else:
+            print("Unit %s: EventBus unit_command_issued signal not found" % unit_id)
+    else:
+        print("Unit %s: EventBus not found" % unit_id)
+
 func _physics_process(delta: float) -> void:
     if current_state == GameEnums.UnitState.DEAD:
         return
@@ -261,7 +278,10 @@ func _handle_movement(delta: float) -> void:
 func move_to(target_pos: Vector3) -> void:
     """Move the unit to the target position"""
     if current_state == GameEnums.UnitState.DEAD:
+        print("Unit %s: Cannot move - unit is dead" % unit_id)
         return
+    
+    print("Unit %s: Received move_to command to position %s" % [unit_id, target_pos])
     
     movement_target = target_pos
     destination = target_pos
@@ -270,8 +290,31 @@ func move_to(target_pos: Vector3) -> void:
     
     if navigation_agent:
         navigation_agent.target_position = target_pos
+        print("Unit %s: NavigationAgent target set to %s" % [unit_id, target_pos])
+        print("Unit %s: Navigation Agent navigation_finished: %s" % [unit_id, navigation_agent.is_navigation_finished()])
+        print("Unit %s: Navigation Agent distance to target: %.2f" % [unit_id, navigation_agent.distance_to_target()])
+    else:
+        print("Unit %s: ERROR - NavigationAgent is null!" % unit_id)
     
-    print("Unit %s moving to %s" % [unit_id, target_pos])
+    print("Unit %s: State changed to MOVING, heading to %s" % [unit_id, target_pos])
+
+func debug_movement_status() -> void:
+    """Debug method to check movement status"""
+    print("=== Unit %s Movement Debug ===" % unit_id)
+    print("Position: %s" % global_position)
+    print("Target: %s" % movement_target)
+    print("State: %s" % GameEnums.get_unit_state_string(current_state))
+    print("Is Moving: %s" % is_moving)
+    print("Velocity: %s" % velocity)
+    
+    if navigation_agent:
+        print("NavigationAgent exists: true")
+        print("Navigation finished: %s" % navigation_agent.is_navigation_finished())
+        print("Distance to target: %.2f" % navigation_agent.distance_to_target())
+        print("Target position: %s" % navigation_agent.target_position)
+        print("Next path position: %s" % navigation_agent.get_next_path_position())
+    else:
+        print("NavigationAgent exists: false")
 
 func attack_target(target: Unit) -> void:
     """Attack the target unit"""
@@ -428,11 +471,97 @@ func _update_combat(_delta: float) -> void:
             change_state(GameEnums.UnitState.IDLE)
 
 # Utility functions
+func _get_unit_by_id(search_unit_id: String) -> Unit:
+    """Find a unit by its ID"""
+    var all_units = get_tree().get_nodes_in_group("units")
+    for unit in all_units:
+        if unit.has_method("get_unit_id") and unit.get_unit_id() == search_unit_id:
+            return unit
+        elif unit.has_property("unit_id") and unit.unit_id == search_unit_id:
+            return unit
+    return null
+
+func patrol_to(target_pos: Vector3) -> void:
+    """Start patrolling to a target position"""
+    if current_state == GameEnums.UnitState.DEAD:
+        return
+    
+    print("Unit %s: Starting patrol to %s" % [unit_id, target_pos])
+    # For now, implement as a simple move - can be enhanced later with waypoint system
+    move_to(target_pos)
+    change_state(GameEnums.UnitState.MOVING)
+
+func follow_unit(target: Unit) -> void:
+    """Follow another unit"""
+    if not target or current_state == GameEnums.UnitState.DEAD:
+        return
+    
+    print("Unit %s: Following unit %s" % [unit_id, target.unit_id])
+    target_unit = target
+    # Move to target's position with some offset
+    var follow_position = target.global_position + Vector3(2.0, 0, 2.0)
+    move_to(follow_position)
+
+func guard_unit(target: Unit) -> void:
+    """Guard another unit (stay close and defend)"""
+    if not target or current_state == GameEnums.UnitState.DEAD:
+        return
+    
+    print("Unit %s: Guarding unit %s" % [unit_id, target.unit_id])
+    target_unit = target
+    # Move to defensive position near target
+    var guard_position = target.global_position + Vector3(1.5, 0, 1.5)
+    move_to(guard_position)
+
+func set_formation(formation_type: String) -> void:
+    """Set unit formation behavior"""
+    print("Unit %s: Setting formation to %s" % [unit_id, formation_type])
+    # Store formation preference - would be used by formation system
+    if has_meta("formation_type"):
+        set_meta("formation_type", formation_type)
+    else:
+        set_meta("formation_type", formation_type)
+
+func set_stance(stance_type: String) -> void:
+    """Set unit combat stance"""
+    print("Unit %s: Setting stance to %s" % [unit_id, stance_type])
+    # Store stance preference - affects AI behavior
+    match stance_type:
+        "aggressive":
+            set_meta("combat_stance", "aggressive")
+            attack_range *= 1.2  # Slightly increased engagement range
+        "defensive":
+            set_meta("combat_stance", "defensive")
+            attack_range *= 0.8  # Reduced engagement range
+        "passive":
+            set_meta("combat_stance", "passive")
+            # Passive units won't auto-engage
+        _:
+            set_meta("combat_stance", "normal")
+
 func get_team_id() -> int:
     return team_id
 
 func get_health_percentage() -> float:
     return current_health / max_health if max_health > 0 else 0.0
+
+func get_energy() -> float:
+    """Get current energy level"""
+    return energy
+
+func get_ammo() -> float:
+    """Get current ammo (for units that use ammo)"""
+    # Return a default ammo level - can be overridden by specific unit types
+    return 100.0
+
+func get_current_state() -> GameEnums.UnitState:
+    """Get current unit state"""
+    return current_state
+
+func set_movement_speed(new_speed: float) -> void:
+    """Set movement speed"""
+    movement_speed = new_speed
+    speed = new_speed
 
 func get_state_name() -> String:
     return GameEnums.get_unit_state_string(current_state)
@@ -519,6 +648,84 @@ func _on_command_received(command: Dictionary) -> void:
         print("Unit %s received command: %s" % [unit_id, command])
         command_received.emit(command)
         # Process command here
+
+func _on_unit_command_issued(cmd_unit_id: String, command: String) -> void:
+    """Handle string-based commands from EventBus (used by PlanExecutor)"""
+    if cmd_unit_id != unit_id:
+        return  # Not for this unit
+    
+    if current_state == GameEnums.UnitState.DEAD:
+        print("Unit %s: Cannot execute command - unit is dead" % unit_id)
+        return
+    
+    print("Unit %s: Processing EventBus command: %s" % [unit_id, command])
+    
+    # Parse command string (format: "action:parameters")
+    var parts = command.split(":")
+    var action = parts[0]
+    
+    match action:
+        "move_to":
+            if parts.size() > 1:
+                var coords = parts[1].split(",")
+                if coords.size() >= 3:
+                    var target_pos = Vector3(float(coords[0]), float(coords[1]), float(coords[2]))
+                    move_to(target_pos)
+                    print("Unit %s: Executing move_to command to %s" % [unit_id, target_pos])
+        
+        "attack":
+            if parts.size() > 1:
+                var target_id = parts[1]
+                var target = _get_unit_by_id(target_id)
+                if target:
+                    attack_target(target)
+                    print("Unit %s: Executing attack command on %s" % [unit_id, target_id])
+                else:
+                    print("Unit %s: Attack target %s not found" % [unit_id, target_id])
+        
+        "patrol":
+            if parts.size() > 1:
+                var coords = parts[1].split(",")
+                if coords.size() >= 3:
+                    var target_pos = Vector3(float(coords[0]), float(coords[1]), float(coords[2]))
+                    patrol_to(target_pos)
+                    print("Unit %s: Executing patrol command to %s" % [unit_id, target_pos])
+        
+        "follow":
+            if parts.size() > 1:
+                var target_id = parts[1]
+                var target = _get_unit_by_id(target_id)
+                if target:
+                    follow_unit(target)
+                    print("Unit %s: Executing follow command on %s" % [unit_id, target_id])
+        
+        "guard":
+            if parts.size() > 1:
+                var target_id = parts[1]
+                var target = _get_unit_by_id(target_id)
+                if target:
+                    guard_unit(target)
+                    print("Unit %s: Executing guard command on %s" % [unit_id, target_id])
+        
+        "formation":
+            if parts.size() > 1:
+                var formation_type = parts[1]
+                set_formation(formation_type)
+                print("Unit %s: Executing formation command: %s" % [unit_id, formation_type])
+        
+        "stance":
+            if parts.size() > 1:
+                var stance_type = parts[1]
+                set_stance(stance_type)
+                print("Unit %s: Executing stance command: %s" % [unit_id, stance_type])
+        
+        "speech":
+            if parts.size() > 1:
+                var speech_text = parts[1]
+                show_speech_bubble(speech_text)
+        
+        _:
+            print("Unit %s: Unknown command: %s" % [unit_id, action])
 
 func _on_health_changed(_new_health: float, _max_health: float) -> void:
     # Health bar updates will be implemented later

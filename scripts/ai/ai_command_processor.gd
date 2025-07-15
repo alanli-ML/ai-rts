@@ -7,8 +7,9 @@ var logger = null
 var game_constants = null
 var action_validator = null
 var openai_client = null
-var selection_manager: SelectionManager = null
-var plan_executor: PlanExecutor = null
+var langsmith_client = null
+var selection_manager: EnhancedSelectionSystem = null
+var plan_executor: Node = null
 
 # Command processing settings
 @export var system_prompt_template: String = """
@@ -36,7 +37,7 @@ DIRECT COMMANDS (for simple actions):
     "type": "direct_commands",
     "commands": [
         {
-            "action": "MOVE|ATTACK|FOLLOW|PATROL|STOP|USE_ABILITY|FORMATION|STANCE",
+            "action": "move_to|attack|retreat|patrol|use_ability|formation|stance",
             "target_units": ["selected"|"all"|"type:scout"|"unit_id"],
             "parameters": {
                 "position": [x, y, z],
@@ -57,7 +58,7 @@ MULTI-STEP PLANS (for complex tactical sequences):
             "unit_id": "unit_id",
             "steps": [
                 {
-                    "action": "move_to|attack|peek_and_fire|lay_mines|retreat|heal|repair|stealth|overwatch|mark_target|build_turret|shield|charge|formation|stance|patrol|follow|guard|scan_area",
+                    "action": "move_to|attack|peek_and_fire|lay_mines|hijack_enemy_spire|retreat|patrol|use_ability|formation|stance",
                     "params": {
                         "position": [x, y, z],
                         "target_id": "unit_id",
@@ -83,19 +84,17 @@ MULTI-STEP PLANS (for complex tactical sequences):
     "message": "Plan description"
 }
 
-ADVANCED ACTIONS:
+ALLOWED ACTIONS (use these exact names):
+- move_to: Move units to specified position [x, y, z]
+- attack: Attack target unit or position
 - peek_and_fire: Sniper moves to cover and fires at target
 - lay_mines: Engineer places mines at specified location
-- hijack_spire: Engineer captures enemy power spire
-- heal: Medic heals target unit
-- repair: Engineer repairs damaged unit or building
-- stealth: Scout becomes invisible for duration
-- overwatch: Sniper watches area and auto-attacks
-- mark_target: Scout marks enemy for team
-- build_turret: Engineer constructs defensive turret
-- shield: Tank activates protective shield
-- charge: Tank rushes to target position
-- scan_area: Scout reveals large area around position
+- hijack_enemy_spire: Engineer captures enemy power spire
+- retreat: Units fall back to safer position
+- patrol: Units patrol between waypoints
+- use_ability: Use unit-specific special ability
+- formation: Change unit formation (line|column|wedge|scattered)
+- stance: Change combat stance (aggressive|defensive|passive)
 
 TRIGGER CONDITIONS:
 - health_pct < X: Unit health below percentage
@@ -147,11 +146,15 @@ func _ready() -> void:
     # Create OpenAI client
     var OpenAIClientScript = load("res://scripts/ai/openai_client.gd")
     openai_client = OpenAIClientScript.new()
-    openai_client.name = "OpenAIClient"
+    openai_client.name = "OpenAI_Client"
     add_child(openai_client)
     
+    # Setup LangSmith client if available (defer to ensure DependencyContainer is ready)
+    call_deferred("_setup_langsmith_client")
+    
     # Create plan executor
-    plan_executor = PlanExecutor.new()
+    var PlanExecutorScript = load("res://scripts/ai/plan_executor.gd")
+    plan_executor = PlanExecutorScript.new()
     plan_executor.name = "PlanExecutor"
     add_child(plan_executor)
     
@@ -173,6 +176,59 @@ func _ready() -> void:
     else:
         print("AICommandProcessor initialized with enhanced plan execution")
 
+func _setup_langsmith_client() -> void:
+    """Setup LangSmith client for observability"""
+    # Get LangSmith client from dependency container
+    var dependency_container = get_node("/root/DependencyContainer")
+    if dependency_container and dependency_container.has_method("get_langsmith_client"):
+        langsmith_client = dependency_container.get_langsmith_client()
+        if langsmith_client:
+            langsmith_client.setup_openai_client(openai_client)
+            print("AICommandProcessor: LangSmith observability enabled")
+            return
+        else:
+            print("AICommandProcessor: LangSmith client not ready yet, retrying in 1 second...")
+            # Retry after a short delay to allow DependencyContainer to finish initialization
+            await get_tree().create_timer(1.0).timeout
+            _setup_langsmith_client()
+            return
+    else:
+        print("AICommandProcessor: DependencyContainer not found - LangSmith disabled")
+
+func _collect_game_context_for_tracing(command_text: String, selected_units: Array, game_state: Dictionary) -> Dictionary:
+    """Collect comprehensive game context for LangSmith tracing"""
+    var context = {
+        "command_text": command_text,
+        "selected_units_count": selected_units.size(),
+        "game_phase": game_state.get("phase", "unknown"),
+        "timestamp": Time.get_ticks_msec() / 1000.0
+    }
+    
+    # Add unit information
+    if selected_units.size() > 0:
+        var unit_types = []
+        var unit_ids = []
+        for unit in selected_units:
+            if unit and unit.has_method("get_unit_type"):
+                unit_types.append(unit.get_unit_type())
+            if unit and unit.has("name"):
+                unit_ids.append(unit.name)
+        
+        context["unit_types"] = unit_types
+        context["unit_ids"] = unit_ids
+    
+    # Add game state information
+    if game_state.has("resources"):
+        context["resources"] = game_state.resources
+    
+    if game_state.has("control_points"):
+        context["control_points_controlled"] = game_state.control_points
+    
+    if game_state.has("match_time"):
+        context["match_time"] = game_state.match_time
+    
+    return context
+
 func setup(logger_instance, game_constants_instance, action_validator_instance, plan_executor_instance) -> void:
     """Setup the AI command processor with dependencies"""
     logger = logger_instance
@@ -190,7 +246,7 @@ func process_command(command_text: String, selected_units: Array = [], game_stat
         game_state: Current game state information
     """
     if processing_command:
-        Logger.warning("AICommandProcessor", "Command processor busy, queuing command")
+        print("AICommandProcessor WARNING: Command processor busy, queuing command")
         command_queue.append({
             "text": command_text,
             "units": selected_units,
@@ -237,9 +293,16 @@ func process_command(command_text: String, selected_units: Array = [], game_stat
         }
     ]
     
-    # Send to OpenAI
+    # Send to OpenAI with LangSmith tracing
     # Logger.info("AICommandProcessor", "Processing command: " + command_text)
-    openai_client.send_chat_completion(messages, _on_openai_response)
+    var trace_metadata = _collect_game_context_for_tracing(command_text, selected_units, game_state)
+    
+    if langsmith_client:
+        var trace_id = langsmith_client.traced_chat_completion(messages, _on_openai_response, trace_metadata)
+        print("AICommandProcessor: Started LLM call with trace ID: " + trace_id)
+    else:
+        # Fallback to direct OpenAI call
+        openai_client.send_chat_completion(messages, _on_openai_response)
 
 func _on_openai_response(response: Dictionary) -> void:
     """Handle OpenAI API response with enhanced plan processing"""
@@ -271,6 +334,44 @@ func _on_openai_response(response: Dictionary) -> void:
             _process_multi_step_plans(ai_response)
         _:
             command_failed.emit("Unknown response type: " + str(ai_response.get("type", "")))
+    
+    # Process next command from queue if available
+    _process_next_command()
+
+func _on_openai_error(error_type: int, error_message: String) -> void:
+    """Handle OpenAI API errors gracefully"""
+    processing_command = false
+    processing_finished.emit()
+    
+    # Log error details
+    if logger:
+        logger.error("AICommandProcessor", "OpenAI API Error [%d]: %s" % [error_type, error_message])
+    else:
+        print("AICommandProcessor Error [%d]: %s" % [error_type, error_message])
+    
+    # Emit command failed with user-friendly message
+    var user_message = _format_user_error_message(error_type, error_message)
+    command_failed.emit(user_message)
+    
+    # Process next command from queue if available
+    _process_next_command()
+
+func _format_user_error_message(error_type: int, error_message: String) -> String:
+    """Format error messages for user display"""
+    match error_type:
+        1: # INVALID_API_KEY
+            return "AI service configuration error. Please check API key settings."
+        2: # RATE_LIMITED  
+            return "AI service is temporarily busy. Please try again in a moment."
+        3: # QUOTA_EXCEEDED
+            return "AI service quota exceeded. Please contact administrator."
+        4: # NETWORK_ERROR
+            return "Network error connecting to AI service. Please check connection."
+        _: # UNKNOWN_ERROR
+            if "API key" in error_message:
+                return "AI service configuration error. Please check API key settings."
+            else:
+                return "AI service error: %s" % error_message
 
 func _process_direct_commands(ai_response: Dictionary) -> void:
     """Process direct commands"""
@@ -303,7 +404,7 @@ func _process_direct_commands(ai_response: Dictionary) -> void:
             #     plan_executor.execute_command(enhanced_command)
             # else:
             #     Logger.warning("AICommandProcessor", "Plan executor not available, skipping command execution.")
-            Logger.info("AICommandProcessor", "Command validated and executed: " + str(enhanced_command))
+            print("AICommandProcessor INFO: Command validated and executed: " + str(enhanced_command))
         else:
             failed_commands.append(command_data)
     
@@ -505,7 +606,7 @@ func _build_context(selected_units: Array, game_state: Dictionary) -> Dictionary
         if unit and unit.has_method("get_unit_id"):
             context.all_units.append({
                 "unit_id": unit.get_unit_id(),
-                "archetype": unit.get("archetype", "unknown"),
+                "archetype": unit.get("archetype") if unit.has_method("get") and "archetype" in unit else "unknown",
                 "team_id": unit.get_team_id(),
                 "position": unit.global_position,
                 "health": unit.get_health_percentage(),
@@ -530,15 +631,17 @@ func _get_selected_units() -> Array:
 
 func _handle_error(error_message: String) -> void:
     """Handle processing error"""
-    Logger.error("AICommandProcessor", error_message)
+    print("AICommandProcessor ERROR: " + error_message)
     processing_command = false
     processing_finished.emit()
     command_failed.emit(error_message)
     _process_next_command()
 
-func _on_openai_error(error: String) -> void:
-    """Handle OpenAI error"""
-    _handle_error("OpenAI request failed: " + error)
+func _process_next_command() -> void:
+    """Process next command from queue if available"""
+    if command_queue.size() > 0 and not processing_command:
+        var next_command = command_queue.pop_front()
+        process_command(next_command.text, next_command.units, next_command.state)
 
 # Plan execution event handlers
 func _on_plan_started(unit_id: String, plan: Array) -> void:

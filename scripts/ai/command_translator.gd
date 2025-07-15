@@ -3,8 +3,8 @@ class_name CommandTranslator
 extends Node
 
 # Dependencies
-var selection_manager: SelectionManager = null
-var game_manager: GameManager = null
+var selection_manager: EnhancedSelectionSystem = null
+var game_manager: Node = null
 
 # Command execution settings
 @export var max_waypoints: int = 5
@@ -32,12 +32,12 @@ signal units_not_found(target_units: Array)
 func _ready() -> void:
 	# Get references to managers
 	selection_manager = _find_selection_manager()
-	game_manager = GameManager
+	# game_manager = GameManager  # Disabled - GameManager doesn't exist
 	
 	print("Command translator initialized")
 
-func _find_selection_manager() -> SelectionManager:
-	"""Find the selection manager in the scene"""
+func _find_selection_manager() -> EnhancedSelectionSystem:
+	"""Find the enhanced selection system in the scene"""
 	var selection_managers = get_tree().get_nodes_in_group("selection_managers")
 	if not selection_managers.is_empty():
 		return selection_managers[0]
@@ -45,10 +45,10 @@ func _find_selection_manager() -> SelectionManager:
 	# Fallback: search by class name
 	var nodes = get_tree().get_nodes_in_group("selection_manager")
 	for node in nodes:
-		if node is SelectionManager:
+		if node is EnhancedSelectionSystem:
 			return node
 	
-			print("Selection manager not found")
+	print("Enhanced selection system not found")
 	return null
 
 func execute_commands(commands: Array) -> void:
@@ -93,25 +93,28 @@ func execute_command(command: Dictionary) -> int:
 	# Execute based on action type
 	var result = ""
 	match command.action:
-		"MOVE":
+		"move_to":
 			result = _execute_move(target_units, command.parameters)
-		"ATTACK":
+		"attack":
 			result = _execute_attack(target_units, command.parameters)
-		"FOLLOW":
-			result = _execute_follow(target_units, command.parameters)
-		"PATROL":
+		"retreat":
+			result = _execute_retreat(target_units, command.parameters)
+		"patrol":
 			result = _execute_patrol(target_units, command.parameters)
-		"STOP":
-			result = _execute_stop(target_units, command.parameters)
-		"USE_ABILITY":
+		"peek_and_fire":
+			result = _execute_peek_and_fire(target_units, command.parameters)
+		"lay_mines":
+			result = _execute_lay_mines(target_units, command.parameters)
+		"hijack_enemy_spire":
+			result = _execute_hijack_spire(target_units, command.parameters)
+		"use_ability":
 			result = _execute_ability(target_units, command.parameters)
-		"FORMATION":
+		"formation":
 			result = _execute_formation(target_units, command.parameters)
-		"STANCE":
+		"stance":
 			result = _execute_stance(target_units, command.parameters)
 		_:
-			result = "Unknown command: " + str(command.action)
-			command_failed.emit(command_id, result)
+			command_failed.emit(command_id, "Unknown action: " + command.action)
 			return command_id
 	
 	print("Command executed: " + str(command.action) + " - " + result)
@@ -123,24 +126,35 @@ func _resolve_target_units(target_specs: Array) -> Array:
 	"""Resolve target unit specifications to actual unit nodes"""
 	var units = []
 	
+	print("CommandTranslator: Resolving target units from specs: %s" % target_specs)
+	
 	for spec in target_specs:
 		match spec:
 			"selected":
 				if selection_manager:
-					units.append_array(selection_manager.selected_units)
+					var selected = selection_manager.selected_units
+					units.append_array(selected)
+					print("CommandTranslator: Found %d selected units" % selected.size())
+				else:
+					print("CommandTranslator: Warning - No selection manager available")
 			"all":
 				var all_units = get_tree().get_nodes_in_group("units")
 				units.append_array(all_units)
+				print("CommandTranslator: Found %d units in 'units' group" % all_units.size())
 			_:
 				if spec.begins_with("type:"):
 					var unit_type = spec.substr(5)
 					var typed_units = _get_units_by_type(unit_type)
 					units.append_array(typed_units)
+					print("CommandTranslator: Found %d units of type '%s'" % [typed_units.size(), unit_type])
 				else:
 					# Assume it's a unit ID
 					var unit = _get_unit_by_id(spec)
 					if unit:
 						units.append(unit)
+						print("CommandTranslator: Found unit by ID: %s" % spec)
+					else:
+						print("CommandTranslator: Warning - Unit ID not found: %s" % spec)
 	
 	# Remove duplicates
 	var unique_units = []
@@ -148,6 +162,7 @@ func _resolve_target_units(target_specs: Array) -> Array:
 		if unit not in unique_units:
 			unique_units.append(unit)
 	
+	print("CommandTranslator: Resolved %d unique units for command execution" % unique_units.size())
 	return unique_units
 
 func _get_units_by_type(unit_type: String) -> Array:
@@ -317,16 +332,129 @@ func _execute_stance(units: Array, parameters: Dictionary) -> String:
 	
 	return "Set stance to '" + stance + "' for " + str(units.size()) + " units"
 
+func _execute_retreat(units: Array, parameters: Dictionary) -> String:
+	"""Execute retreat command"""
+	var retreat_message = ""
+	
+	# Check if AI provided a specific retreat position
+	if parameters.has("position"):
+		var position = parameters.position
+		var retreat_pos = Vector3(position[0], position[1], position[2])
+		
+		# Move units to the specific retreat position
+		for unit in units:
+			if unit.has_method("move_to"):
+				unit.move_to(retreat_pos)
+				print("CommandTranslator: Unit %s retreating to position %s" % [unit.name, retreat_pos])
+			else:
+				print("CommandTranslator: Warning - Unit %s has no move_to method" % unit.name)
+		
+		retreat_message = "Retreating %d units to position %s" % [units.size(), retreat_pos]
+	else:
+		# Fallback to direction-based retreat
+		var retreat_distance = parameters.get("distance", 20.0)
+		var retreat_direction = parameters.get("direction", Vector3.BACK)
+		
+		for unit in units:
+			if unit.has_method("retreat"):
+				unit.retreat(retreat_distance, retreat_direction)
+			elif unit.has_method("move_away_from_enemies"):
+				unit.move_away_from_enemies(retreat_distance)
+			elif unit.has_method("move_to"):
+				# Calculate retreat position from current location
+				var current_pos = unit.global_position
+				var retreat_pos = current_pos + (retreat_direction * retreat_distance)
+				unit.move_to(retreat_pos)
+				print("CommandTranslator: Unit %s retreating from %s to %s" % [unit.name, current_pos, retreat_pos])
+			else:
+				print("CommandTranslator: Warning - Unit %s has no movement methods" % unit.name)
+		
+		retreat_message = "Retreating %d units using direction %s" % [units.size(), retreat_direction]
+	
+	return retreat_message
+
+func _execute_peek_and_fire(units: Array, parameters: Dictionary) -> String:
+	"""Execute peek and fire command (sniper ability)"""
+	if not parameters.has("target_id"):
+		return "Peek and fire command missing target_id parameter"
+	
+	var target = _get_unit_by_id(parameters.target_id)
+	if not target:
+		return "Peek and fire target not found: " + parameters.target_id
+	
+	var success_count = 0
+	for unit in units:
+		if unit.has_method("peek_and_fire"):
+			unit.peek_and_fire(target)
+			success_count += 1
+		elif unit.has_method("use_ability"):
+			unit.use_ability("peek_and_fire", {"target": target})
+			success_count += 1
+	
+	return "Peek and fire executed by " + str(success_count) + " units"
+
+func _execute_lay_mines(units: Array, parameters: Dictionary) -> String:
+	"""Execute lay mines command (engineer ability)"""
+	var mine_count = parameters.get("count", 1)
+	var position = parameters.get("position", null)
+	
+	var success_count = 0
+	for unit in units:
+		if unit.has_method("lay_mines"):
+			if position:
+				var target_pos = Vector3(position[0], position[1], position[2])
+				unit.lay_mines(mine_count, target_pos)
+			else:
+				unit.lay_mines(mine_count)
+			success_count += 1
+		elif unit.has_method("use_ability"):
+			var params = {"count": mine_count}
+			if position:
+				params["position"] = Vector3(position[0], position[1], position[2])
+			unit.use_ability("lay_mines", params)
+			success_count += 1
+	
+	return "Laying " + str(mine_count) + " mines with " + str(success_count) + " units"
+
+func _execute_hijack_spire(units: Array, parameters: Dictionary) -> String:
+	"""Execute hijack enemy spire command (engineer ability)"""
+	if not parameters.has("spire_id"):
+		return "Hijack spire command missing spire_id parameter"
+	
+	var spire_id = parameters.spire_id
+	var success_count = 0
+	
+	for unit in units:
+		if unit.has_method("hijack_spire"):
+			unit.hijack_spire(spire_id)
+			success_count += 1
+		elif unit.has_method("use_ability"):
+			unit.use_ability("hijack_spire", {"spire_id": spire_id})
+			success_count += 1
+	
+	return "Hijacking spire " + spire_id + " with " + str(success_count) + " units"
+
 func _move_unit(unit: Node, target_position: Vector3) -> void:
 	"""Move a single unit to a position"""
+	print("CommandTranslator: Attempting to move unit %s to %s" % [unit.name, target_position])
+	
 	if unit.has_method("move_to"):
 		unit.move_to(target_position)
+		print("CommandTranslator: Called move_to on unit %s" % unit.name)
 	elif unit.has_method("set_destination"):
 		unit.set_destination(target_position)
+		print("CommandTranslator: Called set_destination on unit %s" % unit.name)
 	elif unit.has_method("navigate_to"):
 		unit.navigate_to(target_position)
+		print("CommandTranslator: Called navigate_to on unit %s" % unit.name)
 	else:
-					print("Unit has no move method: " + str(unit.name))
+		print("CommandTranslator: ERROR - Unit %s has no movement methods available" % unit.name)
+		
+		# Debug: Print all available methods
+		var methods = []
+		for method in unit.get_method_list():
+			methods.append(method.name)
+		print("CommandTranslator: Available methods on %s: %s" % [unit.name, methods])
 
 func _calculate_formation_positions(units: Array, center_position: Vector3, formation_type: String) -> Array:
 	"""Calculate positions for units in formation"""

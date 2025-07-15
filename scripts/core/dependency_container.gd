@@ -23,6 +23,9 @@ var resource_manager: Node
 var node_capture_system: Node
 var building_system: Node
 
+# Selection system
+var selection_manager: Node
+
 # New UI systems
 var game_hud: Node
 var speech_bubble_manager: Node
@@ -55,6 +58,9 @@ const ActionValidatorClass = preload("res://scripts/ai/action_validator.gd")
 const PlanExecutorClass = preload("res://scripts/ai/plan_executor.gd")
 const LangSmithClientClass = preload("res://scripts/ai/langsmith_client.gd")
 const TriggerEvaluationEngineClass = preload("res://scripts/ai/trigger_evaluation_engine.gd")
+
+# Preload selection system class
+const EnhancedSelectionSystemClass = preload("res://scripts/core/enhanced_selection_system.gd")
 
 # Preload new gameplay system classes
 const ResourceManagerClass = preload("res://scripts/gameplay/resource_manager.gd")
@@ -202,6 +208,14 @@ func create_client_dependencies() -> void:
     client_main.name = "ClientMain"
     add_child(client_main)
     
+    # Create selection system
+    selection_manager = EnhancedSelectionSystemClass.new()
+    selection_manager.name = "SelectionManager"
+    add_child(selection_manager)
+    
+    # Add selection manager to group for discovery
+    selection_manager.add_to_group("selection_managers")
+    
     # Create UI systems
     game_hud = GameHUDClass.new()
     game_hud.name = "GameHUD"
@@ -323,6 +337,10 @@ func get_map_generator() -> Node:
 func get_asset_loader() -> Node:
     """Get the AssetLoader instance"""
     return asset_loader
+
+func get_selection_manager() -> Node:
+    """Get the SelectionManager instance"""
+    return selection_manager
 
 func is_server_mode() -> bool:
     return current_mode == "server"

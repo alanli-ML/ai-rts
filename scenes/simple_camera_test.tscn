@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[node name="root" type="Node3D"]
+
+[node name="SimpleCameraTest" type="Node" parent="."]
+script = "res://scripts/test/simple_camera_test.gd"

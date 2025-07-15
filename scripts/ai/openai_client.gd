@@ -15,9 +15,9 @@ extends Node
 
 # Internal variables
 var http_request: HTTPRequest = null
-var request_queue: Array[Dictionary] = []
+var request_queue: Array = []
 var active_requests: int = 0
-var request_timestamps: Array[float] = []
+var request_timestamps: Array = []
 var last_request_time: float = 0.0
 
 # Error handling
@@ -56,13 +56,57 @@ func _load_api_key() -> void:
 	if OS.has_environment("OPENAI_API_KEY"):
 		api_key = OS.get_environment("OPENAI_API_KEY")
 		print("API key loaded from environment")
-	else:
-		print("No API key found. Set OPENAI_API_KEY environment variable")
-		# For testing purposes, use a placeholder key
-		api_key = "sk-test-key-for-development"
-		print("Using placeholder API key for testing")
+		return
+	
+	# Try to load from .env file
+	var env_file_path = "res://.env"
+	if FileAccess.file_exists(env_file_path):
+		var file = FileAccess.open(env_file_path, FileAccess.READ)
+		if file:
+			while not file.eof_reached():
+				var line = file.get_line().strip_edges()
+				if line.begins_with("OPENAI_API_KEY="):
+					api_key = line.split("=", false, 1)[1].strip_edges()
+					# Remove quotes if present
+					if api_key.begins_with('"') and api_key.ends_with('"'):
+						api_key = api_key.substr(1, api_key.length() - 2)
+					elif api_key.begins_with("'") and api_key.ends_with("'"):
+						api_key = api_key.substr(1, api_key.length() - 2)
+					print("API key loaded from .env file")
+					file.close()
+					return
+			file.close()
+	
+	# Also try user://env file for user-specific settings
+	var user_env_path = "user://.env"
+	if FileAccess.file_exists(user_env_path):
+		var file = FileAccess.open(user_env_path, FileAccess.READ)
+		if file:
+			while not file.eof_reached():
+				var line = file.get_line().strip_edges()
+				if line.begins_with("OPENAI_API_KEY="):
+					api_key = line.split("=", false, 1)[1].strip_edges()
+					# Remove quotes if present
+					if api_key.begins_with('"') and api_key.ends_with('"'):
+						api_key = api_key.substr(1, api_key.length() - 2)
+					elif api_key.begins_with("'") and api_key.ends_with("'"):
+						api_key = api_key.substr(1, api_key.length() - 2)
+					print("API key loaded from user://.env file")
+					file.close()
+					return
+			file.close()
+	
+	print("No API key found. Checked environment variable, .env file, and user://.env file")
+	print("Please set OPENAI_API_KEY in one of these locations:")
+	print("  1. Environment variable: export OPENAI_API_KEY='your-key'")
+	print("  2. .env file in project root: OPENAI_API_KEY=your-key")
+	print("  3. user://.env file: OPENAI_API_KEY=your-key")
+	
+	# For testing purposes, use a placeholder key
+	api_key = "sk-test-key-for-development"
+	print("Using placeholder API key for testing")
 
-func send_chat_completion(messages: Array[Dictionary], callback: Callable) -> void:
+func send_chat_completion(messages: Array, callback: Callable) -> void:
 	"""
 	Send a chat completion request to OpenAI API
 	
@@ -120,6 +164,10 @@ func _process_queue() -> void:
 	"""Process queued requests"""
 	if request_queue.is_empty() or active_requests >= max_concurrent_requests:
 		return
+	
+	# Check if HTTP request is currently busy
+	if http_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+		return  # Wait for current request to complete
 	
 	var request_info = request_queue.pop_front()
 	_send_request(request_info)

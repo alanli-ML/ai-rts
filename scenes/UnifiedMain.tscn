@@ -1,10 +1,11 @@
-[gd_scene load_steps=8 format=3 uid="uid://c7pq6qcyhqjl7"]
+[gd_scene load_steps=9 format=3 uid="uid://c7pq6qcyhqjl7"]
 
 [ext_resource type="Script" path="res://scripts/unified_main.gd" id="1_qx7kp"]
 [ext_resource type="Script" path="res://scripts/ui/game_hud.gd" id="2_game_hud"]
 [ext_resource type="Script" path="res://scripts/ui/speech_bubble_manager.gd" id="3_speech_bubble"]
 [ext_resource type="Script" path="res://scripts/ui/plan_progress_manager.gd" id="4_plan_progress"]
 [ext_resource type="PackedScene" uid="uid://bsxvmkqjk6vd7" path="res://scenes/units/Unit.tscn" id="5_unit"]
+[ext_resource type="Script" path="res://scripts/test/ai_demo_with_units.gd" id="7_ai_demo"]
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_plane"]
 size = Vector2(2, 2)
@@ -489,4 +490,7 @@ layout_mode = 2
 [node name="CloseTestingButton" type="Button" parent="TestingSuite/TestingPanel/TestingContainer/TestingButtons"]
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Close Testing" 
+text = "Close Testing"
+
+[node name="AIDemoWithUnits" type="Node" parent="."]
+script = ExtResource("7_ai_demo") 

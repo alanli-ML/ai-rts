@@ -64,9 +64,9 @@ func _create_ground_plane() -> void:
 	ground_plane = MeshInstance3D.new()
 	ground_plane.name = "GroundPlane"
 	
-	# Create plane mesh
+	# Create plane mesh - larger to accommodate 3x expanded map
 	var plane_mesh = PlaneMesh.new()
-	plane_mesh.size = Vector2(60, 60)  # 60x60 world units
+	plane_mesh.size = Vector2(200, 200)  # 200x200 world units for expanded map
 	ground_plane.mesh = plane_mesh
 	
 	# Create material

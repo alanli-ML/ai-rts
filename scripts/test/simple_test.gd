@@ -1,47 +1,82 @@
 # simple_test.gd - Simple test for procedural generation system
 extends Node
 
-func _ready() -> void:
-	print("=== SIMPLE PROCEDURAL GENERATION TEST ===")
-	await get_tree().process_frame
+func _ready():
+	print("=== SIMPLE ROAD INTERSECTION TEST ===")
+	test_road_network_intersection_detection()
+
+func test_road_network_intersection_detection():
+	print("Testing road network intersection detection...")
 	
-	var dependency_container = get_node("/root/DependencyContainer")
-	if not dependency_container:
-		print("ERROR: DependencyContainer not found!")
-		return
+	# Create a minimal road network for testing
+	var road_network = RoadNetwork.new()
+	road_network.name = "TestRoadNetwork"
+	add_child(road_network)
 	
-	var logger = dependency_container.get_logger()
-	if not logger:
-		print("ERROR: Logger not found!")
-		return
+	# Mock dependencies
+	var mock_logger = MockLogger.new()
+	var mock_tile_system = MockTileSystem.new()
+	var mock_asset_loader = MockAssetLoader.new()
+	var mock_asset_dimension_manager = MockAssetDimensionManager.new()
 	
-	dependency_container.create_server_dependencies()
+	road_network.setup(mock_logger, mock_tile_system, mock_asset_loader, mock_asset_dimension_manager)
 	
-	var map_generator = dependency_container.get_map_generator()
-	if not map_generator:
-		print("ERROR: MapGenerator not found!")
-		return
+	# Create test control points that will form intersections
+	var control_points = [
+		Vector2i(0, 0),  # Top-left
+		Vector2i(2, 0),  # Top-right
+		Vector2i(1, 1),  # Center (should be intersection)
+		Vector2i(0, 2),  # Bottom-left
+		Vector2i(2, 2)   # Bottom-right
+	]
 	
-	print("Starting procedural generation...")
-	var map_data = await map_generator.generate_map(12345)
+	var districts = {}  # Empty for this test
+	var rng = RandomNumberGenerator.new()
+	rng.seed = 12345
 	
-	if map_data.is_empty():
-		print("ERROR: Map generation failed!")
-		return
+	# Generate network
+	var road_data = road_network.generate_network(control_points, districts, rng)
 	
-	print("SUCCESS: Map generated!")
-	print("  Seed: %d" % map_data.get("seed", 0))
-	print("  Grid Size: %s" % map_data.get("size", "Unknown"))
-	print("  Districts: %d" % map_data.get("districts", {}).size())
-	print("  Control Points: %d" % map_data.get("control_points", {}).size())
-	print("  Roads: %d segments" % map_data.get("roads", {}).get("segments", []).size())
+	# Analyze results
+	print("Road segments generated: %d" % road_data.segments.size())
+	print("Intersections generated: %d" % road_data.intersections.size())
 	
-	var total_buildings = 0
-	for district_buildings in map_data.get("buildings", {}).values():
-		total_buildings += district_buildings.size()
+	# Print intersection details
+	for i in range(road_data.intersections.size()):
+		var intersection = road_data.intersections[i]
+		print("Intersection %d: position=%s, type=%s, directions=%s" % [
+			i, 
+			intersection.position, 
+			intersection.asset_type,
+			intersection.directions
+		])
 	
-	print("  Total Buildings: %d" % total_buildings)
-	print("  Generation Time: %d ms" % map_data.get("metadata", {}).get("generation_time", 0))
+	# Print segment details (should have overlapping segments removed)
+	for i in range(road_data.segments.size()):
+		var segment = road_data.segments[i]
+		print("Segment %d: position=%s, direction=%s, type=%s" % [
+			i,
+			segment.position,
+			segment.direction,
+			segment.asset_type
+		])
 	
 	print("=== TEST COMPLETE ===")
-	get_tree().quit() 
+
+# Mock classes for testing
+class MockLogger:
+	func info(tag: String, message: String):
+		print("[%s] %s" % [tag, message])
+
+class MockTileSystem:
+	var tile_size: float = 1.25
+	
+class MockAssetLoader:
+	pass
+
+class MockAssetDimensionManager:
+	func calculate_optimal_asset_scale(type: String, subtype: String, size: Vector2i) -> Vector3:
+		return Vector3(1.0, 1.0, 1.0)
+	
+	func validate_asset_connectivity(pos: Vector3, type: String, subtype: String) -> bool:
+		return true 

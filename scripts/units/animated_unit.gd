@@ -63,12 +63,17 @@ var lod_distance: float = 30.0
 var is_in_lod_range: bool = true
 var update_animations: bool = true
 
+# Movement settings
+var movement_threshold: float = 0.5
+
 # Signals
 signal character_loaded(character_variant: String)
 signal animation_finished(animation_name: String)
 signal team_color_applied(team_id: int, color: Color)
 signal weapon_equipped(weapon_type: String)
 signal weapon_fired(weapon_type: String, damage: float)
+signal weapon_reloaded(weapon_type: String, new_ammo: int)
+signal movement_completed(final_position: Vector3)
 
 func _setup_logger() -> void:
 	"""Setup logger reference from dependency container"""
@@ -142,6 +147,9 @@ func _setup_weapon_system() -> void:
 func _load_character_model() -> void:
 	"""Load and setup the character model based on archetype"""
 	
+	# First, remove placeholder elements created by Unit base class
+	await _remove_placeholder_elements()
+	
 	# Select character variant based on archetype
 	var character_variants = CHARACTER_ASSIGNMENTS.get(archetype, ["character-a"])
 	current_character_variant = character_variants[randi() % character_variants.size()]
@@ -155,43 +163,133 @@ func _load_character_model() -> void:
 			logger.error("AnimatedUnit", "Failed to load character model: %s" % character_path)
 		else:
 			print("AnimatedUnit ERROR: Failed to load character model: %s" % character_path)
-		_create_fallback_model()
 		return
-	
-	# Remove existing basic mesh
-	var old_mesh = find_child("UnitMesh")
-	if old_mesh:
-		old_mesh.queue_free()
 	
 	# Instantiate character model
 	character_model = character_scene.instantiate()
+	if not character_model:
+		if logger:
+			logger.error("AnimatedUnit", "Failed to instantiate character model: %s" % character_path)
+		else:
+			print("AnimatedUnit ERROR: Failed to instantiate character model: %s" % character_path)
+		return
+	
+	# Configure model
 	character_model.name = "CharacterModel"
+	var scale_factor = 2.0  # Kenny models are small, scale them up
+	character_model.scale = Vector3.ONE * scale_factor
 	
-	# Scale character appropriately for RTS view
-	var scale_factor = 2.0  # Make characters more visible from RTS camera
-	character_model.scale = Vector3(scale_factor, scale_factor, scale_factor)
+	# Add model to unit using call_deferred to avoid timing issues
+	call_deferred("add_child", character_model)
 	
-	# Add some random rotation for variety
-	character_model.rotation_degrees.y = randf_range(-15, 15)
+	# Wait for model to be added to tree
+	await get_tree().process_frame
 	
-	# Find animation player and skeleton
-	_find_animation_components()
+	# Now create collision shape for the character model
+	_create_character_collision_shape(scale_factor)
 	
-	# Collect mesh instances for team coloring
+	# Find mesh instances for material management
 	_collect_mesh_instances()
 	
-	# Add to scene first
-	add_child(character_model)
+	# Find animation components
+	_find_animation_components()
 	
-	# Apply textures using texture manager
+	# Apply texture to character
 	if texture_manager:
 		texture_manager.apply_character_texture(character_model, current_character_variant)
 	
 	if logger:
-		logger.info("AnimatedUnit", "Loaded character model %s for %s" % [current_character_variant, archetype])
+		logger.info("AnimatedUnit", "Character model loaded: %s (scale: %s)" % [current_character_variant, scale_factor])
 	else:
-		print("AnimatedUnit: Loaded character model %s for %s" % [current_character_variant, archetype])
+		print("AnimatedUnit: Character model loaded: %s (scale: %s)" % [current_character_variant, scale_factor])
+	
 	character_loaded.emit(current_character_variant)
+
+func _remove_placeholder_elements() -> void:
+	"""Remove placeholder mesh and collision shape created by Unit base class"""
+	
+	# Wait a frame to ensure Unit._ready() has completed
+	await get_tree().process_frame
+	
+	# Remove ALL existing children that are placeholder elements
+	var children_to_remove = []
+	
+	for child in get_children():
+		# Remove placeholder MeshInstance3D (usually cylinder)
+		if child is MeshInstance3D and (child.name == "UnitMesh" or child.name.contains("Mesh")):
+			children_to_remove.append(child)
+			if logger:
+				logger.info("AnimatedUnit", "Queuing placeholder mesh '%s' for removal" % child.name)
+			else:
+				print("AnimatedUnit: Queuing placeholder mesh '%s' for removal" % child.name)
+		
+		# Remove placeholder CollisionShape3D
+		elif child is CollisionShape3D and child.name == "CollisionShape3D":
+			children_to_remove.append(child)
+			if logger:
+				logger.info("AnimatedUnit", "Queuing placeholder collision shape '%s' for removal" % child.name)
+			else:
+				print("AnimatedUnit: Queuing placeholder collision shape '%s' for removal" % child.name)
+	
+	# Actually remove the placeholder elements
+	for child in children_to_remove:
+		child.queue_free()
+	
+	# Wait another frame to ensure removal is processed
+	await get_tree().process_frame
+	
+	if logger:
+		logger.info("AnimatedUnit", "Removed %d placeholder elements" % children_to_remove.size())
+	else:
+		print("AnimatedUnit: Removed %d placeholder elements" % children_to_remove.size())
+
+func _create_character_collision_shape(scale_factor: float) -> void:
+	"""Create collision shape that matches the character model dimensions"""
+	
+	# Create new collision shape for the character
+	var collision_shape = CollisionShape3D.new()
+	collision_shape.name = "CharacterCollisionShape3D"  # Use different name than placeholder
+	
+	# Use a box shape that better represents the character dimensions
+	var box_shape = BoxShape3D.new()
+	# Kenny characters are roughly 1 unit wide, 2 units tall, 1 unit deep
+	# Scale according to the character model scale
+	box_shape.size = Vector3(
+		1.0 * scale_factor,   # Width
+		2.0 * scale_factor,   # Height 
+		1.0 * scale_factor    # Depth
+	)
+	collision_shape.shape = box_shape
+	
+	# Position the collision shape to match character center
+	collision_shape.position.y = 1.0 * scale_factor  # Center at character height/2
+	
+	# Add collision shape to unit using call_deferred to avoid timing issues
+	call_deferred("add_child", collision_shape)
+	
+	# Set collision layers for selection detection after the shape is added
+	call_deferred("_configure_collision_layers")
+	
+	if logger:
+		logger.info("AnimatedUnit", "Created character collision shape: size %s, position %s" % [box_shape.size, collision_shape.position])
+	else:
+		print("AnimatedUnit: Created character collision shape: size %s, position %s" % [box_shape.size, collision_shape.position])
+
+func _configure_collision_layers() -> void:
+	"""Configure collision layers for proper selection detection"""
+	
+	# Wait a frame to ensure collision shape is fully added
+	await get_tree().process_frame
+	
+	# Set collision layers for selection detection
+	# Layer 1 is used by the selection system for raycast detection
+	collision_layer = 1  # This unit exists on layer 1 (selection layer)
+	collision_mask = 2   # This unit collides with layer 2 (environment/terrain)
+	
+	if logger:
+		logger.info("AnimatedUnit", "Configured collision layers: layer %d, mask %d" % [collision_layer, collision_mask])
+	else:
+		print("AnimatedUnit: Configured collision layers: layer %d, mask %d" % [collision_layer, collision_mask])
 
 func _find_animation_components() -> void:
 	"""Find animation player and skeleton in the character model"""
@@ -199,7 +297,7 @@ func _find_animation_components() -> void:
 		return
 	
 	# Search for AnimationPlayer
-	animation_player = _find_node_recursive(character_model, "AnimationPlayer") as AnimationPlayer
+	animation_player = _find_child_recursive(character_model, "AnimationPlayer") as AnimationPlayer
 	if not animation_player:
 		if logger:
 			logger.warning("AnimatedUnit", "No AnimationPlayer found in character model %s" % current_character_variant)
@@ -207,7 +305,7 @@ func _find_animation_components() -> void:
 			print("AnimatedUnit WARNING: No AnimationPlayer found in character model %s" % current_character_variant)
 	
 	# Search for Skeleton3D
-	skeleton = _find_node_recursive(character_model, "Skeleton3D") as Skeleton3D
+	skeleton = _find_child_recursive(character_model, "Skeleton3D") as Skeleton3D
 	if not skeleton:
 		if logger:
 			logger.warning("AnimatedUnit", "No Skeleton3D found in character model %s" % current_character_variant)
@@ -231,13 +329,22 @@ func _find_child_recursive(node: Node, child_name: String) -> Node:
 	return null
 
 func _collect_mesh_instances() -> void:
-	"""Collect all MeshInstance3D nodes for team coloring"""
+	"""Find and collect all mesh instances in the character model"""
 	character_mesh_instances.clear()
-	if character_model:
-		_collect_mesh_instances_recursive(character_model)
+	
+	if not character_model:
+		return
+		
+	# Recursively find all MeshInstance3D nodes
+	_collect_mesh_instances_recursive(character_model)
+	
+	if logger:
+		logger.info("AnimatedUnit", "Found %d mesh instances in character model" % character_mesh_instances.size())
+	else:
+		print("AnimatedUnit: Found %d mesh instances in character model" % character_mesh_instances.size())
 
 func _collect_mesh_instances_recursive(node: Node) -> void:
-	"""Recursively collect MeshInstance3D nodes"""
+	"""Recursively collect mesh instances from a node tree"""
 	if node is MeshInstance3D:
 		character_mesh_instances.append(node as MeshInstance3D)
 	
@@ -650,7 +757,7 @@ func debug_character_info() -> Dictionary:
 		"current_character_variant": current_character_variant,
 		"character_loaded": character_model != null,
 		"health": "%s/%s" % [current_health, max_health],
-		"state": UnitState.keys()[unit_state],
+		"state": GameEnums.UnitState.keys()[current_state],
 		"position": global_position
 	}
 	
@@ -684,18 +791,18 @@ var was_moving: bool = false
 # Override the movement handling from the base Unit class
 func _handle_movement(delta: float) -> void:
 	"""Handle unit movement with animation integration"""
-	if not is_moving or not move_target:
+	if not is_moving or not movement_target:
 		if animation_controller and was_moving:
 			animation_controller.stop_moving()
 			was_moving = false
 		return
 	
-	var distance_to_target = global_position.distance_to(move_target)
+	var distance_to_target = global_position.distance_to(movement_target)
 	
 	if distance_to_target < movement_threshold:
 		# Reached target
 		is_moving = false
-		move_target = null
+		movement_target = Vector3.ZERO
 		
 		if animation_controller:
 			animation_controller.stop_moving()
@@ -710,11 +817,11 @@ func _handle_movement(delta: float) -> void:
 		return
 	
 	# Calculate movement
-	var direction = (move_target - global_position).normalized()
+	var direction = (movement_target - global_position).normalized()
 	var movement_distance = movement_speed * delta
 	
 	# Move towards target
-	global_position = global_position.move_toward(move_target, movement_distance)
+	global_position = global_position.move_toward(movement_target, movement_distance)
 	
 	# Update animation controller with movement data
 	if animation_controller:
@@ -752,10 +859,10 @@ func take_damage(damage: float) -> void:
 
 func _handle_death() -> void:
 	"""Handle unit death with animation"""
-	if unit_state == UnitState.DEAD:
+	if current_state == GameEnums.UnitState.DEAD:
 		return  # Already handled
 	
-	_change_state(UnitState.DEAD)
+	current_state = GameEnums.UnitState.DEAD
 	
 	# Trigger death animation
 	if animation_controller:

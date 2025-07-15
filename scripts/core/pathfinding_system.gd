@@ -4,7 +4,6 @@ extends Node
 
 # Pathfinding settings
 var navigation_map: RID
-var navigation_server: NavigationServer3D
 var path_update_interval: float = 0.1
 var path_optimization_enabled: bool = true
 var dynamic_obstacle_avoidance: bool = true
@@ -36,6 +35,9 @@ var lookahead_distance: float = 3.0
 var max_path_requests_per_frame: int = 10
 var path_cache_duration: float = 2.0
 var path_cache: Dictionary = {}  # position_key -> cached_path_data
+
+# System state
+var is_ready: bool = false
 
 # Movement states
 enum MovementState {
@@ -84,12 +86,19 @@ signal path_failed(unit_id: String, reason: String)
 signal unit_reached_destination(unit_id: String)
 signal unit_stuck(unit_id: String, position: Vector3)
 signal pathfinding_performance_update(stats: Dictionary)
+signal pathfinding_system_ready()
 
 func _ready() -> void:
-	# Initialize navigation server
-	navigation_server = NavigationServer3D
-	navigation_map = navigation_server.map_create()
-	navigation_server.map_set_active(navigation_map, true)
+	print("PathfindingSystem: Initializing pathfinding system...")
+	
+	# Create navigation map using NavigationServer3D singleton
+	navigation_map = NavigationServer3D.map_create()
+	NavigationServer3D.map_set_active(navigation_map, true)
+	
+	# Set up basic navigation configuration
+	NavigationServer3D.map_set_cell_size(navigation_map, 0.5)
+	NavigationServer3D.map_set_cell_height(navigation_map, 0.2)
+	NavigationServer3D.map_set_edge_connection_margin(navigation_map, 0.2)
 	
 	# Find formation system
 	formation_system = _find_formation_system()
@@ -100,7 +109,10 @@ func _ready() -> void:
 	# Add to pathfinding systems group
 	add_to_group("pathfinding_systems")
 	
-	print("PathfindingSystem: Pathfinding system initialized with NavigationAgent3D")
+	print("PathfindingSystem: Navigation map created")
+	
+	is_ready = true
+	pathfinding_system_ready.emit()
 
 func _find_formation_system() -> FormationSystem:
 	"""Find formation system in scene"""
@@ -171,7 +183,7 @@ func _calculate_path(start: Vector3, target: Vector3, unit_id: String) -> Array[
 	var path: Array[Vector3] = []
 	
 	if navigation_map.is_valid():
-		var nav_path = navigation_server.map_get_path(
+		var nav_path = NavigationServer3D.map_get_path(
 			navigation_map,
 			start,
 			target,

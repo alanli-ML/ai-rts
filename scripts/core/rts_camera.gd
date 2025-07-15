@@ -19,10 +19,10 @@ extends Node3D
 # Bounds settings
 @export_group("Bounds")
 @export var use_bounds: bool = true
-@export var min_x: float = -50.0
-@export var max_x: float = 150.0
-@export var min_z: float = -50.0
-@export var max_z: float = 150.0
+@export var min_x: float = -75.0  # Expanded from -50 for 3x larger map
+@export var max_x: float = 250.0  # Expanded from 150 for 3x larger map  
+@export var min_z: float = -75.0  # Expanded from -50 for 3x larger map
+@export var max_z: float = 250.0  # Expanded from 150 for 3x larger map
 
 # Mouse drag settings
 @export_group("Mouse Drag")
@@ -49,14 +49,22 @@ func _ready() -> void:
     camera_3d.position = Vector3(0, current_zoom, current_zoom * 0.7)
     camera_3d.look_at(Vector3.ZERO, Vector3.UP)
     
-    # Load edge scroll setting from config
-    use_edge_scroll = ConfigManager.user_settings.get("edge_scroll_enabled", true)
+    # Load edge scroll setting from config if available
+    if has_node("/root/ConfigManager"):
+        var config_manager = get_node("/root/ConfigManager")
+        use_edge_scroll = config_manager.user_settings.get("edge_scroll_enabled", true)
+    else:
+        use_edge_scroll = true  # Default enabled
     
     # Add to groups for easy discovery
     add_to_group("rts_cameras")
     add_to_group("cameras")
     
-    Logger.info("RTSCamera", "RTS Camera initialized")
+    if has_node("/root/Logger"):
+        var logger = get_node("/root/Logger")
+        logger.info("RTSCamera", "RTS Camera initialized")
+    else:
+        print("RTSCamera: RTS Camera initialized")
 
 func _input(event: InputEvent) -> void:
     # Mouse wheel zoom
@@ -77,8 +85,8 @@ func _input(event: InputEvent) -> void:
         var delta = event.position - last_mouse_position
         last_mouse_position = event.position
         
-        # Convert mouse delta to world movement
-        var movement = Vector3(delta.x, 0, delta.y) * mouse_drag_sensitivity
+        # Convert mouse delta to world movement (invert Y-axis to feel natural)
+        var movement = Vector3(delta.x, 0, -delta.y) * mouse_drag_sensitivity
         if invert_drag:
             movement *= -1
         
@@ -101,10 +109,10 @@ func _process(delta: float) -> void:
         input_vector.x -= 1
     if Input.is_action_pressed("camera_right"):
         input_vector.x += 1
-    if Input.is_action_pressed("camera_forward"):
-        input_vector.z -= 1
-    if Input.is_action_pressed("camera_backward"):
+    if Input.is_action_pressed("camera_forward"):  # W key should move forward
         input_vector.z += 1
+    if Input.is_action_pressed("camera_backward"):  # S key should move backward
+        input_vector.z -= 1
     
     # Edge scrolling
     if use_edge_scroll and get_viewport().gui_get_focus_owner() == null:
@@ -116,10 +124,11 @@ func _process(delta: float) -> void:
         elif mouse_pos.x > viewport_size.x - edge_scroll_margin:
             input_vector.x += 1
         
+        # Invert Y-axis for natural edge scrolling (mouse at top = move forward)
         if mouse_pos.y < edge_scroll_margin:
-            input_vector.z -= 1
+            input_vector.z += 1  # Move forward when mouse at top
         elif mouse_pos.y > viewport_size.y - edge_scroll_margin:
-            input_vector.z += 1
+            input_vector.z -= 1  # Move backward when mouse at bottom
     
     # Apply movement
     if input_vector.length() > 0:
@@ -189,6 +198,41 @@ func focus_on_position(target_pos: Vector3, instant: bool = false) -> void:
     else:
         # TODO: Implement smooth camera movement
         position = Vector3(target_pos.x, position.y, target_pos.z)
+
+func position_for_map_data(map_data: Dictionary) -> void:
+    """Position and configure camera based on procedural map data"""
+    # Get map dimensions
+    var tile_size = map_data.get("tile_size", 3.0)
+    var grid_size = map_data.get("size", Vector2i(20, 20))
+    var world_width = grid_size.x * tile_size
+    var world_height = grid_size.y * tile_size
+    var map_center = Vector3(world_width * 0.5, 0, world_height * 0.5)
+    
+    # Update camera bounds to match map size with some padding
+    var padding = max(world_width, world_height) * 0.3
+    min_x = -padding
+    max_x = world_width + padding
+    min_z = -padding
+    max_z = world_height + padding
+    
+    # Position camera to view the map center
+    position = Vector3(map_center.x, position.y, map_center.z)
+    
+    # Adjust zoom range based on map size
+    var map_scale = max(world_width, world_height) / 60.0  # Normalized to default 60x60 map
+    min_zoom = 10.0 * map_scale
+    max_zoom = 80.0 * map_scale
+    current_zoom = 30.0 * map_scale
+    target_zoom = current_zoom
+    
+    # Update camera position based on new zoom
+    _update_camera_position()
+    
+    if has_node("/root/Logger"):
+        var logger = get_node("/root/Logger")
+        logger.info("RTSCamera", "Positioned for map: %sx%s units, zoom range: %s-%s" % [world_width, world_height, min_zoom, max_zoom])
+    else:
+        print("RTSCamera: Positioned for map: %sx%s units, zoom range: %s-%s" % [world_width, world_height, min_zoom, max_zoom])
 
 func shake(_intensity: float = 1.0, _duration: float = 0.5) -> void:
     """Add camera shake effect"""

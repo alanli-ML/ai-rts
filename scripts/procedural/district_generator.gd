@@ -6,6 +6,7 @@ extends Node
 var logger
 var tile_system: Node
 var asset_loader: Node
+var asset_dimension_manager: Node
 
 # District generation configuration
 var district_types: Array = ["commercial", "industrial", "mixed", "residential", "military"]
@@ -16,11 +17,12 @@ signal district_generated(district_id: String, district_data: Dictionary)
 func _ready() -> void:
     pass
 
-func setup(logger_ref, tile_system_ref: Node, asset_loader_ref: Node) -> void:
+func setup(logger_ref, tile_system_ref: Node, asset_loader_ref: Node, asset_dimension_manager_ref: Node) -> void:
     """Setup the district generator with dependencies"""
     logger = logger_ref
     tile_system = tile_system_ref
     asset_loader = asset_loader_ref
+    asset_dimension_manager = asset_dimension_manager_ref
     
     if logger:
         logger.info("DistrictGenerator", "District generator initialized")

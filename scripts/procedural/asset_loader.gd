@@ -273,7 +273,140 @@ func get_asset_counts() -> Dictionary:
 	"""Get counts of loaded assets for debugging"""
 	return {
 		"roads": road_assets.size(),
-		"commercial": commercial_assets["buildings"].size(),
-		"industrial": industrial_assets["buildings"].size(),
-		"characters": character_assets["characters"].size()
-	} 
+		"commercial_buildings": commercial_assets["buildings"].size(),
+		"commercial_skyscrapers": commercial_assets["skyscrapers"].size(),
+		"commercial_low_detail": commercial_assets["low_detail"].size(),
+		"industrial_buildings": industrial_assets["buildings"].size(),
+		"industrial_chimneys": industrial_assets["chimneys"].size(),
+		"industrial_details": industrial_assets["details"].size(),
+		"characters": character_assets["characters"].size(),
+		"loading_complete": loading_complete
+	}
+
+func verify_assets_loaded() -> bool:
+	"""Verify that all expected Kenny assets are loaded"""
+	if not loading_complete:
+		if logger:
+			logger.warning("AssetLoader", "Asset loading not yet complete")
+		return false
+	
+	var issues = []
+	
+	# Check commercial assets
+	if commercial_assets["buildings"].size() == 0:
+		issues.append("No commercial buildings loaded")
+	if commercial_assets["skyscrapers"].size() == 0:
+		issues.append("No commercial skyscrapers loaded")
+	
+	# Check industrial assets
+	if industrial_assets["buildings"].size() == 0:
+		issues.append("No industrial buildings loaded")
+	
+	# Check characters
+	if character_assets["characters"].size() == 0:
+		issues.append("No character assets loaded")
+	
+	if issues.size() > 0:
+		if logger:
+			logger.error("AssetLoader", "Asset verification failed: %s" % str(issues))
+		return false
+	
+	if logger:
+		logger.info("AssetLoader", "Asset verification passed - all Kenny assets loaded successfully")
+	return true
+
+func get_detailed_asset_info() -> Dictionary:
+	"""Get detailed information about loaded assets"""
+	var info = {
+		"loading_complete": loading_complete,
+		"commercial": {
+			"buildings_count": commercial_assets["buildings"].size(),
+			"skyscrapers_count": commercial_assets["skyscrapers"].size(),
+			"low_detail_count": commercial_assets["low_detail"].size(),
+			"sample_building_paths": []
+		},
+		"industrial": {
+			"buildings_count": industrial_assets["buildings"].size(),
+			"chimneys_count": industrial_assets["chimneys"].size(),
+			"details_count": industrial_assets["details"].size(),
+			"sample_building_paths": []
+		},
+		"characters": {
+			"count": character_assets["characters"].size(),
+			"sample_paths": []
+		}
+	}
+	
+	# Add sample paths for debugging
+	if commercial_assets["buildings"].size() > 0:
+		for i in range(min(3, commercial_assets["buildings"].size())):
+			info.commercial.sample_building_paths.append(commercial_assets["buildings"][i].resource_path)
+	
+	if industrial_assets["buildings"].size() > 0:
+		for i in range(min(3, industrial_assets["buildings"].size())):
+			info.industrial.sample_building_paths.append(industrial_assets["buildings"][i].resource_path)
+	
+	if character_assets["characters"].size() > 0:
+		for i in range(min(3, character_assets["characters"].size())):
+			info.characters.sample_paths.append(character_assets["characters"][i].resource_path)
+	
+	return info
+
+func get_all_commercial_building_types() -> Array:
+	"""Get all available commercial building type identifiers"""
+	var types = []
+	
+	# Add all standard buildings (a through n)
+	for letter in ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n"]:
+		types.append("building-" + letter)
+	
+	# Add skyscrapers
+	for letter in ["a", "b", "c", "d", "e"]:
+		types.append("building-skyscraper-" + letter)
+	
+	# Add low detail buildings
+	types.append_array([
+		"low-detail-building-a", "low-detail-building-b",
+		"low-detail-building-c", "low-detail-building-d",
+		"low-detail-building-wide-a", "low-detail-building-wide-b"
+	])
+	
+	return types
+
+func get_all_industrial_building_types() -> Array:
+	"""Get all available industrial building type identifiers"""
+	var types = []
+	
+	# Add all industrial buildings (a through t)
+	for letter in ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t"]:
+		types.append("building-" + letter)
+	
+	# Add industrial details
+	types.append_array([
+		"chimney-basic", "chimney-large", "chimney-medium", "chimney-small",
+		"detail-tank"
+	])
+	
+	return types
+
+func force_reload_assets() -> void:
+	"""Force reload all Kenny assets (useful for testing)"""
+	loading_complete = false
+	commercial_assets.clear()
+	industrial_assets.clear()
+	character_assets.clear()
+	road_assets.clear()
+	
+	if logger:
+		logger.info("AssetLoader", "Forcing asset reload...")
+	
+	load_kenney_assets()
+
+func get_square_road_asset():
+	"""Get the square road asset for consistent tile-based roads"""
+	var road_square_path = ROADS_PATH + "road-square.glb"
+	if FileAccess.file_exists(road_square_path):
+		return load(road_square_path)
+	
+	# Fallback to straight road if square not available
+	return get_random_road_asset("straight") 

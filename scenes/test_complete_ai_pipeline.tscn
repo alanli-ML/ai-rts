@@ -1,0 +1,46 @@
+[gd_scene load_steps=3 format=3 uid="uid://ddyx80mpe20la"]
+
+[ext_resource type="Script" path="res://scripts/test/test_complete_ai_pipeline.gd" id="1_qvp8r"]
+
+[node name="TestCompleteAIPipeline" type="Node3D"]
+script = ExtResource("1_qvp8r")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.866025, 0.5, 0, -0.5, 0.866025, 0, 10, 20)
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.707107, -0.5, 0.5, 0, 0.707107, 0.707107, -0.707107, -0.5, 0.5, 0, 10, 0)
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_1"]
+size = Vector2(20, 20)
+
+[node name="Ground" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+mesh = SubResource("PlaneMesh_1")
+
+[node name="UI" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Instructions" type="Label" parent="UI"]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = -150.0
+offset_right = 600.0
+offset_bottom = -10.0
+text = "AI Pipeline Test Controls:
+SPACE - Run complete pipeline test
+1-6   - Test individual scenarios  
+R     - Check system readiness
+A     - Test OpenAI API directly
+S     - Show statistics
+C     - Clear results
+H     - Show help
+
+Make sure to set OPENAI_API_KEY environment variable!"
+vertical_alignment = 2 

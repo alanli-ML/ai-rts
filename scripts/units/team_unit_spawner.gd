@@ -58,7 +58,7 @@ func _spawn_team_units(team_data: NetworkManager.TeamData) -> void:
 
 func _create_team_unit(archetype: String, team_id: int, position: Vector3) -> Node:
 	"""Create a unit with team-based ownership"""
-	var unit_scene = preload("res://scenes/units/Unit.tscn")
+	var unit_scene = preload("res://scenes/units/AnimatedUnit.tscn")
 	var unit = unit_scene.instantiate()
 	unit.archetype = archetype
 	unit.team_id = team_id

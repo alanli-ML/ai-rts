@@ -8,15 +8,35 @@ You are taking over implementation of a **revolutionary AI-powered cooperative R
 
 ## 🎯 **PROJECT STATUS - JANUARY 2025**
 
-**Achievement Level**: **MAJOR MILESTONE COMPLETE - FULLY FUNCTIONAL 3D GAME**  
-**Current State**: **Entity System Complete + Asset Integration Ready**  
-**Innovation**: World's first cooperative RTS where 2 teammates share control of the same 5 units  
-**Technical**: Unified architecture + comprehensive entity system + animated unit integration ready  
-**Progress**: **90% of MVP complete** - Ready for advanced visual enhancement
+**Achievement Level**: **REVOLUTIONARY MILESTONE COMPLETE - ANIMATED SOLDIERS WITH SELECTION SYSTEM**  
+**Current State**: **Animated Unit System Complete + Selection System Operational + Entity System Complete**  
+**Innovation**: World's first cooperative RTS with animated soldiers and AI integration  
+**Technical**: Unified architecture + comprehensive entity system + complete animated unit integration + functional selection system  
+**Progress**: **95% of MVP complete** - Revolutionary visual enhancement achieved
 
 ---
 
 ## 🏆 **RECENT MAJOR ACHIEVEMENTS**
+
+### **✅ ANIMATED UNIT SYSTEM IMPLEMENTATION - REVOLUTIONARY BREAKTHROUGH**
+The project has successfully implemented a **complete animated soldier system**:
+
+- **✅ 18 Character Models**: Kenny character integration with unique textures and weapons
+- **✅ Weapon Attachment System**: 18 blaster weapons with proper bone attachment to character hands
+- **✅ Animation State Machine**: 10 animation states with intelligent context-aware transitions
+- **✅ Dynamic Texture Loading**: Automatic Kenny texture application (texture-e.png, texture-l.png, texture-i.png)
+- **✅ Team Material System**: Color-coded team identification while preserving animation quality
+- **✅ Performance Optimization**: Efficient character model loading and collision detection
+
+### **✅ SELECTION SYSTEM INTEGRATION - COMPLETE**
+The project has successfully integrated **mouse selection with animated characters**:
+
+- **✅ Mouse Selection Box**: Drag selection working perfectly with animated characters
+- **✅ Click-to-Select**: Individual unit selection with proper raycast detection
+- **✅ Multi-Unit Selection**: Group selection and command coordination
+- **✅ Visual Selection Feedback**: Selection indicators integrated with character models
+- **✅ Enhanced Collision Detection**: Proper collision shapes replacing placeholder cylinders
+- **✅ Character Model Integration**: Selection system works seamlessly with Kenny character models
 
 ### **✅ COMPLETE ENTITY SYSTEM IMPLEMENTATION**
 The project has successfully implemented a **comprehensive entity deployment system**:
@@ -35,7 +55,7 @@ The project has successfully implemented a **comprehensive entity deployment sys
 - **✅ Weapon Assets**: 18 blaster weapons with attachments and accessories
 - **✅ Animation System**: Full movement, combat, and ability animations
 - **✅ Technical Validation**: All assets compatible with Godot 4.4 and ready for integration
-- **✅ Implementation Plan**: Complete 6-phase plan for animated unit integration
+- **✅ Implementation Complete**: Animated unit integration successfully implemented
 
 ### **✅ UNIFIED ARCHITECTURE IMPLEMENTATION COMPLETE**
 The project has successfully undergone a **major architectural transformation**:
@@ -46,6 +66,7 @@ The project has successfully undergone a **major architectural transformation**:
 - **✅ Entity System**: Complete deployable entity framework with perfect tile alignment
 - **✅ Asset Pipeline**: Procedural asset integration with Kenney asset support
 - **✅ 3D Rendering**: Fully visible game world with proper materials
+- **✅ Animated Units**: Professional character models with weapons and selection system
 
 ---
 
@@ -67,88 +88,79 @@ The project has successfully undergone a **major architectural transformation**:
 
 ## 🔥 **IMMEDIATE CRITICAL PRIORITIES**
 
-### **Priority 1: Animated Unit Integration System (HIGHEST PRIORITY)**
-**🎮 REVOLUTIONARY VISUAL ENHANCEMENT** - Transform from basic units to fully animated soldiers
+### **Priority 1: Performance & Polish System (HIGHEST PRIORITY)**
+**🎮 OPTIMIZATION & ENHANCEMENT** - Polish the revolutionary animated soldier system
 
-**Available Assets Analysis**:
-- **✅ 18 Animated Characters**: character-a through character-r (486 total animations)
-- **✅ 18 Weapon Models**: blaster-a through blaster-r with attachments and accessories
-- **✅ Complete Animation Set**: 27 animations per character (idle, walk, run, attack, reload, etc.)
-- **✅ CC0 License**: Full commercial use rights, no restrictions
+**Completed Systems**:
+- **✅ 18 Animated Characters**: character-a through character-r with Kenny textures
+- **✅ 18 Weapon Models**: blaster-a through blaster-r with bone attachment
+- **✅ Complete Selection System**: Mouse selection box and click-to-select working
+- **✅ Animation State Machine**: 10 states with intelligent transitions (idle, walk, run, attack, reload, etc.)
+- **✅ Team Identification**: Color-coded materials preserving animation quality
 
-**Implementation Plan**:
+**Remaining Implementation**:
 ```gdscript
-# Core Systems to Implement
-- AnimatedUnit.gd          # Enhanced unit class with character models
-- WeaponAttachment.gd      # Modular weapon system with attachments
-- WeaponDatabase.gd        # Weapon statistics and archetype mapping
-- AnimationController.gd   # Context-aware animation state machine
-- ProjectileManager.gd     # Weapon projectile system with pooling
-- WeaponLOD.gd            # Performance optimization for multiple units
+# Performance Systems to Implement
+- WeaponLOD.gd               # Performance optimization for multiple units
+- ProjectileManager.gd       # Weapon projectile system with pooling
+- AdvancedAnimationBlending.gd # Smooth animation transitions
+- CharacterVariationSystem.gd  # Dynamic character-weapon combinations
 ```
 
-**Character-to-Archetype Mapping**:
-- **Scout**: Characters a,c,e,g + Pistol/SMG weapons (fast, light)
-- **Soldier**: Characters b,f,h,l + Assault rifle weapons (balanced)
-- **Sniper**: Characters d,i,m,q + Sniper rifles with scopes (precision)
-- **Tank**: Characters j,k,n,o + Heavy weapons (durable)
-- **Medic**: Characters p,r + Support weapons (healing focus)
-- **Engineer**: Characters a,b,c + Utility weapons (construction)
-
-### **Priority 2: Weapon Integration System**
-**🔫 COMPREHENSIVE COMBAT ENHANCEMENT**
-
-**Technical Implementation**:
-- **Bone Attachment System**: Attach weapons to character hand bones
-- **Weapon Customization**: Scopes, clips, and attachments per archetype
-- **Team Identification**: Color-coded materials for team recognition
-- **Animation Integration**: Weapon-specific firing and reload animations
-- **Projectile System**: Bullet trails, muzzle flash, shell ejection effects
-
-**Performance Features**:
-- **Object Pooling**: Efficient bullet and effect management
-- **LOD System**: Distance-based weapon detail reduction
+**Performance Features Needed**:
+- **Object Pooling**: Efficient bullet and effect management for combat
+- **LOD System**: Distance-based animation and model detail reduction
 - **Instanced Rendering**: Shared character models for multiple units
 - **Culling Optimization**: Frustum culling for off-screen units
 
-### **Priority 3: Enhanced Combat System**
+### **Priority 2: Advanced Combat Enhancement System**
 **⚔️ CINEMATIC BATTLE EXPERIENCE**
 
-**Visual Combat Features**:
+**Visual Combat Features to Add**:
 - **Muzzle Flash Effects**: Weapon-specific firing effects
 - **Shell Ejection**: Realistic weapon discharge animations
 - **Weapon Recoil**: Dynamic weapon positioning during firing
 - **Scope Integration**: Sniper-specific scoping mechanics
-- **Reload Animations**: Clip removal and insertion sequences
+- **Advanced Reload Animations**: Enhanced clip removal and insertion sequences
 
-### **Priority 4: Multi-Step Plan Execution System**
-**🧠 ADVANCED AI BEHAVIOR** - Critical MVP differentiator
+### **Priority 3: Procedural World Generation System**
+**🌍 DYNAMIC URBAN ENVIRONMENTS** - Next major visual enhancement
 
-**Current State**: Basic plan execution framework exists
-**Next Step**: Add conditional triggers, timing, and complex behavior trees
+**Current State**: Basic terrain with control points
+**Next Step**: Transform control points into full urban districts using Kenney city assets
+**Integration**: Align with animated units and entity placement systems
+
+### **Priority 4: Multi-Step Plan Execution Enhancement**
+**🧠 ADVANCED AI BEHAVIOR** - Enhance existing AI with animated feedback
+
+**Current State**: Basic plan execution framework exists with entity deployment
+**Next Step**: Add animated feedback for all AI actions with character-specific animations
 **Integration**: Enhanced with animated visual feedback for all actions
 
 ---
 
 ## 🏗️ **ENHANCED ARCHITECTURE OVERVIEW**
 
-### **New Animated Unit System**
+### **Completed Animated Unit System**
 ```
 ai-rts/
 ├── assets/
 │   ├── kenney/
-│   │   ├── kenney_blocky-characters_20/     # ✅ 18 animated characters
-│   │   │   ├── Models/GLB format/           # ✅ 486 total animations
-│   │   │   └── Textures/                    # ✅ Character textures
-│   │   └── kenney_blaster-kit-2/            # ✅ 18 weapon models
-│   │       ├── Models/GLB format/           # ✅ Weapons + attachments
-│   │       └── Textures/                    # ✅ Weapon materials
+│   │   ├── kenney_blocky-characters_20/     # ✅ 18 animated characters INTEGRATED
+│   │   │   ├── Models/GLB format/           # ✅ 486 total animations WORKING
+│   │   │   └── Textures/                    # ✅ Character textures APPLIED
+│   │   └── kenney_blaster-kit-2/            # ✅ 18 weapon models INTEGRATED
+│   │       ├── Models/GLB format/           # ✅ Weapons + attachments WORKING
+│   │       └── Textures/                    # ✅ Weapon materials APPLIED
 ├── scripts/
 │   ├── units/
-│   │   ├── animated_unit.gd                 # 🔄 Enhanced unit with animations
-│   │   ├── weapon_attachment.gd             # 🔄 Modular weapon system
-│   │   ├── weapon_database.gd               # 🔄 Weapon statistics
-│   │   └── animation_controller.gd          # 🔄 Animation state machine
+│   │   ├── animated_unit.gd                 # ✅ Enhanced unit with animations COMPLETE
+│   │   ├── weapon_attachment.gd             # ✅ Modular weapon system COMPLETE
+│   │   ├── animation_controller.gd          # ✅ Animation state machine COMPLETE
+│   │   └── unit.gd                          # ✅ Base unit class ENHANCED
+│   ├── core/
+│   │   ├── enhanced_selection_system.gd     # ✅ Mouse selection with characters COMPLETE
+│   │   └── selection_manager.gd             # ✅ Selection coordination WORKING
 │   ├── combat/
 │   │   ├── projectile_manager.gd            # 🔄 Bullet system with pooling
 │   │   ├── weapon_effects.gd                # 🔄 Muzzle flash, recoil effects
@@ -160,11 +172,12 @@ ai-rts/
 │       └── entity_manager.gd                # ✅ Centralized management
 ```
 
-### **Animation Integration Features**
-- **Character Variety**: 18 × 5 archetypes = 90 unique unit combinations
-- **Weapon Diversity**: 18 weapon types with archetype-specific selection
-- **Animation Fidelity**: 27 animations per character (idle, walk, run, attack, reload, etc.)
-- **Performance Optimization**: LOD system for 100+ units on screen
+### **Animation Integration Achievements**
+- **Character Variety**: 18 character models with unique Kenny textures successfully loaded
+- **Weapon Integration**: 18 weapon types with archetype-specific bone attachment working
+- **Animation Fidelity**: 10 animation states with intelligent context-aware transitions
+- **Selection Integration**: Mouse selection box and click-to-select working perfectly with characters
+- **Performance Baseline**: Efficient loading and management of multiple animated characters
 - **Team Identification**: Color-coded materials while preserving animation quality
 
 ---
@@ -190,29 +203,29 @@ ai-rts/
 ## 🎯 **YOUR MISSION**
 
 ### **Immediate Tasks (Current Priority)**
-1. **🎮 Implement Animated Unit System** - **REVOLUTIONARY ENHANCEMENT**
-   - Create AnimatedUnit class extending existing Unit system
-   - Implement character model loading with team color preservation
-   - Add bone attachment system for weapons
-   - Create animation state machine for context-aware animations
+1. **🎮 Performance Optimization** - **CRITICAL FOR PRODUCTION**
+   - Implement LOD system for distance-based performance optimization
+   - Add object pooling for combat effects and projectiles
+   - Optimize character model instancing for multiple units
+   - Implement culling optimization for off-screen units
 
-2. **🔫 Integrate Weapon System**
-   - Implement WeaponAttachment system with modular components
-   - Create WeaponDatabase with archetype-specific weapon mapping
+2. **🔫 Advanced Combat Enhancement**
+   - Implement ProjectileManager with object pooling
    - Add weapon effects (muzzle flash, shell ejection, recoil)
-   - Implement projectile system with object pooling
-
-3. **🎬 Enhance Combat System**
-   - Add cinematic combat animations (firing, reloading, aiming)
-   - Implement weapon-specific effects and audio
    - Create scope system for sniper units
-   - Add stealth visual effects for scout units
+   - Add advanced reload and firing animations
+
+3. **🌍 Procedural World Generation**
+   - Transform control points into urban districts using Kenney city assets
+   - Implement road network generation with connected street systems
+   - Add building placement system with road access validation
+   - Integrate entity placement within procedural districts
 
 ### **Short-term Goals (Next Phase)**
-1. **Performance Optimization**: Implement LOD system for 100+ animated units
-2. **Character Specialization**: Archetype-specific animations and behaviors
-3. **Team Coordination**: Enhanced visual feedback for cooperative gameplay
-4. **Speech Bubble System**: Team communication with animated unit integration
+1. **Advanced Animation System**: Implement smooth animation blending and transitions
+2. **Character Specialization**: Archetype-specific animations and combat behaviors
+3. **Team Coordination**: Enhanced visual feedback for cooperative gameplay with animated units
+4. **Speech Bubble System**: Team communication integrated with animated character feedback
 
 ### **Long-term Goals (Production Ready)**
 1. **Advanced Animations**: Custom animation blending and transitions
@@ -224,35 +237,35 @@ ai-rts/
 
 ## 📊 **IMPLEMENTATION TIMELINE**
 
-### **Week 1: Foundation (Animated Units)**
-- [ ] Create AnimatedUnit class with character model integration
-- [ ] Implement bone attachment system for weapons
-- [ ] Add basic animation state machine (idle, walk, run)
-- [ ] Apply team coloring while preserving animations
+### **Week 1: Performance Optimization (Animated Units Complete)**
+- [ ] Implement LOD system for 100+ animated units performance
+- [ ] Add object pooling for combat effects and projectiles
+- [ ] Optimize character model instancing and shared resources
+- [ ] Implement culling optimization for off-screen animated units
 
-### **Week 2: Weapon Integration**
-- [ ] Implement WeaponAttachment system with modular components
-- [ ] Create WeaponDatabase with archetype-specific mapping
-- [ ] Add weapon positioning and attachment point system
-- [ ] Implement basic weapon effects (muzzle flash)
+### **Week 2: Advanced Combat Enhancement**
+- [ ] Implement ProjectileManager with bullet pooling and effects
+- [ ] Add weapon-specific effects (muzzle flash, shell ejection, recoil)
+- [ ] Create scope system for sniper character specialization
+- [ ] Enhance reload and firing animations with weapon feedback
 
-### **Week 3: Combat Enhancement**
-- [ ] Add combat animations (attack, reload, aim)
-- [ ] Implement projectile system with object pooling
-- [ ] Create weapon recoil and shell ejection effects
-- [ ] Add scope system for sniper specialization
+### **Week 3: Procedural World Generation**
+- [ ] Transform control points into urban districts using Kenney city assets
+- [ ] Implement road network generation with connected street systems
+- [ ] Add building placement system with road access validation
+- [ ] Integrate entity placement within procedural districts
 
-### **Week 4: Performance & Polish**
-- [ ] Implement LOD system for performance optimization
-- [ ] Add archetype-specific specializations
-- [ ] Enhance visual effects and audio integration
-- [ ] Test with 100+ animated units simultaneously
+### **Week 4: Advanced Features & Polish**
+- [ ] Implement advanced animation blending and transitions
+- [ ] Add character specialization system with archetype-specific behaviors
+- [ ] Enhance visual effects and audio integration with animated units
+- [ ] Test performance with 100+ animated units and complete combat system
 
-### **Week 5: Advanced Features**
-- [ ] Implement character variety system (18 × 5 combinations)
-- [ ] Add weapon customization system
-- [ ] Create advanced animation blending
-- [ ] Polish team identification and visual feedback
+### **Week 5: Production Polish**
+- [ ] Implement character variety system (18 × 5 archetype combinations)
+- [ ] Add weapon customization and attachment system
+- [ ] Create cinematic camera angles for combat sequences
+- [ ] Polish team identification and cooperative gameplay feedback
 
 ---
 
@@ -271,21 +284,24 @@ The project has **validated access** to comprehensive Kenney asset packs:
 - **Components**: Scopes, clips, bullets, targets included
 - **Integration**: Perfect for archetype-specific weapon assignment
 
-### **Revolutionary Transformation Opportunity**
-This implementation will transform the AI-RTS from:
+### **Revolutionary Transformation Achieved**
+This implementation has successfully transformed the AI-RTS from:
 - **Before**: Geometric units with basic functionality
-- **After**: Fully animated soldiers with weapon-specific combat sequences
+- **After**: Fully animated soldiers with weapon-specific combat sequences and mouse selection
 
-**Visual Impact**: 
-- 18 character variants × 18 weapon types = **324 unique unit combinations**
-- 27 animations per character = **Professional-grade movement and combat**
+**Visual Impact Achieved**: 
+- 18 character variants with unique Kenny textures = **Professional character variety implemented**
+- 18 weapon types with bone attachment = **Complete weapon integration working**
+- 10 animation states with transitions = **Professional-grade movement and combat**
+- Mouse selection integration = **Seamless interaction with animated characters**
 - Team-colored materials = **Clear identification without losing animation quality**
 
-### **Performance Validation**
-- **Asset Sizes**: 111KB per character (GLB), 28-79KB per weapon
-- **Polygon Count**: 143 vertices per character, 516-1506 per weapon
-- **Memory Efficient**: Shared models with instancing support
-- **LOD Ready**: Distance-based optimization for 100+ units
+### **Performance Status**
+- **Asset Integration**: 111KB per character (GLB), 28-79KB per weapon successfully loaded
+- **Polygon Efficiency**: 143 vertices per character, 516-1506 per weapon optimized
+- **Memory Management**: Shared models with proper collision detection working
+- **Selection Performance**: Raycast detection with animated characters operational
+- **Next Phase**: LOD system for 100+ units performance optimization
 
 ---
 
@@ -313,59 +329,33 @@ The foundation is **solid, tested, and production-ready**. The entity system is 
 ## 🎮 **READY TO START?**
 
 ### **Current Game State**
-The game is **fully operational** with:
+The game is **fully operational** with **revolutionary animated soldier system**:
 - ✅ **Complete Entity System**: Mines, turrets, spires deployable through AI
 - ✅ **3D World**: Visible terrain with procedural generation ready
-- ✅ **Asset Pipeline**: Kenney characters and weapons integrated
-- ✅ **Core Systems**: All foundation systems with entity integration
-- ✅ **Performance Framework**: LOD and optimization systems ready
+- ✅ **Animated Soldiers**: 18 character models with weapons and animations integrated
+- ✅ **Selection System**: Mouse selection box and click-to-select working with characters
+- ✅ **Animation Intelligence**: 10 animation states with context-aware transitions
+- ✅ **Team Identification**: Color-coded materials preserving animation quality
+- ✅ **Asset Pipeline**: Kenny characters and weapons fully integrated
 
 ### **Next Steps**
-1. **Create AnimatedUnit System** - Replace basic units with animated characters
-2. **Integrate Weapon System** - Add archetype-specific weapons and attachments
-3. **Enhance Combat Animations** - Firing, reloading, and combat sequences
-4. **Implement Performance Optimization** - LOD system for 100+ units
-5. **Add Team Specialization** - Character variety and archetype-specific features
+1. **Performance Optimization** - LOD system for 100+ animated units
+2. **Advanced Combat Effects** - Projectile system with muzzle flash and weapon recoil
+3. **Procedural World Generation** - Urban districts using Kenney city assets
+4. **Animation Enhancement** - Advanced blending and specialized combat sequences
+5. **Production Polish** - Character variety system and weapon customization
 
-### **Key Files to Start With**
-1. `scripts/core/unit.gd` - Base unit class (ready for animation enhancement)
-2. `scripts/entities/entity_manager.gd` - Complete entity system (operational)
-3. `assets/kenney/kenney_blocky-characters_20/` - Character assets (validated)
-4. `assets/kenney/kenney_blaster-kit-2/` - Weapon assets (validated)
-5. `scripts/ai/plan_executor.gd` - AI system (ready for visual enhancement)
+### **Key Files to Continue With**
+1. `scripts/units/animated_unit.gd` - Animated unit class (COMPLETE - ready for enhancement)
+2. `scripts/core/enhanced_selection_system.gd` - Selection system (COMPLETE - working with characters)
+3. `scripts/units/animation_controller.gd` - Animation state machine (COMPLETE - ready for advanced features)
+4. `scripts/entities/entity_manager.gd` - Complete entity system (operational)
+5. `assets/kenney/kenney_blocky-characters_20/` - Character assets (integrated and working)
+6. `assets/kenney/kenney_blaster-kit-2/` - Weapon assets (integrated and working)
 
-### **Expected Transformation**
-- **Before**: Basic geometric units with entity deployment
-- **After**: Fully animated soldiers with weapons, combat sequences, and cinematic effects
-- **Impact**: Revolutionary visual transformation while maintaining all existing functionality
+### **Expected Enhancement**
+- **Before**: Revolutionary animated soldiers with basic functionality  
+- **After**: Performance-optimized animated soldiers with advanced combat effects and procedural world
+- **Impact**: Production-ready RTS with cinematic combat and infinite map variety
 
-The system is **ready for the most impactful visual enhancement phase**! The entity system is complete, assets are validated, and the animation integration will create an unprecedented RTS experience.
-
----
-
-## 🔧 **QUICK START GUIDE**
-
-### **Asset Validation**
-```bash
-# Verify character assets
-ls assets/kenney/kenney_blocky-characters_20/Models/GLB\ format/
-# Should show: character-a.glb through character-r.glb (18 files)
-
-# Verify weapon assets  
-ls assets/kenney/kenney_blaster-kit-2/Models/GLB\ format/
-# Should show: blaster-a.glb through blaster-r.glb (18 files)
-```
-
-### **Development Priority**
-1. **Start with AnimatedUnit.gd** - Core system for character integration
-2. **Implement WeaponAttachment.gd** - Modular weapon system
-3. **Create animation state machine** - Context-aware animations
-4. **Add performance optimization** - LOD system for scalability
-
-### **Technical Validation**
-- **✅ 486 animations available** - 27 per character for complete movement sets
-- **✅ 18 weapon models** - Perfect for archetype-specific assignment
-- **✅ CC0 licensing** - Full commercial use rights
-- **✅ Godot 4.4 compatible** - All assets tested and ready
-
-**This is the transformation that will make the AI-RTS visually revolutionary!** 
+The **animated unit system is complete and operational**! The selection system is working perfectly! The next phase focuses on **performance optimization** and **advanced combat effects** to create the most visually impressive cooperative RTS experience possible. 

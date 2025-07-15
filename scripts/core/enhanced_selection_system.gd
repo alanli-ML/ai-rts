@@ -2,6 +2,9 @@
 class_name EnhancedSelectionSystem
 extends Node
 
+# Import GameEnums for state checking
+const GameEnums = preload("res://scripts/shared/types/game_enums.gd")
+
 # Enhanced selection settings
 @export var selection_layers: int = 0b1  # Layer mask for selectable objects
 @export var selection_precision: float = 0.1  # Precision for selection
@@ -352,9 +355,12 @@ func _create_raycast_pool():
 func _connect_signals():
 	"""Connect to system signals"""
 	# Connect to EventBus if available
-	if EventBus:
-		EventBus.unit_spawned.connect(_on_unit_spawned)
-		EventBus.unit_died.connect(_on_unit_died)
+	if has_node("/root/EventBus"):
+		var event_bus = get_node("/root/EventBus")
+		if event_bus.has_signal("unit_spawned"):
+			event_bus.unit_spawned.connect(_on_unit_spawned)
+		if event_bus.has_signal("unit_died"):
+			event_bus.unit_died.connect(_on_unit_died)
 
 func _input(event: InputEvent):
 	"""Handle input events"""
@@ -540,7 +546,7 @@ func _get_unit_at_position(screen_pos: Vector2) -> Unit:
 
 func _get_units_in_box() -> Array[Unit]:
 	"""Get units within selection box"""
-	var units = []
+	var units: Array[Unit] = []
 	
 	if not camera:
 		return units
@@ -558,11 +564,22 @@ func _get_units_in_box() -> Array[Unit]:
 	# Get all units in scene
 	var all_units = get_tree().get_nodes_in_group("units")
 	
-	for unit in all_units:
-		if unit is Unit and not unit.is_dead:
-			var screen_pos = camera.unproject_position(unit.global_position)
-			if selection_rect.has_point(screen_pos):
-				units.append(unit)
+	for node in all_units:
+		# Strict type checking to ensure we only add actual Unit objects
+		if node is Unit:
+			var unit = node as Unit
+			# Check if unit has is_dead property and if it's not dead
+			var is_unit_alive = true
+			if unit.has_method("is_dead") or "is_dead" in unit:
+				is_unit_alive = not unit.is_dead
+			elif unit.has_method("get_current_state"):
+				# Use state check if is_dead property doesn't exist
+				is_unit_alive = unit.get_current_state() != GameEnums.UnitState.DEAD
+			
+			if is_unit_alive:
+				var screen_pos = camera.unproject_position(unit.global_position)
+				if selection_rect.has_point(screen_pos):
+					units.append(unit)
 	
 	return units
 

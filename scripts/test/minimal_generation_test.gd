@@ -95,11 +95,20 @@ func _display_results(map_data: Dictionary) -> void:
 func _render_simple_3d(map_data: Dictionary) -> void:
 	print("\n=== RENDERING 3D VISUALIZATION ===")
 	
-	# Create ground
+	# Get actual map dimensions
+	var tile_size = map_data.get("tile_size", 3.0)
+	var grid_size = map_data.get("size", Vector2i(20, 20))
+	var world_width = grid_size.x * tile_size
+	var world_height = grid_size.y * tile_size
+	var map_center = Vector3(world_width * 0.5, 0, world_height * 0.5)
+	
+	print("Map dimensions: %sx%s units (grid: %sx%s, tile_size: %s)" % [world_width, world_height, grid_size.x, grid_size.y, tile_size])
+	
+	# Create ground sized to actual map
 	var ground = MeshInstance3D.new()
 	ground.name = "Ground"
 	var plane_mesh = PlaneMesh.new()
-	plane_mesh.size = Vector2(60, 60)
+	plane_mesh.size = Vector2(world_width * 1.2, world_height * 1.2)  # Slightly larger than map
 	ground.mesh = plane_mesh
 	
 	var ground_material = StandardMaterial3D.new()
@@ -108,12 +117,20 @@ func _render_simple_3d(map_data: Dictionary) -> void:
 	
 	add_child(ground)
 	
-	# Create camera
-	var camera = Camera3D.new()
-	camera.name = "Camera"
-	camera.position = Vector3(25, 30, 25)
-	camera.look_at(Vector3(0, 0, 0), Vector3.UP)
-	add_child(camera)
+	# Create RTS camera with mouse controls
+	var rts_camera = RTSCamera.new()
+	rts_camera.name = "RTSCamera"
+	add_child(rts_camera)
+	
+	# Position the RTS camera based on actual map data
+	rts_camera.position_for_map_data(map_data)
+	
+	print("RTS Camera positioned with mouse controls enabled")
+	print("Controls:")
+	print("  - Mouse wheel: Zoom in/out")
+	print("  - Middle mouse drag: Pan camera")
+	print("  - Arrow keys: Move camera")
+	print("  - Edge scrolling: Move mouse to screen edges")
 	
 	# Create lighting
 	var light = DirectionalLight3D.new()
@@ -124,7 +141,6 @@ func _render_simple_3d(map_data: Dictionary) -> void:
 	
 	# Render control points
 	var control_points = map_data.get("control_points", {})
-	var tile_size = map_data.get("tile_size", 3.0)
 	
 	print("Rendering %d control points..." % control_points.size())
 	

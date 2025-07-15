@@ -253,9 +253,45 @@ func _unhandled_input(event: InputEvent) -> void:
         return
 
 func _input(event: InputEvent) -> void:
-    """Handle input events"""
+    """Forward input events to appropriate managers and ensure SubViewport receives input"""
+    
+    # Forward input to input manager first
     if input_manager and input_manager.handle_regular_input(event):
-        return
+        return  # Input was handled
+    
+    # Ensure mouse and camera input reaches the SubViewport for RTS camera controls
+    var game_world_viewport = get_node_or_null("GameUI/GameWorldContainer/GameWorld")
+    if game_world_viewport and game_world_viewport is SubViewport:
+        # Forward camera-related input to the SubViewport
+        if event is InputEventMouseButton or event is InputEventMouseMotion:
+            # Check if the mouse is over the game world area
+            var game_world_container = get_node_or_null("GameUI/GameWorldContainer")
+            if game_world_container and _is_mouse_over_game_world(event, game_world_container):
+                game_world_viewport.push_input(event)
+        elif event is InputEventKey:
+            # Forward camera movement keys
+            if _is_camera_input(event):
+                game_world_viewport.push_input(event)
+
+func _is_mouse_over_game_world(event: InputEvent, container: Control) -> bool:
+    """Check if mouse event is over the game world container"""
+    if event is InputEventMouse:
+        var mouse_event = event as InputEventMouse
+        var container_rect = container.get_global_rect()
+        return container_rect.has_point(mouse_event.global_position)
+    return false
+
+func _is_camera_input(event: InputEventKey) -> bool:
+    """Check if the key event is for camera controls"""
+    if not event.pressed:
+        return false
+        
+    # Check for camera movement keys
+    return (event.keycode in [KEY_W, KEY_A, KEY_S, KEY_D] or
+            Input.is_action_pressed("camera_forward") or
+            Input.is_action_pressed("camera_left") or
+            Input.is_action_pressed("camera_backward") or
+            Input.is_action_pressed("camera_right"))
 
 func cleanup() -> void:
     """Cleanup resources"""

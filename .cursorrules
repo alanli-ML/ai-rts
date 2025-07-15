@@ -66,6 +66,31 @@
 - **Input Validation**: Verify camera availability before attempting selection operations
 - Cache frequently accessed nodes rather than searching repeatedly
 
+## Entity System Architecture
+
+- **Centralized Management**: Use a dedicated EntityManager for coordinating entity deployment, lifecycle, and spatial queries
+- **Tile-Based Coordination**: Align entity systems with tile-based world coordinates for consistent spatial management
+- **Entity Limits**: Implement per-team entity limits to prevent resource abuse (e.g., 10 mines, 5 turrets, 3 spires)
+- **Placement Validation**: Validate entity placement against existing world elements (buildings, roads, other entities)
+- **State Management**: Implement clear entity states (constructing, active, destroyed) with proper transitions
+- **Cleanup Systems**: Implement automatic cleanup for expired entities with proper signal disconnection
+
+## Procedural Generation Integration
+
+- **Coordinate System Alignment**: Ensure procedural systems and entity systems use the same tile-based coordinate system
+- **Dependency Injection**: Use dependency injection to connect procedural generators with entity managers
+- **Validation Integration**: Integrate entity placement validation with procedural generation constraints
+- **Server-Authoritative**: Keep all procedural generation deterministic and server-controlled for multiplayer consistency
+- **Spatial Queries**: Implement efficient spatial queries for entity-procedural interactions (e.g., `get_entities_in_area()`)
+
+## AI Integration Patterns
+
+- **Command Translation**: Implement clear separation between natural language processing and game action execution
+- **Action Validation**: Always validate AI-generated actions against game rules before execution
+- **State Awareness**: Provide AI systems with complete game state context for intelligent decision making
+- **Async Processing**: Use async patterns for AI communication to prevent game blocking
+- **Plan Execution**: Implement plan executors that can handle multi-step AI strategies with proper error handling
+
 ## Resource Management
 
 - Implement proper resource cleanup in \_exit_tree()
@@ -79,6 +104,50 @@
 - Implement object pooling for frequently spawned objects
 - Use physics layers to optimize collision detection
 - Prefer packed arrays (PackedVector2Array, etc.) over regular arrays
+- **Spatial Partitioning**: Implement spatial partitioning for efficient entity queries and collision detection
+- **Cleanup Systems**: Implement automatic cleanup systems for expired entities and temporary objects
+- **Batch Operations**: Group similar operations together to reduce individual processing overhead
+- **LOD Systems**: Implement level-of-detail systems for entities based on distance from camera
+
+## Asset Integration Workflows
+
+- **External Asset Packs**: Structure external assets (e.g., Kenney packs) in dedicated directories under `assets/`
+- **Import Optimization**: Configure import settings for GLB models to optimize for runtime performance
+- **Texture Sharing**: Use shared textures across multiple models when possible to reduce memory usage
+- **Animation Workflow**: For character-weapon combinations, implement attachment systems rather than baking animations
+- **Asset Validation**: Implement asset validation systems to ensure all required models and textures are present
+
+## Animation System Integration
+
+- **Character-Weapon Attachment**: Implement dynamic weapon attachment systems using attachment points
+- **Animation State Management**: Use AnimationTree for complex character animation state management
+- **Blend Spaces**: Implement 2D blend spaces for directional movement animations
+- **Animation Callbacks**: Use animation callbacks for critical gameplay events (attack completion, reload, etc.)
+- **Performance Optimization**: Cache animation players and avoid creating new ones frequently
+
+## Server-Authoritative Design
+
+- **State Synchronization**: Implement server-authoritative state with client prediction for smooth gameplay
+- **Validation Systems**: Validate all client actions on the server before applying state changes
+- **Deterministic Systems**: Ensure all gameplay systems produce deterministic results for consistent multiplayer
+- **Network Optimization**: Implement delta compression and prioritization for network traffic
+- **Cheat Prevention**: Design systems to be inherently cheat-proof through server validation
+
+## Dependency Injection
+
+- **Service Locators**: Use dependency injection containers for managing system dependencies
+- **Interface Abstraction**: Define clear interfaces for major systems to enable easy testing and swapping
+- **Singleton Management**: Manage singletons through dependency injection rather than global access
+- **Circular Dependencies**: Avoid circular dependencies by using event-driven communication
+- **Testing Support**: Structure dependency injection to support easy unit testing with mock objects
+
+## Advanced Testing Patterns
+
+- **Comprehensive Test Suites**: Implement multi-phase test suites that validate individual components and integration
+- **Performance Testing**: Include performance benchmarks in test suites to catch regressions
+- **State Validation**: Test all possible system states and transitions, not just happy paths
+- **Integration Testing**: Test complete workflows from input to output across multiple systems
+- **Cleanup Validation**: Verify proper cleanup of resources and signal disconnections in tests
 
 ## Error Handling
 
@@ -112,3 +181,7 @@
 - Don't forget to add nodes to required groups for system discovery
 - Don't skip collision shape setup for selectable units
 - Don't forget to properly connect and disconnect signals to prevent memory leaks
+- Don't implement entity systems without proper spatial partitioning for large-scale games
+- Don't integrate AI systems without proper validation and error handling
+- Don't create procedural systems without considering multiplayer determinism
+- Don't implement animation systems without proper cleanup and resource management

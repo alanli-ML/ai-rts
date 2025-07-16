@@ -110,6 +110,7 @@ func _create_attachment_points() -> void:
 
 func equip_weapon(unit: Node3D, weapon_variant: String, team_id: int = 1) -> bool:
 	"""Equip a weapon to a unit"""
+	print("DEBUG: WeaponAttachment.equip_weapon() called - unit: %s, weapon: %s, team: %d" % [unit.name if unit else "null", weapon_variant, team_id])
 	if not unit:
 		_log_error("Cannot equip weapon: unit is null")
 		return false
@@ -120,8 +121,12 @@ func equip_weapon(unit: Node3D, weapon_variant: String, team_id: int = 1) -> boo
 	# Get skeleton from unit
 	if unit.has_method("get_skeleton"):
 		parent_skeleton = unit.get_skeleton()
+		print("DEBUG: WeaponAttachment.equip_weapon() - unit has get_skeleton method, result: %s" % ("found" if parent_skeleton else "null"))
+	else:
+		print("DEBUG: WeaponAttachment.equip_weapon() - unit has no get_skeleton method")
 	
 	# Load weapon model
+	print("DEBUG: WeaponAttachment.equip_weapon() - loading weapon model")
 	if not _load_weapon_model(weapon_variant):
 		_log_error("Failed to load weapon model: %s" % weapon_variant)
 		return false
@@ -129,20 +134,26 @@ func equip_weapon(unit: Node3D, weapon_variant: String, team_id: int = 1) -> boo
 	# Try skeleton attachment first, fall back to static if no skeleton
 	var attachment_success = false
 	if parent_skeleton:
+		print("DEBUG: WeaponAttachment.equip_weapon() - attempting skeleton attachment")
 		attachment_success = _attach_to_skeleton()
+		print("DEBUG: WeaponAttachment.equip_weapon() - skeleton attachment result: %s" % ("success" if attachment_success else "failed"))
 	
 	if not attachment_success:
+		print("DEBUG: WeaponAttachment.equip_weapon() - attempting static fallback attachment")
 		# Use static fallback positioning
 		attachment_success = _attach_weapon_static_fallback()
+		print("DEBUG: WeaponAttachment.equip_weapon() - static attachment result: %s" % ("success" if attachment_success else "failed"))
 	
 	if not attachment_success:
 		_log_error("Failed to attach weapon using any method")
 		return false
 	
 	# Apply team colors
+	print("DEBUG: WeaponAttachment.equip_weapon() - applying team colors")
 	_apply_team_colors(team_id)
 	
 	# Load weapon stats
+	print("DEBUG: WeaponAttachment.equip_weapon() - loading weapon stats")
 	_load_weapon_stats(weapon_variant)
 	
 	is_equipped = true
@@ -152,6 +163,7 @@ func equip_weapon(unit: Node3D, weapon_variant: String, team_id: int = 1) -> boo
 	else:
 		print("WeaponAttachment: Equipped weapon %s to unit %s" % [weapon_variant, unit.name])
 	
+	print("DEBUG: WeaponAttachment.equip_weapon() - weapon equipped successfully (damage: %.1f, ammo: %d/%d)" % [damage, current_ammo, max_ammo])
 	weapon_equipped.emit(weapon_type)
 	return true
 
@@ -458,23 +470,34 @@ func add_attachment(attachment_type: String) -> bool:
 
 func can_fire() -> bool:
 	"""Check if weapon can fire"""
+	print("DEBUG: WeaponAttachment.can_fire() - checking conditions")
 	if not is_equipped:
+		print("DEBUG: WeaponAttachment.can_fire() - weapon not equipped")
 		return false
 	
 	if current_ammo <= 0:
+		print("DEBUG: WeaponAttachment.can_fire() - no ammo (%d)" % current_ammo)
 		return false
 	
 	var current_time = Time.get_ticks_msec() / 1000.0
 	var time_since_last_fire = current_time - last_fire_time
 	var fire_cooldown = 1.0 / fire_rate
 	
-	return time_since_last_fire >= fire_cooldown
+	if time_since_last_fire < fire_cooldown:
+		print("DEBUG: WeaponAttachment.can_fire() - on cooldown (%.1fs since last fire, need %.1fs)" % [time_since_last_fire, fire_cooldown])
+		return false
+	
+	print("DEBUG: WeaponAttachment.can_fire() - all checks passed, can fire")
+	return true
 
 func fire() -> Dictionary:
 	"""Fire the weapon and return fire data"""
+	print("DEBUG: WeaponAttachment.fire() called - checking if can fire")
 	if not can_fire():
+		print("DEBUG: WeaponAttachment.fire() - cannot fire, returning empty")
 		return {}
 	
+	print("DEBUG: WeaponAttachment.fire() - firing weapon %s" % weapon_type)
 	current_ammo -= 1
 	last_fire_time = Time.get_ticks_msec() / 1000.0
 	is_firing = true
@@ -488,6 +511,8 @@ func fire() -> Dictionary:
 		"ammo_remaining": current_ammo
 	}
 	
+	print("DEBUG: WeaponAttachment.fire() - creating effects and spawning projectile")
+	
 	# Create muzzle flash effect
 	_create_muzzle_flash()
 
@@ -498,8 +523,10 @@ func fire() -> Dictionary:
 	
 	# Auto-reload if empty
 	if current_ammo <= 0:
+		print("DEBUG: WeaponAttachment.fire() - weapon empty, starting auto-reload")
 		_auto_reload()
 	
+	print("DEBUG: WeaponAttachment.fire() - completed successfully")
 	return fire_data
 
 func _create_muzzle_flash() -> void:
@@ -529,50 +556,48 @@ func _create_muzzle_flash() -> void:
 	tween.tween_callback(func(): muzzle_flash.queue_free())
 
 func _spawn_projectile() -> void:
-	"""Spawn a projectile from the weapon"""
-	if not PROJECTILE_SCENE:
-		if logger:
-			logger.warning("WeaponAttachment", "Projectile scene not found")
+	"""
+	Spawns a logical projectile on the server and tells clients to spawn a
+	visual-only projectile via RPC.
+	"""
+	if not PROJECTILE_SCENE or not muzzle_point:
+		_log_error("Cannot spawn projectile - scene or muzzle point missing.")
 		return
-	
-	if not muzzle_point:
-		if logger:
-			logger.warning("WeaponAttachment", "Muzzle point not found for projectile spawn")
-		return
-	
+
+	# This projectile is server-side only, for logic and collision.
 	var projectile = PROJECTILE_SCENE.instantiate()
-	if not projectile:
-		if logger:
-			logger.error("WeaponAttachment", "Failed to instantiate projectile")
-		return
 	
 	# Set projectile properties
 	projectile.damage = damage
-	projectile.speed = 50.0 + (range * 2.0)  # Speed based on weapon range
+	projectile.speed = 50.0 + (range * 2.0)
 	projectile.shooter_team_id = parent_unit.team_id if parent_unit else 1
-	projectile.lifetime = range / 20.0  # Lifetime based on range
+	projectile.lifetime = range / 20.0
 	
 	# Calculate direction (forward from muzzle point)
 	var forward_direction = -muzzle_point.global_transform.basis.z.normalized()
-	projectile.direction = forward_direction
 	
 	# Add some accuracy variation
-	var accuracy_spread = (1.0 - accuracy) * 0.2  # Max 20 degree spread for 0% accuracy
+	var accuracy_spread = (1.0 - accuracy) * 0.2
 	var random_spread = Vector3(
 		randf_range(-accuracy_spread, accuracy_spread),
 		randf_range(-accuracy_spread, accuracy_spread),
 		0.0
 	)
-	projectile.direction = (projectile.direction + random_spread).normalized()
+	projectile.direction = (forward_direction + random_spread).normalized()
 	
 	# Position projectile at muzzle
 	projectile.global_position = muzzle_point.global_position
 	
-	# Add to scene tree
+	# Add logical projectile to server's scene tree
 	get_tree().root.add_child(projectile)
-	
+
+	# RPC to clients to spawn their own visual-only projectile
+	var root_node = get_tree().get_root().get_node_or_null("UnifiedMain")
+	if root_node:
+		root_node.rpc("spawn_visual_projectile_rpc", muzzle_point.global_position, projectile.direction, projectile.shooter_team_id, projectile.speed, projectile.lifetime)
+
 	if logger:
-		logger.debug("WeaponAttachment", "Spawned projectile from %s" % weapon_type)
+		logger.debug("WeaponAttachment", "Spawned logical projectile and sent RPC for visual projectile.")
 
 func _auto_reload() -> void:
 	"""Auto-reload weapon when empty"""

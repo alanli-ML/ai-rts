@@ -2,16 +2,19 @@
 class_name AICommandProcessor
 extends Node
 
+# Import schemas for structured outputs
+const AIResponseSchemas = preload("res://scripts/ai/ai_response_schemas.gd")
+
 # Dependencies
 var logger
 var action_validator: ActionValidator
 var langsmith_client: Node
 var plan_executor: Node
 
-# Internal variables
-var command_queue: Array[Dictionary] = []
-var processing_command: bool = false
-var current_request_timeout: Timer = null
+# Internal variables for concurrent request handling
+var active_requests: Dictionary = {} # request_id -> { "context": Dictionary, "timestamp": float }
+var request_id_counter: int = 0
+var max_concurrent_requests: int = 10 # Allow up to 10 concurrent requests
 var max_request_timeout: float = 30.0  # 30 second timeout
 
 # Model configuration for different prompt types
@@ -25,46 +28,23 @@ var autonomous_command_model: String = "gpt-4.1-nano"  # Fast for autonomous dec
 # Universal base prompt shared between group and individual commands
 var base_system_prompt_template = """
 You are an AI assistant for a 2v2 cooperative RTS game.
-Your task is to translate natural language commands into a structured JSON plan for %s.
+Your task is to translate natural language commands into a structured plan for {target_description}.
 The plan for each unit should consist of a sequential list of "steps" and a list of "triggered_actions".
 
-You MUST respond with a JSON object in the following format:
-{
-  "type": "multi_step_plan",
-  "plans": [
-    {
-      "unit_id": "string_unit_id",
-      "steps": [
-        {
-          "action": "action_name",
-          "params": { "param1": "value1" },
-          "speech": "optional_unit_dialogue"
-        }
-      ],
-      "triggered_actions": [
-        {
-          "action": "action_name",
-          "params": { "param1": "value1" },
-          "trigger": "A condition to run this action. Examples: 'health_pct < 50', 'enemy_in_range'.",
-          "speech": "optional_unit_dialogue"
-        }
-      ]
-    }
-  ],
-  "message": "A confirmation message for the player."
-}
+Your response will automatically follow the required JSON format. Focus on creating tactical plans that make strategic sense.
 
-%s
+{specific_requirements}
 
 CRITICAL STRUCTURE REQUIREMENTS:
 - "steps" is a sequential plan. Actions are executed in order.
 - "triggered_actions" are conditional and interrupt the main plan.
 - You MUST provide at least one action in the "steps" array.
-- You MUST provide at least one action in "triggered_actions" with 'enemy_in_range' as the trigger for self-defense.
+- You MUST provide at least one action in "triggered_actions" with 'enemies_in_range' as the trigger for self-defense.
 - You can add other triggered actions, like retreating on low health.
+- Keep "speech" text brief (under 50 characters each).
 
 IMPORTANT: You may ONLY use actions from the following list. Do not invent new actions.
-Available actions: %s
+Available actions: {actions_list}
 
 Action Parameter Examples:
 - "move_to": {"position": [x: float, y: float, z: float]}
@@ -75,59 +55,54 @@ Action Parameter Examples:
 - "construct": {"building_type": "string_building_name", "position": [x: float, y: float, z: float]}
 - For actions with no parameters like "activate_shield" or "lay_mines", use {}.
 
-Available triggers for 'triggered_actions': health_pct, ammo_pct, morale, under_fire, target_dead, enemy_in_range, enemy_dist, ally_health_low, nearby_enemies, is_moving, elapsed_ms.
-Trigger format examples: "health_pct < 50", "enemy_in_range" (simple boolean), "elapsed_ms > 2000".
+Your response will use structured triggers with three separate fields:
+- trigger_source: The metric to check (health_pct, ammo_pct, morale, under_fire, target_dead, enemies_in_range, enemy_dist, ally_health_low, nearby_enemies, is_moving, elapsed_ms)
+- trigger_comparison: The comparison operator (<, <=, =, >=, >, !=)
+- trigger_value: The value to compare against (number or boolean)
 
-EXAMPLE REQUIRED STRUCTURE%s:
-{
-  "unit_id": "%s",
-  "steps": [
-    {
-      "action": "move_to",
-      "params": {"position": [10, 0, 20]},
-      "speech": "%s"
-    },
-    {
-      "action": "patrol",
-      "params": {},
-      "speech": "Securing the area."
-    }
-  ],
-  "triggered_actions": [
-    {
-      "action": "attack",
-      "params": {},
-      "trigger": "enemy_in_range",
-      "speech": "%s"
-    },
-    {
-      "action": "retreat",
-      "params": {},
-      "trigger": "health_pct < 25",
-      "speech": "%s"
-    }
-  ]
-}
+Examples:
+- For "health below 50%": trigger_source="health_pct", trigger_comparison="<", trigger_value=50
+- For "enemy in range": trigger_source="enemies_in_range", trigger_comparison="=", trigger_value=true
+- For "elapsed time over 2 seconds": trigger_source="elapsed_ms", trigger_comparison=">", trigger_value=2000
 
-%s
+TEAM-RELATIVE DATA EXPLANATION:
+All data in your context uses team-relative values from YOUR team's perspective:
+- `team_id` fields: +1 = your team, -1 = enemy team, 0 = neutral
+- `controlling_team` (control points): +1 = controlled by your team, -1 = controlled by enemy team, 0 = neutral
+- `capture_value` (control points): +1.0 = fully controlled by your team, -1.0 = fully controlled by enemy, 0.0 = neutral
+  Values between 0 and ±1 indicate capture progress (e.g., 0.5 = 50 percent captured by your team)
+  All numeric values are rounded to 2 decimal places and relative to YOUR team perspective.
+
+EXAMPLE PLAN STRUCTURE{example_suffix}:
+- unit_id: Unique identifier for the unit
+- goal: High-level objective like "Secure the northern sector and provide overwatch"
+- steps: Sequential actions like move_to, patrol, attack
+- triggered_actions: Conditional responses like "attack when enemies_in_range" or "retreat when health_pct < 25"
+
+{additional_content}
 """
 
 # Signals
 signal plan_processed(plans: Array, message: String)
-signal command_failed(error: String)
+signal command_failed(error: String, unit_ids: Array)
 signal processing_started()
 signal processing_finished()
 
 func _ready() -> void:
     print("AICommandProcessor initialized, waiting for setup.")
+    set_process(true) # Enable _process for checking timeouts
+
+func _process(_delta: float) -> void:
+    # Check for request timeouts
+    var current_time = Time.get_ticks_msec() / 1000.0
+    var timed_out_requests = []
+    for request_id in active_requests:
+        var request_data = active_requests[request_id]
+        if current_time - request_data.timestamp > max_request_timeout:
+            timed_out_requests.append(request_id)
     
-    # Create timeout timer
-    current_request_timeout = Timer.new()
-    current_request_timeout.name = "RequestTimeoutTimer"
-    current_request_timeout.wait_time = max_request_timeout
-    current_request_timeout.one_shot = true
-    current_request_timeout.timeout.connect(_on_request_timeout)
-    add_child(current_request_timeout)
+    for request_id in timed_out_requests:
+        _on_request_timeout(request_id)
 
 func setup(p_logger, _game_constants, p_action_validator, p_plan_executor, p_langsmith_client) -> void:
     logger = p_logger
@@ -135,26 +110,12 @@ func setup(p_logger, _game_constants, p_action_validator, p_plan_executor, p_lan
     plan_executor = p_plan_executor
     langsmith_client = p_langsmith_client
     
-    # Add diagnostic logging
-    logger.info("AICommandProcessor", "=== AI SYSTEM DIAGNOSTIC ===")
-    logger.info("AICommandProcessor", "LangSmith client available: %s" % str(langsmith_client != null))
-    if langsmith_client:
-        logger.info("AICommandProcessor", "LangSmith API key configured: %s" % str(not langsmith_client.api_key.is_empty()))
-        logger.info("AICommandProcessor", "LangSmith tracing enabled: %s" % str(langsmith_client.enable_tracing))
-        if langsmith_client.openai_client:
-            logger.info("AICommandProcessor", "OpenAI client available: %s" % str(langsmith_client.openai_client != null))
-            logger.info("AICommandProcessor", "OpenAI API key configured: %s" % str(not langsmith_client.openai_client.api_key.is_empty()))
-        else:
-            logger.warning("AICommandProcessor", "OpenAI client not found in LangSmith client")
-    logger.info("AICommandProcessor", "=== END DIAGNOSTIC ===")
-    
     var server_game_state = get_node_or_null("/root/DependencyContainer/GameState")
     if server_game_state:
         if not plan_processed.is_connected(server_game_state._on_ai_plan_processed):
             plan_processed.connect(server_game_state._on_ai_plan_processed)
         if not command_failed.is_connected(server_game_state._on_ai_command_failed):
             command_failed.connect(server_game_state._on_ai_command_failed)
-        logger.info("AICommandProcessor", "Explicitly connected signals to ServerGameState.")
     
     logger.info("AICommandProcessor", "AI command processor setup complete.")
 
@@ -162,17 +123,14 @@ func setup(p_logger, _game_constants, p_action_validator, p_plan_executor, p_lan
 func set_group_command_model(model: String) -> void:
     """Set the model to use for group commands"""
     group_command_model = model
-    logger.info("AICommandProcessor", "Group command model set to: %s" % model)
 
 func set_individual_command_model(model: String) -> void:
     """Set the model to use for individual commands"""
     individual_command_model = model
-    logger.info("AICommandProcessor", "Individual command model set to: %s" % model)
 
 func set_autonomous_command_model(model: String) -> void:
     """Set the model to use for autonomous commands"""
     autonomous_command_model = model
-    logger.info("AICommandProcessor", "Autonomous command model set to: %s" % model)
 
 func get_model_configuration() -> Dictionary:
     """Get current model configuration"""
@@ -187,12 +145,15 @@ func _build_group_prompt() -> String:
     var target_description = "a group of units"
     var plan_description = " for each unit in the group"
     var unit_id_example = "id_of_unit_1\", \"id_of_unit_2"
-    var specific_requirements = """MANDATORY REQUIREMENT: You MUST include a plan for EVERY unit provided in the group context. 
-If you receive context for N units, you MUST return exactly N plans in your response.
-Failure to provide plans for all units will result in some units being left without actions.
+    var specific_requirements = """MANDATORY REQUIREMENT: You MUST include a plan for EVERY unit in the `allied_units` list.
+If there are N units in `allied_units`, you MUST return exactly N plans in your response.
+For each plan, you MUST define a high-level `goal` for the unit to follow.
 
-You will be given a detailed context object. The context will contain information for ALL units in the group under the `group_context` key. Use it to make tactical decisions and coordinate the units.
-When given a direct command, you should create a coordinated plan for the group."""
+You will be given a single consolidated `game_context` object. It contains:
+- `global_state`: Overall game information.
+- `allied_units`: A list of states for all units in your group.
+- `sensor_data`: A combined view of all enemies and control points visible to your group.
+Use this to make coordinated, high-level tactical decisions."""
     var actions_list = str(action_validator.get_allowed_actions())
     var example_suffix = " PER UNIT"
     var example_unit_id = "unit_123"
@@ -201,65 +162,98 @@ When given a direct command, you should create a coordinated plan for the group.
     var example_speech_3 = "Falling back"
     var additional_content = ""
     
-    return base_system_prompt_template % [
-        target_description,
-        specific_requirements,
-        actions_list,
-        example_suffix,
-        example_unit_id,
-        example_speech_1,
-        example_speech_2,
-        example_speech_3,
-        additional_content
-    ]
+    # Use safer string building approach
+    var template = base_system_prompt_template
+    template = template.replace("{target_description}", target_description)
+    template = template.replace("{specific_requirements}", specific_requirements)
+    template = template.replace("{actions_list}", actions_list)
+    template = template.replace("{example_suffix}", example_suffix)
+    template = template.replace("{example_unit_id}", example_unit_id)
+    template = template.replace("{example_speech_1}", example_speech_1)
+    template = template.replace("{example_speech_2}", example_speech_2)
+    template = template.replace("{example_speech_3}", example_speech_3)
+    template = template.replace("{additional_content}", additional_content)
+    
+    return template
+
+func _build_source_info(units: Array, command_type: String) -> String:
+    """Build source information for LangSmith tracing (e.g., 'player1/Tank' or 'player2/Group_3units')"""
+    if units.is_empty():
+        return "unknown"
+    
+    var first_unit = units[0]
+    var team_name = "player%d" % first_unit.team_id
+    
+    if command_type == "group" and units.size() > 1:
+        # For group commands, show unit count and primary archetype
+        var archetype_counts = {}
+        for unit in units:
+            var archetype = unit.archetype.capitalize()
+            archetype_counts[archetype] = archetype_counts.get(archetype, 0) + 1
+        
+        # Find the most common archetype
+        var primary_archetype = ""
+        var max_count = 0
+        for archetype in archetype_counts:
+            if archetype_counts[archetype] > max_count:
+                max_count = archetype_counts[archetype]
+                primary_archetype = archetype
+        
+        return "%s/Group_%dunits_%s" % [team_name, units.size(), primary_archetype]
+    else:
+        # For individual commands, show specific unit archetype
+        var archetype = first_unit.archetype.capitalize()
+        return "%s/%s" % [team_name, archetype]
 
 func _build_individual_prompt(unit_personality: String) -> String:
     """Build the system prompt for individual unit commands"""
     var target_description = "a specific unit"
     var plan_description = ""
     var unit_id_example = "id_of_unit_to_command"
-    var specific_requirements = """You will be given a detailed context object. Use it to make tactical decisions.
-The context includes `visible_control_points`, which are strategic locations to capture. Capturing points is key to victory.
-When asked to act autonomously, you should decide the best course of action based on your personality and the game context. When given a direct command, you should follow it while adhering to your personality."""
+    var specific_requirements = """You will be given a detailed context object. Your `unit_state` contains a `strategic_goal`.
+Your generated plan should be a series of concrete actions to achieve this `strategic_goal`.
+When generating a new plan, you MUST also output a new `goal` field. If you are continuing the same overall objective, this can be the same as your input `strategic_goal`. If you are changing tactics, provide a new descriptive goal."""
     var actions_list = str(action_validator.get_allowed_actions())
     var example_suffix = ""
     var example_unit_id = "your_unit_id"
     var example_speech_1 = "Moving to engage"
     var example_speech_2 = "Attacking target"
     var example_speech_3 = "Retreating to safety"
+    # Simply add unit personality without % escaping
     var additional_content = "\nUNIT PERSONALITY:\n" + unit_personality
     
-    return base_system_prompt_template % [
-        target_description,
-        specific_requirements,
-        actions_list,
-        example_suffix,
-        example_unit_id,
-        example_speech_1,
-        example_speech_2,
-        example_speech_3,
-        additional_content
-    ]
+    # Use safer string building approach
+    var template = base_system_prompt_template
+    template = template.replace("{target_description}", target_description)
+    template = template.replace("{specific_requirements}", specific_requirements)
+    template = template.replace("{actions_list}", actions_list)
+    template = template.replace("{example_suffix}", example_suffix)
+    template = template.replace("{example_unit_id}", example_unit_id)
+    template = template.replace("{example_speech_1}", example_speech_1)
+    template = template.replace("{example_speech_2}", example_speech_2)
+    template = template.replace("{example_speech_3}", example_speech_3)
+    template = template.replace("{additional_content}", additional_content)
+    
+    return template
 
 func process_command(command_text: String, unit_ids: Array[String] = [], peer_id: int = -1) -> void:
-    if processing_command:
-        command_queue.append({"text": command_text, "unit_ids": unit_ids, "peer_id": peer_id})
+    if active_requests.size() >= max_concurrent_requests:
+        logger.warning("AICommandProcessor", "Max concurrent requests reached (%d). Dropping new command for units %s." % [max_concurrent_requests, str(unit_ids)])
+        command_failed.emit("AI service is busy. Please try again.", unit_ids)
         return
-    
-    processing_command = true
-    processing_started.emit()
-    
-    logger.info("AICommandProcessor", "=== PROCESSING COMMAND ===")
-    logger.info("AICommandProcessor", "Command: '%s'" % command_text)
-    logger.info("AICommandProcessor", "Unit IDs: %s" % str(unit_ids))
-    logger.info("AICommandProcessor", "Peer ID: %d" % peer_id)
-    logger.info("AICommandProcessor", "LangSmith client status: %s" % ("available" if langsmith_client else "NOT AVAILABLE"))
+
+    if active_requests.is_empty():
+        processing_started.emit()
+
+    request_id_counter += 1
+    var request_id = "req_%d" % request_id_counter
     
     var server_game_state = get_node("/root/DependencyContainer").get_game_state()
     if not server_game_state:
         logger.error("AICommandProcessor", "ServerGameState not found - command failed")
-        command_failed.emit("ServerGameState not found.")
-        _process_next_command()
+        command_failed.emit("ServerGameState not found.", [])
+        if active_requests.is_empty():
+            processing_finished.emit()
         return
 
     var selected_units = []
@@ -286,51 +280,46 @@ func process_command(command_text: String, unit_ids: Array[String] = [], peer_id
                         if is_instance_valid(unit) and unit.team_id == player_team_id:
                             selected_units.append(unit)
     
-    logger.info("AICommandProcessor", "Selected units: %d" % selected_units.size())
-    
     if selected_units.is_empty():
         logger.warning("AICommandProcessor", "No valid units found for command")
-        command_failed.emit("No valid units found for command.")
-        _process_next_command()
+        command_failed.emit("No valid units found for command.", [])
+        if active_requests.is_empty():
+            processing_finished.emit()
         return
         
     var is_group_command = unit_ids.is_empty() or selected_units.size() >= 2
+    var prompt_type = "group" if is_group_command else ("autonomous" if command_text == "autonomously decide next action" else "individual")
+    var unit_list = []
+    for unit in selected_units:
+        unit_list.append(unit.unit_id)
     
-    logger.info("AICommandProcessor", "Command type: %s" % ("group" if is_group_command else "individual"))
+    logger.info("AICommandProcessor", "Processing %s command for units %s: '%s'" % [prompt_type, str(unit_list), command_text])
+    
+    var context = {"expected_unit_ids": unit_list}
+    active_requests[request_id] = {
+        "context": context,
+        "timestamp": Time.get_ticks_msec() / 1000.0
+    }
     
     if is_group_command:
-        _process_group_command(command_text, selected_units, server_game_state)
+        _process_group_command(command_text, selected_units, server_game_state, request_id)
     else:
-        _process_individual_command(command_text, selected_units[0], server_game_state)
+        _process_individual_command(command_text, selected_units[0], server_game_state, request_id)
 
-func _process_group_command(command_text: String, units: Array, server_game_state: Node) -> void:
-    logger.info("AICommandProcessor", "Processing group command for %d units." % units.size())
-    
-    # Store expected unit IDs for validation
-    var expected_unit_ids = []
-    for unit in units:
-        expected_unit_ids.append(unit.unit_id)
-    
-    logger.info("AICommandProcessor", "Expected plans for units: %s" % str(expected_unit_ids))
-    
+func _process_group_command(command_text: String, units: Array, server_game_state: Node, request_id: String) -> void:
     var group_system_prompt = _build_group_prompt()
-
-    var group_context = []
-    for unit in units:
-        group_context.append(server_game_state.get_context_for_ai(unit))
-    
-    var user_prompt: String
-    if command_text == "autonomously decide next action":
-        user_prompt = "You are acting autonomously. Analyze the following group context and generate the best coordinated plan based on the situation. Context: %s" % JSON.stringify({"group_context": group_context})
-    elif command_text == "autonomously coordinate team tactics":
-        var unit_count = group_context.size()
-        var unit_list = []
-        for unit_context in group_context:
-            unit_list.append(unit_context.get("unit_state", {}).get("id", "unknown"))
+    var game_context = server_game_state.get_group_context_for_ai(units)
+   
+    var unit_count = game_context.allied_units.size()
+    var unit_list = []
+    for unit_state in game_context.allied_units:
+        unit_list.append(unit_state.get("id", "unknown"))
         
-        user_prompt = """You are acting autonomously as a team. Analyze the current battlefield situation and coordinate tactical actions for your entire squad.
+    var user_prompt = """Command: '%s'\n
+    
+You are coordinating the entire team. Analyze the current battlefield situation and coordinate tactical actions for your entire squad to accomplish the above goal.
 
-CRITICAL REQUIREMENT: You MUST provide plans for ALL %d units specified below. Do not skip any units.
+CRITICAL REQUIREMENT: You MUST provide plans for ALL %d units specified in the `allied_units` list below. Do not skip any units.
 Units requiring plans: %s
 
 Focus on:
@@ -339,55 +328,47 @@ Focus on:
 - Strategic positioning across the battlefield
 - Role-based tactics (scout reconnaissance, tank frontline, sniper overwatch, medic support, engineer fortification)
 
-Context: %s""" % [unit_count, str(unit_list), JSON.stringify({"group_context": group_context})]
-    else:
-        user_prompt = "Command: '%s'\nGroup Context: %s" % [command_text, JSON.stringify({"group_context": group_context})]
+Context: %s""" % [command_text, unit_count, str(unit_list), JSON.stringify({"game_context": game_context})]
 
     var messages = [
         {"role": "system", "content": group_system_prompt},
         {"role": "user", "content": user_prompt}
     ]
     
-    # Store expected unit IDs for validation in response processing
-    if not has_meta("expected_unit_ids"):
-        set_meta("expected_unit_ids", expected_unit_ids)
-    
     if langsmith_client:
-        logger.info("AICommandProcessor", "Sending request to LangSmith client...")
-        logger.info("AICommandProcessor", "Messages prepared: %d entries" % messages.size())
+        var on_response = func(response):
+            _on_openai_response(response, request_id)
+        var on_error = func(error_type, error_message):
+            _on_openai_error(error_type, error_message, request_id)
         
-        # Start timeout timer
-        current_request_timeout.start()
-        logger.info("AICommandProcessor", "Request timeout timer started (%f seconds)" % max_request_timeout)
+        # Create source metadata for tracing
+        var source_info = _build_source_info(units, "group")
+        var metadata = {"source": source_info}
         
-        # Determine model based on command type for group commands
         var model_to_use = group_command_model
-        if command_text == "autonomously decide next action" or command_text == "autonomously coordinate team tactics":
-            model_to_use = autonomous_command_model
+        # Collect unit archetypes for schema generation
+        var unit_archetypes = []
+        for unit in units:
+            if unit.archetype not in unit_archetypes:
+                unit_archetypes.append(unit.archetype)
         
-        logger.info("AICommandProcessor", "Using model for group command: %s" % model_to_use)
-        langsmith_client.traced_chat_completion(messages, Callable(self, "_on_openai_response"), Callable(self, "_on_openai_error"), {}, model_to_use)
-        logger.info("AICommandProcessor", "LangSmith request sent - waiting for response...")
+        var response_format = AIResponseSchemas.get_schema_for_command(true, unit_archetypes)  # true = group command
+        langsmith_client.traced_chat_completion(messages, on_response, on_error, metadata, model_to_use, response_format)
     else:
         logger.error("AICommandProcessor", "LangSmith client not available.")
-        command_failed.emit("AI service not configured.")
-        _process_next_command()
+        var unit_ids = active_requests[request_id].context.get("expected_unit_ids", [])
+        active_requests.erase(request_id)
+        command_failed.emit("AI service not configured.", unit_ids)
+        if active_requests.is_empty():
+            processing_finished.emit()
 
-func _process_individual_command(command_text: String, unit: Node, server_game_state: Node) -> void:
-    logger.info("AICommandProcessor", "Processing individual command for unit %s." % unit.unit_id)
-    
-    # Store expected unit ID for validation
-    var expected_unit_ids = [unit.unit_id]
-    logger.info("AICommandProcessor", "Expected plan for unit: %s" % unit.unit_id)
-    
+func _process_individual_command(command_text: String, unit: Node, server_game_state: Node, request_id: String) -> void:
     var unit_specific_prompt = _build_individual_prompt(unit.system_prompt)
     var context = server_game_state.get_context_for_ai(unit)
     
     var user_prompt: String
     if command_text == "autonomously decide next action":
         user_prompt = "You are acting autonomously. Analyze the following context and generate the best plan based on your personality. Context: %s" % JSON.stringify(context)
-    elif command_text == "autonomously coordinate team tactics":
-        user_prompt = "You are acting autonomously as part of a team coordination effort. Analyze the current situation and generate your tactical contribution to the team strategy. Context: %s" % JSON.stringify(context)
     else:
         user_prompt = "Command: '%s'\nContext: %s" % [command_text, JSON.stringify(context)]
 
@@ -396,93 +377,71 @@ func _process_individual_command(command_text: String, unit: Node, server_game_s
         {"role": "user", "content": user_prompt}
     ]
     
-    # Store expected unit ID for validation in response processing
-    set_meta("expected_unit_ids", expected_unit_ids)
-    
     if langsmith_client:
-        logger.info("AICommandProcessor", "Sending request to LangSmith client...")
-        logger.info("AICommandProcessor", "Messages prepared: %d entries" % messages.size())
+        var on_response = func(response):
+            _on_openai_response(response, request_id)
+        var on_error = func(error_type, error_message):
+            _on_openai_error(error_type, error_message, request_id)
         
-        # Start timeout timer
-        current_request_timeout.start()
-        logger.info("AICommandProcessor", "Request timeout timer started (%f seconds)" % max_request_timeout)
+        # Create source metadata for tracing
+        var source_info = _build_source_info([unit], "individual")
+        var metadata = {"source": source_info}
         
-        # Determine model based on command type for individual commands
         var model_to_use = individual_command_model
-        if command_text == "autonomously decide next action" or command_text == "autonomously coordinate team tactics":
+        if command_text == "autonomously decide next action":
             model_to_use = autonomous_command_model
         
-        logger.info("AICommandProcessor", "Using model for individual command: %s" % model_to_use)
-        langsmith_client.traced_chat_completion(messages, Callable(self, "_on_openai_response"), Callable(self, "_on_openai_error"), {}, model_to_use)
-        logger.info("AICommandProcessor", "LangSmith request sent - waiting for response...")
+        var response_format = AIResponseSchemas.get_schema_for_command(false, [unit.archetype])  # false = individual command
+        langsmith_client.traced_chat_completion(messages, on_response, on_error, metadata, model_to_use, response_format)
     else:
         logger.error("AICommandProcessor", "LangSmith client not available.")
-        command_failed.emit("AI service not configured.")
-        _process_next_command()
+        var unit_ids = active_requests[request_id].context.get("expected_unit_ids", [])
+        active_requests.erase(request_id)
+        command_failed.emit("AI service not configured.", unit_ids)
+        if active_requests.is_empty():
+            processing_finished.emit()
 
-func _on_openai_response(response: Dictionary) -> void:
-    logger.info("AICommandProcessor", "=== LLM RESPONSE RECEIVED ===")
-    logger.info("AICommandProcessor", "Response keys: %s" % str(response.keys()))
+func _on_openai_response(response: Dictionary, request_id: String) -> void:
+    if not active_requests.has(request_id):
+        return # Request already timed out or handled
     
-    # Stop timeout timer
-    if current_request_timeout and current_request_timeout.time_left > 0:
-        current_request_timeout.stop()
-        logger.info("AICommandProcessor", "Request timeout timer stopped")
+    var context = active_requests[request_id].context
+    active_requests.erase(request_id)
     
     var content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
     
-    logger.info("AICommandProcessor", "Content length: %d characters" % content.length())
-    if content.length() > 0:
-        logger.info("AICommandProcessor", "Content preview: %s..." % content.substr(0, min(100, content.length())))
-    
     if content.is_empty():
-        logger.error("AICommandProcessor", "Empty response from AI")
-        # Clear metadata on error
-        if has_meta("expected_unit_ids"):
-            remove_meta("expected_unit_ids")
-        command_failed.emit("Empty response from AI")
-        _process_next_command()
+        logger.error("AICommandProcessor", "Empty response from AI - check API connectivity and rate limits")
+        var unit_ids = context.get("expected_unit_ids", [])
+        command_failed.emit("Empty response from AI - please try again or check service status", unit_ids)
+        if active_requests.is_empty():
+            processing_finished.emit()
         return
     
-    logger.info("AICommandProcessor", "Parsing JSON response...")
+    # With structured outputs, the response is guaranteed to be properly formatted
+    logger.info("AICommandProcessor", "Received structured response length: %d characters" % content.length())
     
-    # Strip markdown code block markers if present
-    var cleaned_content = content.strip_edges()
-    if cleaned_content.begins_with("```json"):
-        cleaned_content = cleaned_content.substr(7)  # Remove "```json"
-    if cleaned_content.begins_with("```"):
-        cleaned_content = cleaned_content.substr(3)  # Remove "```"
-    if cleaned_content.ends_with("```"):
-        cleaned_content = cleaned_content.substr(0, cleaned_content.length() - 3)  # Remove ending "```"
-    cleaned_content = cleaned_content.strip_edges()
-    
+    # Parse the guaranteed valid JSON
     var json = JSON.new()
-    var error = json.parse(cleaned_content)
+    var error = json.parse(content)
     if error != OK:
-        logger.error("AICommandProcessor", "JSON parsing failed: %s" % json.get_error_message())
-        logger.error("AICommandProcessor", "Raw content: %s" % content)
-        logger.error("AICommandProcessor", "Cleaned content: %s" % cleaned_content)
-        # Clear metadata on error
-        if has_meta("expected_unit_ids"):
-            remove_meta("expected_unit_ids")
-        command_failed.emit("Invalid JSON response from AI: " + json.get_error_message())
-        _process_next_command()
+        # This should never happen with structured outputs
+        logger.error("AICommandProcessor", "Unexpected JSON parsing error with structured outputs: %s" % json.get_error_message())
+        var unit_ids = context.get("expected_unit_ids", [])
+        command_failed.emit("Unexpected parsing error: " + json.get_error_message(), unit_ids)
+        if active_requests.is_empty():
+            processing_finished.emit()
         return
     
     var ai_response = json.data
-    logger.info("AICommandProcessor", "JSON parsed successfully, type: %s" % str(type_string(typeof(ai_response))))
     
     if not ai_response is Dictionary or not ai_response.has("plans"):
         logger.error("AICommandProcessor", "Invalid plan structure - missing 'plans' key")
-        logger.error("AICommandProcessor", "Response structure: %s" % ai_response)
-        # Clear metadata on error
-        if has_meta("expected_unit_ids"):
-            remove_meta("expected_unit_ids")
-        command_failed.emit("Invalid plan structure from AI")
-        _process_next_command()
+        var unit_ids = context.get("expected_unit_ids", [])
+        command_failed.emit("Invalid plan structure from AI", unit_ids)
+        if active_requests.is_empty():
+            processing_finished.emit()
         return
-    
-    logger.info("AICommandProcessor", "Plan structure valid, processing %d plans..." % ai_response.plans.size())
     
     # Validate that we received plans for all expected units
     var received_unit_ids = []
@@ -490,62 +449,75 @@ func _on_openai_response(response: Dictionary) -> void:
         var unit_id = plan_data.get("unit_id", "")
         received_unit_ids.append(unit_id)
     
-    var expected_unit_ids = get_meta("expected_unit_ids")
-    if expected_unit_ids.is_empty():
-        logger.warning("AICommandProcessor", "No expected unit IDs found for validation.")
-    else:
+    var expected_unit_ids = context.get("expected_unit_ids", [])
+    if not expected_unit_ids.is_empty():
         var missing_unit_ids = []
         for expected_id in expected_unit_ids:
             if not received_unit_ids.has(expected_id):
                 missing_unit_ids.append(expected_id)
         
         if not missing_unit_ids.is_empty():
-            logger.warning("AICommandProcessor", "Received plans for fewer units than expected. Missing plans for: %s" % str(missing_unit_ids))
-            # Clear metadata on error
-            if has_meta("expected_unit_ids"):
-                remove_meta("expected_unit_ids")
-            command_failed.emit("Received plans for fewer units than expected. Missing plans for: %s" % str(missing_unit_ids))
-            _process_next_command()
+            logger.warning("AICommandProcessor", "Missing plans for units: %s" % str(missing_unit_ids))
+            var unit_ids = context.get("expected_unit_ids", [])
+            command_failed.emit("Received plans for fewer units than expected. Missing plans for: %s" % str(missing_unit_ids), unit_ids)
+            if active_requests.is_empty():
+                processing_finished.emit()
             return
+    
+    logger.info("AICommandProcessor", "Response received successfully for units %s" % str(received_unit_ids))
     
     _process_multi_step_plans(ai_response)
     
-    # Clear metadata after processing
-    if has_meta("expected_unit_ids"):
-        remove_meta("expected_unit_ids")
-    
-    _process_next_command()
+    if active_requests.is_empty():
+        processing_finished.emit()
 
-func _on_openai_error(error_type: int, error_message: String) -> void:
-    logger.error("AICommandProcessor", "=== LLM ERROR RECEIVED ===")
-    logger.error("AICommandProcessor", "Error type: %d" % error_type)
-    logger.error("AICommandProcessor", "Error message: %s" % error_message)
+func _on_openai_error(error_type: int, error_message: String, request_id: String) -> void:
+    if not active_requests.has(request_id):
+        return # Request already timed out or handled
     
-    # Stop timeout timer
-    if current_request_timeout and current_request_timeout.time_left > 0:
-        current_request_timeout.stop()
-        logger.info("AICommandProcessor", "Request timeout timer stopped (error)")
+    var context = active_requests[request_id].context
+    var unit_ids = context.get("expected_unit_ids", [])
+    active_requests.erase(request_id)
     
-    # Clear metadata to prevent state leakage
-    if has_meta("expected_unit_ids"):
-        remove_meta("expected_unit_ids")
-    
-    command_failed.emit("AI service error: " + error_message)
-    _process_next_command()
+    var error_msg = "AI service error for units %s: %s" % [str(unit_ids), error_message]
+    logger.error("AICommandProcessor", "%s (%s)" % [error_msg, str(error_type)])
+    command_failed.emit(error_msg, unit_ids)
+
+    if active_requests.is_empty():
+        processing_finished.emit()
 
 func _process_multi_step_plans(ai_response: Dictionary) -> void:
     var plans = ai_response.get("plans", [])
     var message = ai_response.get("message", "Executing tactical plans")
+    var summary = ai_response.get("summary", "")
     
     if plans.is_empty():
-        command_failed.emit("No plans provided")
+        command_failed.emit("No plans provided", [])
         return
     
     var processed_plans = []
+    var game_state = get_node("/root/DependencyContainer").get_game_state()
+    if not game_state:
+        logger.error("AICommandProcessor", "Cannot process plans, game_state not found.")
+        return
+
     for plan_data in plans:
         var validation_result = action_validator.validate_plan(plan_data)
         if validation_result != null and validation_result.valid:
             var unit_id = plan_data.get("unit_id", "")
+            
+            # Set the strategic goal on the unit
+            var goal = plan_data.get("goal", "")
+            if not goal.is_empty() and game_state.units.has(unit_id):
+                var unit = game_state.units[unit_id]
+                if is_instance_valid(unit):
+                    unit.strategic_goal = goal
+                    logger.info("AICommandProcessor", "Set goal for unit %s: '%s'" % [unit_id, goal])
+
+            # Add summary to plan data for UI display
+            if not summary.is_empty():
+                plan_data["summary"] = summary
+
             if plan_executor.execute_plan(unit_id, plan_data):
                 processed_plans.append(plan_data)
             else:
@@ -554,28 +526,27 @@ func _process_multi_step_plans(ai_response: Dictionary) -> void:
             if logger: logger.warning("AICommandProcessor", "Plan validation failed: %s" % validation_result.error)
 
     if processed_plans.size() > 0:
-        plan_processed.emit(processed_plans, message)
+        # Create response with summary for UI
+        var enhanced_message = message
+        if not summary.is_empty():
+            enhanced_message = summary  # Use summary as the primary message for UI
+        
+        plan_processed.emit(processed_plans, enhanced_message)
 
-func _process_next_command() -> void:
-    # This logic needs to be aware that multiple requests might be in flight.
-    # For now, we assume a simple sequential model for processing.
-    # A more robust system would track active requests.
-    if command_queue.size() > 0:
-        var next_command = command_queue.pop_front()
-        processing_command = false # Allow next command to start
-        process_command(next_command.text, next_command.unit_ids, next_command.get("peer_id", -1))
-    else:
-        processing_command = false
-        processing_finished.emit()
+func _on_request_timeout(request_id: String) -> void:
+    if not active_requests.has(request_id):
+        return # Request already handled
 
-func _on_request_timeout() -> void:
+    var context = active_requests[request_id].context
+    var unit_ids = context.get("expected_unit_ids", [])
+    
     logger.error("AICommandProcessor", "=== REQUEST TIMEOUT ===")
-    logger.error("AICommandProcessor", "Request timed out after %f seconds" % max_request_timeout)
-    logger.error("AICommandProcessor", "This suggests API connectivity issues or very slow responses")
+    logger.error("AICommandProcessor", "Request %s for units %s timed out after %f seconds" % [request_id, str(unit_ids), max_request_timeout])
     
-    # Clear metadata to prevent state leakage
-    if has_meta("expected_unit_ids"):
-        remove_meta("expected_unit_ids")
+    active_requests.erase(request_id)
     
-    command_failed.emit("Request timed out after %f seconds. Check API connectivity." % max_request_timeout)
-    _process_next_command()
+    var error_msg = "Request timed out for units %s. Check API connectivity." % str(unit_ids)
+    command_failed.emit(error_msg, unit_ids)
+    
+    if active_requests.is_empty():
+        processing_finished.emit()

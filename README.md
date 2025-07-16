@@ -60,33 +60,73 @@ Edit
                     "lay_mines:{pattern?,count?}",
                     "retreat:{cover_id}" ]
 }
-4.2 LLM Prompt Template (server-side)
-pgsql
-Copy
-Edit
-SYSTEM: Output ONE JSON {plan:[…]} (exactly 3 steps, each with triggers, at least one "enemy_in_range").  
-        Each step has action, params, and optional duration_ms OR trigger.  
-        Allowed triggers: health_pct, ammo, morale, enemy_dist, elapsed_ms.  
-        Speech ≤12 words.  
-SYSTEM-PROMPT: {sys_prompt}  
-PLAYER-INTENT: {latest_player_prompt}  
-UNIT-STATE: {Unit Packet JSON}
-4.3 LLM Response Schema
-json
-Copy
-Edit
+4.2 OpenAI Structured Outputs Integration
+The system now uses OpenAI's structured outputs with strict JSON schemas instead of prompt engineering. This eliminates parsing errors and AI hallucinations while providing robust validation.
+
+**Key Features:**
+- **Archetype-Specific Actions**: Scout units get `activate_stealth`, Engineer units get `construct`/`repair`
+- **Structured Triggers**: Three-field validation (source, comparison, value) replaces string parsing
+- **Type Safety**: All parameters strictly validated with `additionalProperties: false`
+- **Null Parameters**: Actions like `patrol` and `lay_mines` can use `null` for no parameters
+
+**Schema Generation:**
+```gdscript
+# Dynamic schema based on unit archetypes
+var schema = AIResponseSchemas.get_schema_for_command(is_group, ["scout", "engineer"])
+```
+
+4.3 LLM Response Schema (OpenAI Structured)
+```json
 {
-  "plan":[
-    {"action":"peek_and_fire",
-     "duration_ms":1500,
-     "params":{"dir":300},
-     "speech":"Popping out!"},
-    {"action":"retreat",
-     "trigger":"health_pct<40",
-     "params":{"cover_id":"C13"},
-     "speech":"Too hot—falling back!"}
-  ]
+  "type": "multi_step_plan",
+  "plans": [{
+    "unit_id": "scout_01",
+    "goal": "Secure northern sector with stealth reconnaissance",
+    "steps": [
+      {
+        "action": "move_to",
+        "params": {"position": [100, 0, 50]},
+        "speech": "Moving to overwatch position"
+      },
+      {
+        "action": "activate_stealth", 
+        "params": null,
+        "speech": "Going dark"
+      }
+    ],
+    "triggered_actions": [
+      {
+        "action": "retreat",
+        "params": {"position": [80, 0, 30]},
+        "trigger_source": "health_pct",
+        "trigger_comparison": "<",
+        "trigger_value": 40,
+        "speech": "Taking heavy damage, falling back!"
+      },
+      {
+        "action": "attack",
+        "params": {"target_id": "enemy_tank_02"},
+        "trigger_source": "enemies_in_range", 
+        "trigger_comparison": "=",
+        "trigger_value": true,
+        "speech": "Contact! Engaging target!"
+      }
+    ]
+  }],
+  "message": "Scout deploying for reconnaissance mission",
+  "summary": "Stealth approach with defensive fallbacks"
 }
+```
+
+**Trigger Sources:** `health_pct`, `ammo_pct`, `morale`, `under_fire`, `target_dead`, `enemies_in_range`, `enemy_dist`, `ally_health_low`, `nearby_enemies`, `is_moving`, `elapsed_ms`
+
+**Action Enums by Archetype:**
+- **General**: `move_to`, `attack`, `retreat`, `patrol`, `stance`, `follow`
+- **Scout**: `+activate_stealth` 
+- **Tank**: `+activate_shield`, `+taunt_enemies`
+- **Sniper**: `+charge_shot`, `+find_cover`
+- **Medic**: `+heal_target`
+- **Engineer**: `+construct`, `+repair`, `+lay_mines`
 4.4 Node & Building
 node_id, controller, vision_radius, build_slot;
 building_id, type:{spire|tower|relay}, hp, construction_progress.
@@ -282,7 +322,7 @@ Edit
      "speech":"Back to safety!"}
   ]
 }
-(exactly 3 steps, each with triggers, at least one "enemy_in_range", ≤ 6 s total)
+(now uses OpenAI structured outputs with archetype-specific action enums and structured triggers)
 
 5 Runtime Modules & Flow
 Module	Role

@@ -173,6 +173,20 @@ func _update_unit(unit_data: Dictionary, delta: float) -> void:
 		else:
 			unit_instance.plan_summary = unit_data.plan_summary
 	
+	# Update strategic goal from server
+	if unit_data.has("strategic_goal"):
+		unit_instance.strategic_goal = unit_data.strategic_goal
+		# Also update status bar if it exists
+		if unit_instance.has_method("refresh_status_bar"):
+			unit_instance.refresh_status_bar()
+	
+	# Update AI processing status from server
+	if unit_data.has("waiting_for_ai"):
+		unit_instance.waiting_for_ai = unit_data.waiting_for_ai
+		# Update status bar to show processing state if needed
+		if unit_instance.has_method("set_ai_processing_status"):
+			unit_instance.set_ai_processing_status(unit_data.waiting_for_ai)
+	
 	# Update full plan data from server
 	if unit_data.has("full_plan"):
 		# Store full plan data directly on the unit for HUD access

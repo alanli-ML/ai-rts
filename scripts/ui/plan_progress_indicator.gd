@@ -235,8 +235,6 @@ func _format_action_name(action: String) -> String:
             return "Retreating"
         "patrol":
             return "Patrolling"
-        "use_ability":
-            return "Using Ability"
         "stance":
             return "Changing Stance"
         "formation":

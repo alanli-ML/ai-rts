@@ -79,6 +79,43 @@ text = "Medic"
 layout_mode = 2
 text = "Engineer"
 
+[node name="CommandStatusPanel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -200.0
+offset_top = -140.0
+offset_right = 200.0
+offset_bottom = -90.0
+grow_horizontal = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="CommandStatusPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 5
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 5
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CommandStatusPanel/MarginContainer"]
+layout_mode = 2
+
+[node name="StatusLabel" type="RichTextLabel" parent="CommandStatusPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+bbcode_enabled = true
+text = "[color=gray]Ready for commands[/color]"
+fit_content = true
+scroll_active = false
+
+[node name="SummaryLabel" type="RichTextLabel" parent="CommandStatusPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+bbcode_enabled = true
+text = ""
+fit_content = true
+scroll_active = false
+
 [node name="HoverTooltip" type="PanelContainer" parent="."]
 visible = false
 layout_mode = 0

@@ -1,0 +1,26 @@
+[gd_scene load_steps=4 format=3 uid="uid://dk8j7xm4n5q2s"]
+
+[ext_resource type="Script" path="res://scripts/units/unit_range_visualization.gd" id="1_range_viz"]
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_1"]
+height = 0.05
+top_radius = 1.0
+bottom_radius = 1.0
+radial_segments = 32
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_2"]
+height = 0.05
+top_radius = 1.0
+bottom_radius = 1.0
+radial_segments = 32
+
+[node name="UnitRangeVisualization" type="Node3D"]
+script = ExtResource("1_range_viz")
+
+[node name="VisionRange" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.025, 0)
+mesh = SubResource("CylinderMesh_1")
+
+[node name="AttackRange" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.025, 0)
+mesh = SubResource("CylinderMesh_2") 

@@ -11,6 +11,8 @@ const HOME_BASE_POSITIONS = {
 # Unit spawn areas around home bases (radius for spawning units)
 const SPAWN_RADIUS = 8.0
 const SPAWN_HEIGHT = 1.0
+const HEALING_RADIUS = 20.0
+const HEALING_RATE = 5.0 # HP per second
 
 # Building assets for home bases
 const HOME_BASE_BUILDINGS = {
@@ -30,6 +32,7 @@ const TEAM_COLORS = {
 # Home base data
 var home_bases: Dictionary = {}  # team_id -> home_base_data
 var spawn_points: Dictionary = {} # team_id -> spawn_position
+var units_in_healing_zone: Dictionary = {} # team_id -> Array[Unit]
 
 # Signals
 signal home_base_created(team_id: int, position: Vector3)
@@ -40,6 +43,19 @@ func _ready() -> void:
 	# Add to home_base_managers group for easy discovery
 	add_to_group("home_base_managers")
 	_setup_home_bases()
+	set_physics_process(multiplayer.is_server())
+
+func _physics_process(delta: float):
+	for team_id in units_in_healing_zone:
+		var units_to_heal = units_in_healing_zone[team_id]
+		
+		# Filter out invalid units first
+		units_in_healing_zone[team_id] = units_to_heal.filter(func(unit): return is_instance_valid(unit) and not unit.is_dead)
+		
+		# Heal the remaining valid units
+		for unit in units_in_healing_zone[team_id]:
+			if unit.has_method("receive_healing"):
+				unit.receive_healing(HEALING_RATE * delta)
 
 func _setup_home_bases() -> void:
 	"""Setup home bases for all teams"""
@@ -70,6 +86,19 @@ func _create_home_base(team_id: int) -> void:
 	if command_center:
 		command_center.name = "CommandCenter_Team_%d" % team_id
 		home_base_node.add_child(command_center)
+	
+	# Create healing area
+	var healing_area = Area3D.new()
+	healing_area.name = "HealingAura"
+	var collision_shape = CollisionShape3D.new()
+	var shape = SphereShape3D.new()
+	shape.radius = HEALING_RADIUS
+	collision_shape.shape = shape
+	healing_area.add_child(collision_shape)
+	home_base_node.add_child(healing_area)
+	
+	healing_area.body_entered.connect(_on_unit_entered_healing_zone.bind(team_id))
+	healing_area.body_exited.connect(_on_unit_exited_healing_zone.bind(team_id))
 	
 	# Create secondary buildings around the command center
 	var secondary_positions = [
@@ -265,6 +294,18 @@ func destroy_home_base(team_id: int) -> void:
 static func get_default_team_spawn_position(team_id: int) -> Vector3:
 	"""Static method to get team spawn positions when HomeBaseManager isn't available"""
 	return HOME_BASE_POSITIONS.get(team_id, Vector3.ZERO)
+
+func _on_unit_entered_healing_zone(body: Node3D, team_id: int):
+	if body is Unit and body.team_id == team_id:
+		if not units_in_healing_zone.has(team_id):
+			units_in_healing_zone[team_id] = []
+		if not body in units_in_healing_zone[team_id]:
+			units_in_healing_zone[team_id].append(body)
+
+func _on_unit_exited_healing_zone(body: Node3D, team_id: int):
+	if body is Unit and body.team_id == team_id:
+		if units_in_healing_zone.has(team_id):
+			units_in_healing_zone[team_id].erase(body)
 
 func get_debug_info() -> Dictionary:
 	"""Get debug information about home bases"""

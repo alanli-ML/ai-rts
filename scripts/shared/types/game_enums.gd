@@ -49,7 +49,6 @@ enum CommandType {
     HIJACK_ENEMY_SPIRE,
     RETREAT,
     PATROL,
-    USE_ABILITY,
     FORMATION,
     STANCE
 }
@@ -134,7 +133,6 @@ static func get_command_type_string(type: CommandType) -> String:
         CommandType.HIJACK_ENEMY_SPIRE: return "HIJACK_ENEMY_SPIRE"
         CommandType.RETREAT: return "RETREAT"
         CommandType.PATROL: return "PATROL"
-        CommandType.USE_ABILITY: return "USE_ABILITY"
         CommandType.FORMATION: return "FORMATION"
         CommandType.STANCE: return "STANCE"
         _: return "UNKNOWN" 

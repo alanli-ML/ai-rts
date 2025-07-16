@@ -58,7 +58,7 @@ func detonate_mine(mine_id: String, target_unit: Unit):
     var root_node = get_tree().get_root().get_node_or_null("UnifiedMain")
     if root_node:
         # RPC call to all peers to spawn the effect
-        root_node.rpc("spawn_explosion_effect_rpc", mine.global_position)
+        root_node.rpc("spawn_impact_effect_rpc", mine.global_position)
     
     # Remove mine from server state
     mines.erase(mine_id)

@@ -167,11 +167,6 @@ func _on_game_state_update(state: Dictionary) -> void:
     if client_display_manager:
         client_display_manager.update_state(state)
 
-@rpc("any_peer")
-func remove_unit_rpc(unit_id: String):
-    if client_display_manager:
-        client_display_manager.remove_unit(unit_id)
-
 @rpc("any_peer", "call_local")
 func display_speech_bubble_rpc(unit_id: String, speech_text: String):
     if not dependency_container.is_client_mode(): return
@@ -186,20 +181,44 @@ func display_speech_bubble_rpc(unit_id: String, speech_text: String):
             # Fallback if unit not found on client yet
             speech_manager.show_speech_bubble(unit_id, speech_text, 0)
 
-@rpc("any_peer", "reliable")
-func spawn_explosion_effect_rpc(position: Vector3):
+@rpc("any_peer", "unreliable")
+func spawn_impact_effect_rpc(position: Vector3):
     # This runs on clients to show a visual-only effect
-    if dependency_container.is_server_mode(): return
+    if multiplayer.is_server(): return
 
     var impact_effect_scene = preload("res://scenes/fx/ImpactEffect.tscn")
     if impact_effect_scene:
         var effect = impact_effect_scene.instantiate()
-        # Add to a container for effects, or root for now
         get_tree().root.add_child(effect)
         effect.global_position = position
         effect.emitting = true
-        logger.info("UnifiedMain", "Spawned explosion effect at %s" % str(position))
-    
+        logger.info("UnifiedMain", "Spawned impact effect at %s" % str(position))
+
+@rpc("any_peer", "unreliable")
+func spawn_visual_projectile_rpc(start_pos: Vector3, p_direction: Vector3, p_team_id: int, p_speed: float, p_lifetime: float):
+    # This runs on clients
+    if multiplayer.is_server(): return
+
+    var projectile_scene = preload("res://scenes/fx/Projectile.tscn")
+    if projectile_scene:
+        var projectile = projectile_scene.instantiate()
+        get_tree().root.add_child(projectile)
+        projectile.global_position = start_pos
+        projectile.direction = p_direction
+        projectile.shooter_team_id = p_team_id
+        projectile.speed = p_speed
+        projectile.lifetime = p_lifetime
+        projectile.damage = 0 # Visual only
+
+@rpc("any_peer", "unreliable")
+func display_damage_indicator_rpc(unit_id: String, damage_amount: float):
+    if multiplayer.is_server(): return
+
+    if client_display_manager and client_display_manager.displayed_units.has(unit_id):
+        var unit_instance = client_display_manager.displayed_units[unit_id]
+        if is_instance_valid(unit_instance) and unit_instance.has_method("show_damage_indicator"):
+            unit_instance.show_damage_indicator(damage_amount)
+
 # =============================================================================
 
 func get_client_team_id() -> int:

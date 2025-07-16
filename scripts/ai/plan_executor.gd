@@ -17,14 +17,32 @@ signal plan_interrupted(unit_id: String, reason: String)
 signal step_executed(unit_id: String, step: Dictionary)
 signal speech_triggered(unit_id: String, speech: String)
 signal trigger_evaluated(unit_id: String, trigger: String, result: bool) # For PlanProgressManager
+signal unit_became_idle(unit_id: String)
 
 func setup(p_logger, p_game_state):
     logger = p_logger
     game_state = p_game_state
 
 func _process(delta: float) -> void:
+    # Process units with active sequential plans
     for unit_id in active_plans.keys():
         _process_unit_plan(unit_id, delta)
+    
+    # Also process units that only have triggered actions (no active sequential plans)
+    for unit_id in active_triggered_actions.keys():
+        if not active_plans.has(unit_id):
+            _process_triggered_actions_only(unit_id, delta)
+
+func _process_triggered_actions_only(unit_id: String, delta: float) -> void:
+    """Process only triggered actions for units that have completed their sequential plans"""
+    var unit = game_state.units.get(unit_id)
+    if not is_instance_valid(unit):
+        # Unit no longer exists, clean up triggered actions
+        active_triggered_actions.erase(unit_id)
+        return
+    
+    # Check and execute triggered actions
+    _check_and_execute_triggered_action(unit_id, unit)
 
 func execute_plan(unit_id: String, plan_data: Dictionary) -> bool:
     if not plan_data.has("steps") and not plan_data.has("triggered_actions"):
@@ -45,6 +63,9 @@ func execute_plan(unit_id: String, plan_data: Dictionary) -> bool:
     
     if not active_plans[unit_id].is_empty():
         call_deferred("_start_next_step", unit_id)
+    else:
+        # No sequential steps, unit is effectively idle
+        unit_became_idle.emit(unit_id)
         
     return true
 
@@ -56,6 +77,7 @@ func interrupt_plan(unit_id: String, reason: String) -> void:
         current_steps.erase(unit_id)
         step_timers.erase(unit_id)
         plan_interrupted.emit(unit_id, reason)
+        unit_became_idle.emit(unit_id)
 
 func _process_unit_plan(unit_id: String, delta: float) -> void:
     var unit = game_state.units.get(unit_id)
@@ -75,6 +97,9 @@ func _process_unit_plan(unit_id: String, delta: float) -> void:
 
     var step = current_steps[unit_id]
     step_timers[unit_id] += delta
+
+    if step.get("action") == "patrol":
+        _process_patrol_action(unit_id, step, unit)
 
     if _is_step_complete(unit_id, step, unit):
         _complete_step(unit_id)
@@ -98,8 +123,28 @@ func _is_step_complete(unit_id: String, step: Dictionary, unit: Node) -> bool:
     if step.has("duration_ms") and step.duration_ms > 0:
         return step_timers[unit_id] * 1000.0 >= step.duration_ms
 
+    if action == "patrol":
+        return false # Patrol is indefinite unless a duration is set (handled above).
+
     # For actions without duration or trigger, assume they are complete after one frame
     return true
+
+func _process_patrol_action(unit_id: String, step: Dictionary, unit: Unit) -> void:
+    if not step.has("patrol_waypoints"):
+        # Waypoints are generated in _execute_step_action. If they don't exist, something is wrong
+        # or the step has just started. We'll wait for them to be created.
+        return
+
+    var waypoints = step.patrol_waypoints
+    var current_index = step.get("patrol_waypoint_index", 0)
+
+    if unit.navigation_agent.is_navigation_finished():
+        # Reached a waypoint, move to the next one in the loop.
+        current_index = (current_index + 1) % waypoints.size()
+        step["patrol_waypoint_index"] = current_index
+        var next_waypoint = waypoints[current_index]
+        if unit.has_method("move_to"):
+            unit.move_to(next_waypoint)
 
 func _evaluate_trigger(trigger_string: String, unit: Node, unit_context: Dictionary) -> Dictionary:
     if trigger_string.is_empty():
@@ -108,7 +153,7 @@ func _evaluate_trigger(trigger_string: String, unit: Node, unit_context: Diction
     # Support both simple boolean triggers and comparison triggers
     var parts = trigger_string.split(" ", false, 2)
     
-    # Handle simple boolean triggers (e.g., "enemy_in_range", "under_fire")
+    # Handle simple boolean triggers (e.g., "enemies_in_range", "under_fire")
     if parts.size() == 1:
         var metric = parts[0].strip_edges()
         var metric_result = _get_metric_value(metric, unit, unit_context)
@@ -176,14 +221,29 @@ func _check_and_execute_triggered_action(unit_id: String, unit: Node) -> bool:
     var context = game_state.get_context_for_ai(unit)
     
     for triggered_action in active_triggered_actions[unit_id]:
-        var trigger_string = triggered_action.get("trigger", "")
-        if trigger_string.is_empty():
+        var trigger_result
+        var trigger_description = ""
+        
+        # Check for new structured trigger format
+        if triggered_action.has("trigger_source") and triggered_action.has("trigger_comparison") and triggered_action.has("trigger_value"):
+            var source = triggered_action.get("trigger_source")
+            var comparison = triggered_action.get("trigger_comparison")
+            var value = triggered_action.get("trigger_value")
+            trigger_description = "%s %s %s" % [source, comparison, str(value)]
+            trigger_result = _evaluate_structured_trigger(source, comparison, value, unit, context)
+        elif triggered_action.has("trigger"):
+            # Legacy trigger format
+            var trigger_string = triggered_action.get("trigger", "")
+            if trigger_string.is_empty():
+                continue
+            trigger_description = trigger_string
+            trigger_result = _evaluate_trigger(trigger_string, unit, context)
+        else:
             continue
             
-        var trigger_result = _evaluate_trigger(trigger_string, unit, context)
         if trigger_result.result:
             # Trigger fired! Execute this action.
-            logger.info("PlanExecutor", "Unit %s: Trigger '%s' fired. Executing action '%s'." % [unit_id, trigger_string, triggered_action.get("action")])
+            logger.info("PlanExecutor", "Unit %s: Trigger '%s' fired. Executing action '%s'." % [unit_id, trigger_description, triggered_action.get("action")])
             
             # Set the trigger context so the action can use it (e.g., to get target_id)
             trigger_contexts[unit_id] = trigger_result.context
@@ -192,11 +252,70 @@ func _check_and_execute_triggered_action(unit_id: String, unit: Node) -> bool:
             _execute_step_action(unit_id, triggered_action)
             
             # Let the UI know a trigger was evaluated
-            trigger_evaluated.emit(unit_id, trigger_string, true)
+            trigger_evaluated.emit(unit_id, trigger_description, true)
             
             return true # A trigger was fired and action executed.
             
     return false
+
+func _evaluate_structured_trigger(source: String, comparison: String, value: Variant, unit: Node, unit_context: Dictionary) -> Dictionary:
+    """Evaluate a structured trigger with separate source, comparison, and value"""
+    var metric_result = _get_metric_value(source, unit, unit_context)
+    var metric_context = {}
+    var current_value
+    
+    # Handle special case metrics that return dictionaries with context
+    if metric_result is Dictionary:
+        if metric_result.has("result"):
+            # Boolean result with context (like enemies_in_range, ally_health_low)
+            current_value = metric_result.result
+            metric_context = metric_result.get("context", {})
+        elif metric_result.has("value"):
+            # Value result with context (like enemy_dist)
+            current_value = metric_result.value
+            metric_context = metric_result.get("context", {})
+        else:
+            current_value = metric_result
+    else:
+        current_value = metric_result
+    
+    # For boolean triggers like enemies_in_range, handle special cases
+    if source == "enemies_in_range":
+        # For boolean triggers, we might want to just check true/false
+        if comparison == "=" and (value == true or value == "true"):
+            return {"result": current_value, "context": metric_context}
+        elif comparison == "=" and (value == false or value == "false"):
+            return {"result": not current_value, "context": metric_context}
+    
+    # Convert value to appropriate type for comparison
+    var comparison_value = value
+    if value is String:
+        if value == "true":
+            comparison_value = true
+        elif value == "false":
+            comparison_value = false
+        elif value.is_valid_float():
+            comparison_value = float(value)
+        elif value.is_valid_int():
+            comparison_value = int(value)
+    
+    # Perform comparison
+    var comparison_result = false
+    match comparison:
+        "=", "==": comparison_result = current_value == comparison_value
+        "!=": comparison_result = current_value != comparison_value
+        "<": comparison_result = current_value < comparison_value
+        "<=": comparison_result = current_value <= comparison_value
+        ">": comparison_result = current_value > comparison_value
+        ">=": comparison_result = current_value >= comparison_value
+        _:
+            logger.warning("PlanExecutor", "Unknown comparison operator in structured trigger: '%s'" % comparison)
+            return {"result": false, "context": {}}
+            
+    if comparison_result:
+        return {"result": true, "context": metric_context}
+    else:
+        return {"result": false, "context": {}}
 
 func _get_metric_value(metric: String, unit: Node, unit_context: Dictionary) -> Variant:
     match metric:
@@ -212,7 +331,7 @@ func _get_metric_value(metric: String, unit: Node, unit_context: Dictionary) -> 
             return unit_context.get("unit_state", {}).get("is_under_fire", false)
         "target_dead":
             return not is_instance_valid(unit.target_unit) or unit.target_unit.is_dead
-        "enemy_in_range":
+        "enemies_in_range":
             var enemies = unit_context.get("sensor_data", {}).get("visible_enemies", [])
             for enemy in enemies:
                 if enemy.dist <= unit.attack_range:
@@ -298,11 +417,28 @@ func _execute_step_action(unit_id: String, step: Dictionary) -> void:
         "retreat":
             if unit.has_method("retreat"): unit.retreat()
         "patrol":
-            if unit.has_method("start_patrol") and params.has("waypoints"):
-                unit.start_patrol(params.waypoints)
-        "use_ability":
-            if unit.has_method("use_ability") and params.has("ability_name"):
-                unit.use_ability(params.ability_name)
+            # Automatically generate waypoints around the unit's current location if they don't exist.
+            if not step.has("patrol_waypoints"):
+                var patrol_radius = 15.0
+                var num_waypoints = 4
+                var waypoints = []
+                var center_pos = unit.global_position
+                
+                for i in range(num_waypoints):
+                    var angle = (float(i) / num_waypoints) * TAU
+                    var offset = Vector3(cos(angle), 0, sin(angle)) * patrol_radius
+                    waypoints.append(center_pos + offset)
+                
+                step["patrol_waypoints"] = waypoints
+                step["patrol_waypoint_index"] = 0
+
+            # Start moving to the current waypoint
+            var waypoints = step.patrol_waypoints
+            var current_index = step.get("patrol_waypoint_index", 0)
+            var target_waypoint = waypoints[current_index]
+            if unit.has_method("move_to"):
+                unit.move_to(target_waypoint)
+
         "formation":
             if unit.has_method("set_formation") and params.has("formation"):
                 unit.set_formation(params.formation)
@@ -335,7 +471,11 @@ func _execute_step_action(unit_id: String, step: Dictionary) -> void:
 
 func _complete_plan(unit_id: String) -> void:
     active_plans.erase(unit_id)
-    active_triggered_actions.erase(unit_id)
+    # NOTE: Do NOT erase active_triggered_actions here!
+    # Triggered actions should persist even after sequential steps complete
+    # They should only be cleared when a new plan is assigned or plan is interrupted
+    # The unit will continue to be processed via _process_triggered_actions_only()
     current_steps.erase(unit_id)
     step_timers.erase(unit_id)
     plan_completed.emit(unit_id, true)
+    unit_became_idle.emit(unit_id)

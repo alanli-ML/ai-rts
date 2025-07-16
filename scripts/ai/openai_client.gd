@@ -65,7 +65,7 @@ func _load_api_key() -> void:
 	if api_key.is_empty():
 		print("WARNING: OPENAI_API_KEY not found in environment or .env file.")
 
-func send_chat_completion(messages: Array, callback: Callable) -> void:
+func send_chat_completion(messages: Array, callback: Callable, response_format: Dictionary = {}) -> void:
 	if api_key.is_empty():
 		request_failed.emit(APIError.INVALID_API_KEY, "API key not configured")
 		return
@@ -80,6 +80,10 @@ func send_chat_completion(messages: Array, callback: Callable) -> void:
 		"max_tokens": max_tokens,
 		"temperature": temperature
 	}
+	
+	# Add structured outputs support
+	if not response_format.is_empty():
+		request_data["response_format"] = response_format
 	
 	var request_info = {
 		"url": base_url + "/chat/completions",
@@ -171,7 +175,18 @@ func _on_request_completed(result: int, response_code: int, headers: PackedStrin
 		return
 	
 	var response_data = json.data
-	print("SUCCESS: JSON parsed, calling callback...")
+	print("SUCCESS: JSON parsed, checking for refusal...")
+	
+	# Check for refusal in structured outputs
+	if response_data.has("choices") and response_data.choices.size() > 0:
+		var choice = response_data.choices[0]
+		if choice.has("message") and choice.message.has("refusal") and choice.message.refusal != null:
+			print("WARNING: Model refused to respond: %s" % choice.message.refusal)
+			request_failed.emit(APIError.UNKNOWN_ERROR, "Model refusal: " + str(choice.message.refusal))
+			_process_queue()
+			return
+	
+	print("SUCCESS: No refusal, calling callback...")
 	
 	if callback.is_valid():
 		print("Calling response callback...")

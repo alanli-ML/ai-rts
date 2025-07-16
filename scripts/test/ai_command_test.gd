@@ -11,6 +11,8 @@ func _ready():
     
     test_api_configuration()
     await get_tree().create_timer(1.0).timeout
+    test_structured_outputs()
+    await get_tree().create_timer(1.0).timeout
     test_command_processing()
 
 func test_api_configuration():
@@ -63,6 +65,66 @@ func test_api_configuration():
     else:
         print("DependencyContainer: ✗ Not found")
 
+func test_structured_outputs():
+    print("\n=== Testing Structured Outputs Migration ===")
+    
+    # Test the schema definitions
+    const AIResponseSchemas = preload("res://scripts/ai/ai_response_schemas.gd")
+    
+    var group_schema = AIResponseSchemas.get_schema_for_command(true)
+    var individual_schema = AIResponseSchemas.get_schema_for_command(false)
+    
+    print("Schema definitions: ✓ Loaded successfully")
+    print("  - Group schema type: %s" % group_schema.get("type", "unknown"))
+    print("  - Individual schema type: %s" % individual_schema.get("type", "unknown"))
+    
+    # Check that schemas have required fields
+    var group_json_schema = group_schema.get("json_schema", {})
+    var individual_json_schema = individual_schema.get("json_schema", {})
+    
+    if group_json_schema.has("strict") and group_json_schema.strict == true:
+        print("  - Group schema strict mode: ✓ Enabled")
+    else:
+        print("  - Group schema strict mode: ✗ Missing or disabled")
+    
+    if individual_json_schema.has("strict") and individual_json_schema.strict == true:
+        print("  - Individual schema strict mode: ✓ Enabled")
+    else:
+        print("  - Individual schema strict mode: ✗ Missing or disabled")
+    
+    # Test unit-specific schemas with enums
+    var scout_schema = AIResponseSchemas.get_schema_for_command(false, ["scout"])
+    var tank_schema = AIResponseSchemas.get_schema_for_command(false, ["tank"])
+    var mixed_schema = AIResponseSchemas.get_schema_for_command(true, ["scout", "medic", "engineer"])
+    
+    # Verify that all fields are required (OpenAI requirement)
+    var scout_schema_obj = scout_schema.get("json_schema", {}).get("schema", {})
+    var plan_items = scout_schema_obj.get("properties", {}).get("plans", {}).get("items", {})
+    var steps_items = plan_items.get("properties", {}).get("steps", {}).get("items", {})
+    var steps_required = steps_items.get("required", [])
+    
+    if "speech" in steps_required:
+        print("  - All fields marked as required: ✓ Compliant with OpenAI specs")
+    else:
+        print("  - All fields marked as required: ✗ Missing required fields")
+    
+    # Verify action enums are working
+    var action_enum = steps_items.get("properties", {}).get("action", {}).get("enum", [])
+    if "activate_stealth" in action_enum:
+        print("  - Scout-specific actions in enum: ✓ Working")
+    else:
+        print("  - Scout-specific actions in enum: ✗ Missing")
+    
+    # Verify trigger structure
+    var triggered_items = plan_items.get("properties", {}).get("triggered_actions", {}).get("items", {})
+    var trigger_properties = triggered_items.get("properties", {})
+    if trigger_properties.has("trigger_source") and trigger_properties.has("trigger_comparison") and trigger_properties.has("trigger_value"):
+        print("  - New trigger structure: ✓ Implemented")
+    else:
+        print("  - New trigger structure: ✗ Missing")
+    
+    print("Structured outputs with enums: ✓ Ready for testing")
+
 func test_command_processing():
     print("\n=== Testing Command Processing ===")
     
@@ -97,7 +159,7 @@ func _on_plan_processed(plans: Array, message: String):
     print("  Plans: %d" % plans.size())
     print("  Message: %s" % message)
 
-func _on_command_failed(error: String):
+func _on_command_failed(error: String, unit_ids: Array):
     print("✗ AI command failed: %s" % error)
     print("\nTo fix this:")
     print("1. Check that API keys are properly configured")

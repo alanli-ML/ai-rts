@@ -144,20 +144,27 @@ func get_skeleton() -> Skeleton3D:
 
 func _attach_weapon():
 	# Get weapon attachment from parent Unit class
+	print("DEBUG: AnimatedUnit._attach_weapon() called for unit %s (archetype: %s)" % [unit_id, archetype])
 	if not weapon_attachment:
+		print("DEBUG: AnimatedUnit._attach_weapon() - creating new weapon attachment")
 		var WeaponAttachmentScene = preload("res://scenes/units/WeaponAttachment.tscn")
 		weapon_attachment = WeaponAttachmentScene.instantiate()
 		weapon_attachment.name = "WeaponAttachment"
 		add_child(weapon_attachment)
 
 		var weapon_type = weapon_db.get_weapon_for_archetype(archetype)
+		print("DEBUG: AnimatedUnit._attach_weapon() - selected weapon type: %s" % weapon_type)
 		
 		var success = weapon_attachment.equip_weapon(self, weapon_type, team_id)
 		if not success:
-			print("Failed to attach weapon to %s" % unit_id)
+			print("DEBUG: AnimatedUnit._attach_weapon() - Failed to attach weapon to %s" % unit_id)
 			if weapon_attachment:
 				weapon_attachment.queue_free()
 				weapon_attachment = null
+		else:
+			print("DEBUG: AnimatedUnit._attach_weapon() - Successfully attached weapon %s to unit %s" % [weapon_type, unit_id])
+	else:
+		print("DEBUG: AnimatedUnit._attach_weapon() - weapon attachment already exists")
 
 func die_and_cleanup():
 	# Prevent further actions

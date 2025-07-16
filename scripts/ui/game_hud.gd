@@ -13,6 +13,8 @@ extends Control
 @onready var spawn_medic_button = $BottomBar/HBoxContainer/SpawnButtons/SpawnMedic
 @onready var spawn_engineer_button = $BottomBar/HBoxContainer/SpawnButtons/SpawnEngineer
 @onready var hover_tooltip = $HoverTooltip
+@onready var command_status_label = $CommandStatusPanel/MarginContainer/VBoxContainer/StatusLabel
+@onready var command_summary_label = $CommandStatusPanel/MarginContainer/VBoxContainer/SummaryLabel
 
 # System References
 var resource_manager
@@ -20,6 +22,7 @@ var node_capture_system
 var team_unit_spawner
 var selection_system
 var audio_manager
+var ai_command_processor
 
 func _ready() -> void:
     # Get system references from DependencyContainer
@@ -29,6 +32,7 @@ func _ready() -> void:
         node_capture_system = dc.get_node_capture_system()
         team_unit_spawner = dc.get_team_unit_spawner()
         audio_manager = dc.get_audio_manager()
+        ai_command_processor = dc.get_node_or_null("AICommandProcessor")
 
     # Find the selection system - it might not be ready immediately
     call_deferred("_find_selection_system")
@@ -42,6 +46,11 @@ func _ready() -> void:
         selection_system.selection_changed.connect(_on_selection_changed)
     else:
         print("GameHUD: Warning - Selection system not found or doesn't have selection_changed signal")
+    if ai_command_processor:
+        ai_command_processor.processing_started.connect(_on_ai_processing_started)
+        ai_command_processor.processing_finished.connect(_on_ai_processing_finished)
+        ai_command_processor.plan_processed.connect(_on_ai_plan_processed)
+        ai_command_processor.command_failed.connect(_on_ai_command_failed)
     
     command_input.text_submitted.connect(_on_command_submitted)
     spawn_scout_button.pressed.connect(func(): _on_spawn_pressed("scout"))
@@ -238,6 +247,26 @@ func _update_selection_display(selected_units: Array):
             header_label.fit_content = true
             action_queue_list.add_child(header_label)
             
+            # Show unit goal if available
+            var unit_goal = ""
+            if "strategic_goal" in unit and not unit.strategic_goal.is_empty():
+                unit_goal = unit.strategic_goal
+            else:
+                unit_goal = "No specific goal assigned"
+            
+            var goal_label = RichTextLabel.new()
+            goal_label.bbcode_enabled = true
+            goal_label.text = "[font_size=16][color=lightgreen][b]Goal:[/b] %s[/color][/font_size]" % unit_goal
+            goal_label.fit_content = true
+            action_queue_list.add_child(goal_label)
+            
+            # Add a small separator
+            var separator_mini = RichTextLabel.new()
+            separator_mini.bbcode_enabled = true
+            separator_mini.text = " "
+            separator_mini.fit_content = true
+            action_queue_list.add_child(separator_mini)
+            
             # Show detailed plan if available
             var full_plan = []
             if "full_plan" in unit and unit.full_plan is Array:
@@ -358,7 +387,7 @@ func _shorten_trigger_hud(trigger: String) -> String:
     """Shorten trigger text for HUD display"""
     # Replace common trigger phrases with shorter versions
     var shortened = trigger
-    shortened = shortened.replace("enemy_in_range", "enemy near")
+    shortened = shortened.replace("enemies_in_range", "enemy near")
     shortened = shortened.replace("health_pct", "HP")
     shortened = shortened.replace("ammo_pct", "ammo")
     shortened = shortened.replace("elapsed_ms", "time")
@@ -373,6 +402,63 @@ func _shorten_trigger_hud(trigger: String) -> String:
         shortened = shortened.substr(0, 22) + "..."
     
     return shortened
+
+# AI Command Processing Signal Handlers
+func _on_ai_processing_started() -> void:
+    """Handle AI processing started"""
+    if command_status_label:
+        command_status_label.text = "[color=yellow]🤖 Processing command...[/color]"
+    if command_summary_label:
+        command_summary_label.text = ""
+
+func _on_ai_processing_finished() -> void:
+    """Handle AI processing finished"""
+    if command_status_label:
+        command_status_label.text = "[color=gray]Ready for commands[/color]"
+
+func _on_ai_plan_processed(plans: Array, message: String) -> void:
+    """Handle successful AI plan processing"""
+    if command_status_label:
+        command_status_label.text = "[color=green]✓ Command completed[/color]"
+    
+    # The message parameter now contains the summary (enhanced_message from AI processor)
+    var summary_text = message
+    
+    # If no meaningful summary, generate a basic one from the plans
+    if summary_text.is_empty() or summary_text == "Executing tactical plans":
+        if not plans.is_empty():
+            var unit_count = plans.size()
+            var action_types = []
+            for plan in plans:
+                if plan.has("steps") and not plan.steps.is_empty():
+                    var first_action = plan.steps[0].get("action", "")
+                    if not action_types.has(first_action):
+                        action_types.append(first_action)
+            
+            if not action_types.is_empty():
+                summary_text = "Coordinating %d units: %s" % [unit_count, ", ".join(action_types)]
+    
+    if not summary_text.is_empty() and command_summary_label:
+        command_summary_label.text = "[color=lightblue]%s[/color]" % summary_text
+    
+    # Auto-clear status after a few seconds
+    await get_tree().create_timer(3.0).timeout
+    if command_status_label:
+        command_status_label.text = "[color=gray]Ready for commands[/color]"
+
+func _on_ai_command_failed(error: String, unit_ids: Array) -> void:
+    """Handle AI command failure"""
+    if command_status_label:
+        command_status_label.text = "[color=red]✗ Command failed[/color]"
+    if command_summary_label:
+        command_summary_label.text = "[color=red]Error: %s[/color]" % error
+    
+    # Auto-clear status after a few seconds
+    await get_tree().create_timer(3.0).timeout
+    if command_status_label:
+        command_status_label.text = "[color=gray]Ready for commands[/color]"
+    if command_summary_label:
+        command_summary_label.text = ""
 
 func _find_selection_system_old():
     """Find the selection system using multiple approaches"""

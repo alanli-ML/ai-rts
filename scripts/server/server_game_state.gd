@@ -18,6 +18,11 @@ var team_resources: Dictionary = {}  # team_id -> ResourceData
 
 # System references (injected via dependency container)
 var ai_command_processor: Node
+var team_unit_spawner: Node
+func _get_event_bus():
+    if has_node("/root/EventBus"):
+        return get_node("/root/EventBus")
+    return null
 var resource_manager: Node
 var node_capture_system: Node
 var logger: Node
@@ -35,9 +40,54 @@ signal unit_spawned(unit_id: String)
 signal unit_destroyed(unit_id: String)
 signal match_ended(result: int)
 
+var tick_counter: int = 0
+const NETWORK_TICK_RATE = 2 # ~30 times per second if physics is 60fps
+
 func _ready() -> void:
     # Systems will be initialized via dependency injection
     pass
+
+func _physics_process(_delta: float) -> void:
+    if match_state != "active":
+        return
+
+    tick_counter += 1
+    if tick_counter >= NETWORK_TICK_RATE:
+        tick_counter = 0
+        _broadcast_game_state()
+
+func _gather_game_state() -> Dictionary:
+    var state = {
+        "units": []
+    }
+    for unit_id in units:
+        var unit = units[unit_id]
+        if is_instance_valid(unit):
+            state.units.append({
+                "id": unit.unit_id,
+                "archetype": unit.archetype,
+                "team_id": unit.team_id,
+                "position": { "x": unit.global_position.x, "y": unit.global_position.y, "z": unit.global_position.z },
+                "velocity": { "x": unit.velocity.x, "y": unit.velocity.y, "z": unit.velocity.z },
+                "health": unit.current_health
+            })
+    return state
+
+func _broadcast_game_state() -> void:
+    var session_manager = get_node("/root/DependencyContainer").get_node("SessionManager")
+    if not session_manager or session_manager.get_session_count() == 0:
+        return
+
+    var state = _gather_game_state()
+    
+    # Assume one session for now
+    var session_id = session_manager.sessions.keys()[0]
+    var peer_ids = session_manager.get_all_peer_ids_in_session(session_id)
+    
+    var root_node = get_tree().get_root().get_node("UnifiedMain")
+    if root_node:
+        for peer_id in peer_ids:
+            root_node.rpc_id(peer_id, "_on_game_state_update", state)
 
 func setup(logger_ref: Node, game_constants_ref, network_messages_ref) -> void:
     """Setup the server game state with dependencies"""
@@ -51,6 +101,7 @@ func setup(logger_ref: Node, game_constants_ref, network_messages_ref) -> void:
         ai_command_processor = dependency_container.get_ai_command_processor()
         resource_manager = dependency_container.get_resource_manager()
         node_capture_system = dependency_container.get_node_capture_system()
+        team_unit_spawner = dependency_container.get_team_unit_spawner()
         
         # Connect system signals
         _connect_system_signals()
@@ -61,116 +112,74 @@ func setup(logger_ref: Node, game_constants_ref, network_messages_ref) -> void:
 
 func _connect_system_signals() -> void:
     """Connect signals from all integrated systems"""
+    var dependency_container = get_node("/root/DependencyContainer")
     
     # Connect AI system signals
     if ai_command_processor:
-        ai_command_processor.plan_created.connect(_on_ai_plan_created)
-        ai_command_processor.plan_step_completed.connect(_on_ai_plan_step_completed)
-        ai_command_processor.plan_failed.connect(_on_ai_plan_failed)
-        ai_command_processor.plan_completed.connect(_on_ai_plan_completed)
+        ai_command_processor.plan_processed.connect(_on_ai_plan_processed)
+        ai_command_processor.command_failed.connect(_on_ai_command_failed)
     
+    # Connect PlanExecutor signals
+    var plan_executor = dependency_container.get_node_or_null("PlanExecutor")
+    if plan_executor:
+        plan_executor.speech_triggered.connect(_on_speech_triggered)
+
     # Connect resource manager signals
     if resource_manager:
         resource_manager.resource_changed.connect(_on_resource_changed)
-        resource_manager.resource_depleted.connect(_on_resource_depleted)
-        resource_manager.resource_generated.connect(_on_resource_generated)
     
     # Connect node capture system signals
     if node_capture_system:
-        node_capture_system.control_point_captured.connect(_on_control_point_captured)
-        node_capture_system.control_point_contested.connect(_on_control_point_contested)
-        node_capture_system.victory_achieved.connect(_on_victory_achieved)
+        # This is now handled by connecting to individual ControlPoint nodes
+        # in a higher-level manager like UnifiedMain when the map is loaded.
+        pass
     
     logger.info("ServerGameState", "System signals connected")
 
 # AI System Integration
-func _on_ai_plan_created(plan_id: String, unit_id: String, plan_data: Dictionary) -> void:
+func _on_ai_plan_processed(plans: Array, _message: String) -> void:
     """Handle AI plan creation"""
-    logger.info("ServerGameState", "AI plan created: %s for unit %s" % [plan_id, unit_id])
-    
-    # Update AI progress data for clients
-    ai_progress_data[unit_id] = {
-        "plan_id": plan_id,
-        "status": "active",
-        "progress": 0.0,
-        "current_step": 0,
-        "total_steps": plan_data.get("steps", []).size()
-    }
-    
-    # Broadcast to clients
-    _broadcast_ai_progress_update(unit_id)
-
-func _on_ai_plan_step_completed(plan_id: String, unit_id: String, step_data: Dictionary) -> void:
-    """Handle AI plan step completion"""
-    logger.info("ServerGameState", "AI plan step completed: %s for unit %s" % [plan_id, unit_id])
-    
-    # Update progress data
-    if unit_id in ai_progress_data:
-        var progress_data = ai_progress_data[unit_id]
-        progress_data["current_step"] += 1
-        progress_data["progress"] = float(progress_data["current_step"]) / float(progress_data["total_steps"])
+    for plan_data in plans:
+        var unit_id = plan_data.get("unit_id")
+        if unit_id.is_empty():
+            continue
+            
+        logger.info("ServerGameState", "AI plan processed for unit %s" % unit_id)
         
-        # Broadcast to clients
-        _broadcast_ai_progress_update(unit_id)
-    
-    # Trigger unit speech if specified
-    var speech_message = step_data.get("speech_message", "")
-    if speech_message != "":
-        _trigger_unit_speech(unit_id, speech_message)
-
-func _on_ai_plan_failed(plan_id: String, unit_id: String, error_message: String) -> void:
-    """Handle AI plan failure"""
-    logger.info("ServerGameState", "AI plan failed: %s for unit %s - %s" % [plan_id, unit_id, error_message])
-    
-    # Update progress data
-    if unit_id in ai_progress_data:
-        ai_progress_data[unit_id]["status"] = "failed"
-        ai_progress_data[unit_id]["error"] = error_message
-        
+        # Update AI progress data for clients
+        ai_progress_data[unit_id] = {
+            "plan_id": plan_data.get("plan_id", unit_id), # No plan_id anymore, use unit_id
+            "status": "active",
+            "progress": 0.0,
+            "current_step": 0,
+            "total_steps": plan_data.get("steps", []).size()
+        }
         # Broadcast to clients
         _broadcast_ai_progress_update(unit_id)
 
-func _on_ai_plan_completed(plan_id: String, unit_id: String) -> void:
-    """Handle AI plan completion"""
-    logger.info("ServerGameState", "AI plan completed: %s for unit %s" % [plan_id, unit_id])
+func _on_ai_command_failed(error_message: String) -> void:
+    logger.error("ServerGameState", "AI Command failed: %s" % error_message)
+    # TODO: Broadcast failure to the relevant client
     
-    # Update progress data
-    if unit_id in ai_progress_data:
-        ai_progress_data[unit_id]["status"] = "completed"
-        ai_progress_data[unit_id]["progress"] = 1.0
-        
-        # Broadcast to clients
-        _broadcast_ai_progress_update(unit_id)
-        
-        # Clean up after delay
-        await get_tree().create_timer(2.0).timeout
-        ai_progress_data.erase(unit_id)
-
 # Resource System Integration
-func _on_resource_changed(team_id: int, resource_type: String, current_amount: int, change_amount: int) -> void:
+func _on_resource_changed(team_id: int, resource_type: int, current_amount: int) -> void:
     """Handle resource changes"""
-    logger.info("ServerGameState", "Resource changed: Team %d, %s: %d (%+d)" % [team_id, resource_type, current_amount, change_amount])
+    var resource_type_str = "energy" # Assuming only energy for now (enum 0)
+    logger.info("ServerGameState", "Resource changed: Team %d, %s: %d" % [team_id, resource_type_str, current_amount])
     
     # Update cached resource data
     if team_id not in resource_data:
         resource_data[team_id] = {}
     
-    resource_data[team_id][resource_type] = {
+    resource_data[team_id][resource_type_str] = {
         "current": current_amount,
-        "change": change_amount
+        "change": 0 # Cannot determine change from this signal alone
     }
     
     # Broadcast to clients
     _broadcast_resource_update(team_id)
 
-func _on_resource_depleted(team_id: int, resource_type: String) -> void:
-    """Handle resource depletion"""
-    logger.info("ServerGameState", "Resource depleted: Team %d, %s" % [team_id, resource_type])
-    
-    # Send notification to clients
-    _broadcast_notification(team_id, "warning", "Resource depleted: %s" % resource_type)
-
-func _on_resource_generated(team_id: int, resource_type: String, amount: int) -> void:
+func _on_resource_generated(_team_id: int, _resource_type: String, _amount: int) -> void:
     """Handle resource generation"""
     # Update cached data (already handled by _on_resource_changed)
     pass
@@ -227,7 +236,9 @@ func _broadcast_ai_progress_update(unit_id: String) -> void:
         var progress_data = ai_progress_data[unit_id]
         
         # Send to all clients via EventBus
-        EventBus.emit_signal("plan_progress_updated", unit_id, progress_data)
+        var event_bus = _get_event_bus()
+        if event_bus:
+            event_bus.emit_signal("plan_progress_updated", unit_id, progress_data)
 
 func _broadcast_resource_update(team_id: int) -> void:
     """Broadcast resource update to all clients"""
@@ -235,7 +246,9 @@ func _broadcast_resource_update(team_id: int) -> void:
         var resources = resource_data[team_id]
         
         # Send to all clients via EventBus
-        EventBus.emit_signal("resource_updated", team_id, resources)
+        var event_bus = _get_event_bus()
+        if event_bus:
+            event_bus.emit_signal("resource_updated", team_id, resources)
 
 func _broadcast_control_point_update(control_point_id: int) -> void:
     """Broadcast control point update to all clients"""
@@ -243,18 +256,22 @@ func _broadcast_control_point_update(control_point_id: int) -> void:
         var control_point_data = control_points_data[control_point_id]
         
         # Send to all clients via EventBus
-        EventBus.emit_signal("control_point_updated", control_point_id, control_point_data)
+        var event_bus = _get_event_bus()
+        if event_bus:
+            event_bus.emit_signal("control_point_updated", control_point_id, control_point_data)
 
 func _broadcast_notification(team_id: int, type: String, message: String) -> void:
     """Broadcast notification to team clients"""
     var notification_data = {
         "type": type,
         "message": message,
-		"timestamp": Time.get_ticks_msec()
-	}
-	
+        "timestamp": Time.get_ticks_msec()
+    }
+    
     # Send to all clients via EventBus
-    EventBus.emit_signal("notification_received", team_id, notification_data)
+    var event_bus = _get_event_bus()
+    if event_bus:
+        event_bus.emit_signal("notification_received", team_id, notification_data)
 
 func _broadcast_match_ended(winning_team: int, victory_type: String) -> void:
     """Broadcast match ended to all clients"""
@@ -265,7 +282,27 @@ func _broadcast_match_ended(winning_team: int, victory_type: String) -> void:
     }
     
     # Send to all clients via EventBus
-    EventBus.emit_signal("match_ended", match_data)
+    var event_bus = _get_event_bus()
+    if event_bus:
+        event_bus.emit_signal("match_ended", match_data)
+
+func _on_speech_triggered(unit_id: String, speech_text: String) -> void:
+    var unit = units.get(unit_id)
+    if not is_instance_valid(unit): return
+
+    var session_manager = get_node("/root/DependencyContainer").get_node("SessionManager")
+    if not session_manager or session_manager.get_session_count() == 0: return
+
+    # Find the session this unit is in to get the correct peers
+    # For now, we assume a single session
+    var session_id = session_manager.sessions.keys()[0]
+    var peer_ids = session_manager.get_all_peer_ids_in_session(session_id)
+    
+    var root_node = get_tree().get_root().get_node("UnifiedMain")
+    if root_node:
+        for peer_id in peer_ids:
+            # Tell the client to display the speech bubble
+            root_node.rpc_id(peer_id, "display_speech_bubble_rpc", unit_id, speech_text)
 
 func _trigger_unit_speech(unit_id: String, message: String) -> void:
     """Trigger unit speech bubble"""
@@ -274,6 +311,63 @@ func _trigger_unit_speech(unit_id: String, message: String) -> void:
         var team_id = unit.team_id
         
         # Send to all clients via EventBus
-        EventBus.emit_signal("unit_speech_requested", unit_id, message, team_id)
+        var event_bus = _get_event_bus()
+        if event_bus:
+            event_bus.emit_signal("unit_speech_requested", unit_id, message, team_id)
+
+func add_player(player_id: String, peer_id: int, player_name: String, team_id: int) -> void:
+    if player_id in players:
+        logger.warning("ServerGameState", "Player %s already exists." % player_id)
+        return
+    
+    players[player_id] = {
+        "peer_id": peer_id,
+        "name": player_name,
+        "team_id": team_id,
+        "units": [],
+        "buildings": []
+    }
+    
+    logger.info("ServerGameState", "Added player %s (Peer: %d, Team: %d)" % [player_name, peer_id, team_id])
+
+func spawn_unit(archetype: String, team_id: int, position: Vector3, owner_id: String) -> String:
+    if not team_unit_spawner:
+        logger.error("ServerGameState", "TeamUnitSpawner not available.")
+        return ""
+    
+    var unit = await team_unit_spawner.spawn_unit(team_id, position, archetype)
+    if unit:
+        units[unit.unit_id] = unit
+        if owner_id in players:
+            players[owner_id].units.append(unit.unit_id)
+        
+        unit.unit_died.connect(_on_unit_died)
+        unit_spawned.emit(unit.unit_id)
+        return unit.unit_id
+    
+    return ""
+
+func _on_unit_died(unit_id: String):
+    if units.has(unit_id):
+        units.erase(unit_id)
+        logger.info("ServerGameState", "Unit %s died and was removed from game state." % unit_id)
+        
+        # Broadcast removal to clients
+        var session_manager = get_node("/root/DependencyContainer").get_node("SessionManager")
+        if not session_manager or session_manager.get_session_count() == 0: return
+
+        var session_id = session_manager.sessions.keys()[0]
+        var peer_ids = session_manager.get_all_peer_ids_in_session(session_id)
+        
+        var root_node = get_tree().get_root().get_node("UnifiedMain")
+        if root_node:
+            for peer_id in peer_ids:
+                root_node.rpc_id(peer_id, "remove_unit_rpc", unit_id)
+        
+        unit_destroyed.emit(unit_id)
+
+func set_match_state(new_state: String):
+    match_state = new_state
+    logger.info("ServerGameState", "Match state changed to: %s" % new_state)
 
 # Existing methods continue...

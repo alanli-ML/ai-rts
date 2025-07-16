@@ -28,7 +28,7 @@ var team_colors: Dictionary = {
 var plan_executor: Node = null
 var logger: Node = null
 
-func setup(logger_instance, game_constants_instance) -> void:
+func setup(logger_instance, _game_constants_instance) -> void:
     """Setup the PlanProgressManager with dependencies"""
     logger = logger_instance
     # game_constants = game_constants_instance  # Can use this if needed
@@ -38,7 +38,7 @@ func setup(logger_instance, game_constants_instance) -> void:
     else:
         print("PlanProgressManager setup completed")
 
-func initialize(plan_progress_manager_instance = null) -> void:
+func initialize(_plan_progress_manager_instance = null) -> void:
     """Initialize the PlanProgressManager system"""
     if logger:
         logger.info("PlanProgressManager", "PlanProgressManager initialized")
@@ -282,7 +282,7 @@ func _cleanup_old_indicators() -> void:
     stats.active_plan_count = active_indicators.size()
 
 # Signal handlers for plan executor events
-func _on_plan_started(unit_id: String, plan: Array) -> void:
+func _on_plan_started(unit_id: String, _plan: Array) -> void:
     """Handle plan started signal from plan executor"""
     
     if not plan_executor:
@@ -298,7 +298,7 @@ func _on_plan_started(unit_id: String, plan: Array) -> void:
         
         show_plan_progress(unit_id, plan_data, team_id)
 
-func _on_plan_completed(unit_id: String, success: bool) -> void:
+func _on_plan_completed(unit_id: String, _success: bool) -> void:
     """Handle plan completed signal from plan executor"""
     
     # Hide the indicator after a short delay
@@ -307,7 +307,7 @@ func _on_plan_completed(unit_id: String, success: bool) -> void:
     
     plan_indicator_finished.emit(unit_id)
 
-func _on_plan_interrupted(unit_id: String, reason: String) -> void:
+func _on_plan_interrupted(unit_id: String, _reason: String) -> void:
     """Handle plan interrupted signal from plan executor"""
     
     # Hide the indicator immediately
@@ -315,7 +315,7 @@ func _on_plan_interrupted(unit_id: String, reason: String) -> void:
     
     plan_indicator_finished.emit(unit_id)
 
-func _on_step_executed(unit_id: String, step) -> void:
+func _on_step_executed(unit_id: String, _step) -> void:
     """Handle step executed signal from plan executor"""
     
     if not plan_executor:
@@ -326,7 +326,7 @@ func _on_step_executed(unit_id: String, step) -> void:
     if not plan_data.is_empty():
         update_plan_progress(unit_id, plan_data)
 
-func _on_trigger_evaluated(unit_id: String, trigger: String, result: bool) -> void:
+func _on_trigger_evaluated(unit_id: String, _trigger: String, _result: bool) -> void:
     """Handle trigger evaluated signal from plan executor"""
     
     if not plan_executor:

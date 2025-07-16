@@ -361,7 +361,7 @@ func get_unit_id() -> String:
         return target_unit.get("unit_id") if target_unit.has_method("get") else target_unit.name
     return ""
 
-func is_visible_to_team(viewer_team: int) -> bool:
+func is_visible_to_team(_viewer_team: int) -> bool:
     """Check if this bubble should be visible to a specific team"""
     # For now, all bubbles are visible to all teams for cooperative gameplay
     # This can be modified later for team-specific visibility

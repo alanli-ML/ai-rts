@@ -10,764 +10,224 @@ const GameConstants = preload("res://scripts/shared/constants/game_constants.gd"
 @export var unit_id: String = ""
 @export var archetype: String = "scout"
 @export var team_id: int = 1
-@export var system_prompt: String = ""
-@export var unit_type: String = ""
-@export var owner_player_id: String = ""
 
-# Unit stats (loaded from GameConstants)
+# Unit stats
 var max_health: float = 100.0
 var current_health: float = 100.0
 var movement_speed: float = 5.0
-var attack_damage: float = 25.0
-var attack_range: float = 3.0
-var vision_range: float = 8.0
-var vision_angle: float = 120.0
-var speed: float = 10.0
-
-# State variables
-var current_state: GameEnums.UnitState = GameEnums.UnitState.IDLE
-var previous_state: GameEnums.UnitState = GameEnums.UnitState.IDLE
-var state_timer: float = 0.0
+var attack_damage: float = 10.0
+var attack_range: float = 15.0
 var attack_cooldown: float = 1.0
-var ability_cooldown: float = 0.0
 var last_attack_time: float = 0.0
 
-# Combat and targeting
-var target_unit: Unit = null
-var target_position: Vector3 = Vector3.ZERO
-var can_attack: bool = true
-
-# Unit status
-var morale: float = 1.0
-var energy: float = 100.0
-var is_selected: bool = false
-var is_moving: bool = false
-var is_attacking: bool = false
+# State
+var current_state: GameEnums.UnitState = GameEnums.UnitState.IDLE
 var is_dead: bool = false
+var target_unit: Unit = null
 
-# Movement and navigation
-var movement_target: Vector3 = Vector3.ZERO
-var destination: Vector3 = Vector3.ZERO
-
-# AI/Vision system
-var visible_enemies: Array[Unit] = []
-var visible_allies: Array[Unit] = []
-
-# Node references (created programmatically)
+# Movement
 var navigation_agent: NavigationAgent3D
-var health_bar: ProgressBar
-var selection_indicator: MeshInstance3D
-var vision_area: Area3D
-var combat_area: Area3D
 
-# Signals
-signal unit_selected(unit: Unit)
-signal unit_deselected(unit: Unit)
-signal unit_destroyed(unit_id: String)
-signal unit_died(unit: Unit)
-signal unit_health_changed(unit_id: String, health: float)
-signal unit_state_changed(unit_id: String, state: GameEnums.UnitState)
 signal health_changed(new_health: float, max_health: float)
-signal enemy_sighted(enemy: Unit)
-signal command_received(command: Dictionary)
+signal unit_died(unit_id: String)
 
 func _ready() -> void:
-    # Generate unique ID if not set
     if unit_id.is_empty():
         unit_id = "unit_" + str(randi())
     
-    # Set unit_type from archetype if not set
-    if unit_type.is_empty():
-        unit_type = archetype
-    
-    # Create child nodes
-    _create_child_nodes()
-    
-    # Load archetype stats
-    _load_archetype_stats()
-    
-    # Setup navigation
-    _setup_navigation()
-    
-    # Setup UI
-    _setup_ui()
-    
-    # Setup vision system
-    _setup_vision()
-    
-    # Add to units group for easy access
     add_to_group("units")
+    add_to_group("selectable") # For selection system
     
-    # Register with game systems
-    _register_unit()
-    
-    # Connect to EventBus for command handling
-    _connect_to_event_bus()
-    
-    print("Unit %s (%s) initialized for team %d" % [unit_id, archetype, team_id])
-
-func _create_child_nodes() -> void:
-    # Create NavigationAgent3D
     navigation_agent = NavigationAgent3D.new()
-    navigation_agent.name = "NavigationAgent3D"
     add_child(navigation_agent)
     
-    # Create basic visual representation
-    var mesh_instance = MeshInstance3D.new()
-    mesh_instance.name = "UnitMesh"
-    mesh_instance.mesh = CapsuleMesh.new()
-    var material = StandardMaterial3D.new()
-    material.albedo_color = Color.BLUE if team_id == 1 else Color.RED
-    mesh_instance.material_override = material
-    add_child(mesh_instance)
+    # Explicitly set collision layer for selection raycasts (Layer 1 = Units)
+    # This is critical for the EnhancedSelectionSystem to detect units.
+    set_collision_layer_value(1, true)
     
-    # Create collision shape
-    var collision_shape = CollisionShape3D.new()
-    collision_shape.name = "CollisionShape3D"
-    var shape = CapsuleShape3D.new()
-    shape.height = 2.0
-    shape.radius = 0.5
-    collision_shape.shape = shape
-    add_child(collision_shape)
+    # Ensure a collision shape exists for physics queries
+    var collision = get_node_or_null("CollisionShape3D")
+    if not collision:
+        collision = CollisionShape3D.new()
+        collision.name = "CollisionShape3D"
+        var shape = CapsuleShape3D.new()
+        shape.radius = 2.5 # Much larger radius for realistic character selection
+        shape.height = 4.0 # Taller to match typical character height
+        collision.shape = shape
+        add_child(collision)
+        
+        # Optional: Enable debug visualization in editor
+        if Engine.is_editor_hint():
+            collision.visible = true
     
-    # Create selection indicator
-    selection_indicator = MeshInstance3D.new()
-    selection_indicator.name = "SelectionIndicator"
-    selection_indicator.mesh = SphereMesh.new()
-    selection_indicator.mesh.radius = 1.2
-    selection_indicator.mesh.height = 0.1
-    selection_indicator.position.y = -0.6
-    selection_indicator.visible = false
-    var selection_material = StandardMaterial3D.new()
-    selection_material.albedo_color = Color.GREEN
-    selection_material.flags_transparent = true
-    selection_material.albedo_color.a = 0.5
-    selection_indicator.material_override = selection_material
-    add_child(selection_indicator)
+    print("Unit %s: Collision shape - radius: %s, height: %s" % [unit_id, 2.5, 4.0])
     
-    # Create vision area
-    vision_area = Area3D.new()
-    vision_area.name = "VisionArea"
-    var vision_collision = CollisionShape3D.new()
-    vision_collision.name = "VisionCollision"
-    var vision_shape = SphereShape3D.new()
-    vision_shape.radius = vision_range
-    vision_collision.shape = vision_shape
-    vision_area.add_child(vision_collision)
-    add_child(vision_area)
-    
-    # Create combat area (for close combat detection)
-    combat_area = Area3D.new()
-    combat_area.name = "CombatArea"
-    var combat_collision = CollisionShape3D.new()
-    combat_collision.name = "CombatCollision"
-    var combat_shape = SphereShape3D.new()
-    combat_shape.radius = attack_range
-    combat_collision.shape = combat_shape
-    combat_area.add_child(combat_collision)
-    add_child(combat_area)
+    _load_archetype_stats()
+    health_changed.connect(func(new_health, _max_health): if new_health <= 0: die())
 
 func _load_archetype_stats() -> void:
-    # Use GameConstants for unit configuration
-    var unit_config = GameConstants.get_unit_config(archetype)
-    if unit_config.is_empty():
-        print("No stats found for archetype: %s, using defaults" % archetype)
-        unit_config = GameConstants.get_unit_config("scout")  # Fallback to scout
-    
-    if not unit_config.is_empty():
-        max_health = unit_config.get("health", 100.0)
+    var config = GameConstants.get_unit_config(archetype)
+    if not config.is_empty():
+        max_health = config.get("health", 100.0)
         current_health = max_health
-        movement_speed = unit_config.get("speed", 5.0)
-        attack_damage = unit_config.get("damage", 25.0)
-        attack_range = unit_config.get("range", 3.0)
-        vision_range = unit_config.get("vision", 8.0)
-        speed = movement_speed
-    
-    # Update vision area radius
-    if vision_area:
-        var vision_collision = vision_area.get_node("VisionCollision")
-        if vision_collision and vision_collision.shape:
-            vision_collision.shape.radius = vision_range
-    
-    # Update combat area radius
-    if combat_area:
-        var combat_collision = combat_area.get_node("CombatCollision")
-        if combat_collision and combat_collision.shape:
-            combat_collision.shape.radius = attack_range
-
-func _setup_navigation() -> void:
-    if navigation_agent:
-        navigation_agent.path_desired_distance = 0.5
-        navigation_agent.target_desired_distance = 0.5
-        navigation_agent.path_max_distance = 3.0
-
-func _setup_ui() -> void:
-    # Health bar will be implemented later with proper UI
-    pass
-
-func _setup_vision() -> void:
-    # Setup vision area
-    if vision_area:
-        vision_area.body_entered.connect(_on_unit_entered_vision)
-        vision_area.body_exited.connect(_on_unit_exited_vision)
-
-func _register_unit() -> void:
-    # Register with EventBus if available
-    if has_node("/root/EventBus"):
-        var event_bus = get_node("/root/EventBus")
-        if event_bus.has_signal("unit_spawned"):
-            event_bus.unit_spawned.emit(self)
-
-func _connect_to_event_bus() -> void:
-    """Connect to EventBus for command handling"""
-    if has_node("/root/EventBus"):
-        var event_bus = get_node("/root/EventBus")
-        if event_bus.has_signal("unit_command_issued"):
-            # Connect to the command signal
-            if not event_bus.unit_command_issued.is_connected(_on_unit_command_issued):
-                event_bus.unit_command_issued.connect(_on_unit_command_issued)
-                print("Unit %s: Connected to EventBus command system" % unit_id)
-        else:
-            print("Unit %s: EventBus unit_command_issued signal not found" % unit_id)
-    else:
-        print("Unit %s: EventBus not found" % unit_id)
+        movement_speed = config.get("speed", 5.0)
+        attack_damage = config.get("damage", 10.0)
+        attack_range = config.get("range", 15.0)
 
 func _physics_process(delta: float) -> void:
-    if current_state == GameEnums.UnitState.DEAD:
-        return
-    
-    # Update timers
-    state_timer += delta
-    if attack_cooldown > 0:
-        attack_cooldown -= delta
-    if ability_cooldown > 0:
-        ability_cooldown -= delta
-    
-    # Handle movement
-    _handle_movement(delta)
-    
-    # Update vision system
-    _update_vision()
+    if is_dead: return
 
-func _handle_movement(delta: float) -> void:
-    if current_state == GameEnums.UnitState.DEAD:
-        return
-    
-    # Handle movement with NavigationAgent3D
-    if navigation_agent and navigation_agent.is_navigation_finished():
-        is_moving = false
-        velocity = Vector3.ZERO
-        if current_state == GameEnums.UnitState.MOVING:
-            change_state(GameEnums.UnitState.IDLE)
-    elif navigation_agent and not navigation_agent.is_navigation_finished():
-        is_moving = true
-        var next_position = navigation_agent.get_next_path_position()
-        var direction = (next_position - global_position).normalized()
-        velocity = direction * movement_speed
-        
-        # Face movement direction
-        if direction.length() > 0.1:
-            look_at(global_position + direction, Vector3.UP)
-        
-        # Check if we've reached the target
-        if global_position.distance_to(movement_target) < 0.5:
-            _stop_movement()
-    
-    move_and_slide()
+    match current_state:
+        GameEnums.UnitState.ATTACKING:
+            if not is_instance_valid(target_unit) or target_unit.is_dead:
+                current_state = GameEnums.UnitState.IDLE
+                return
+            
+            var distance = global_position.distance_to(target_unit.global_position)
+            if distance > attack_range:
+                # Move towards target
+                move_to(target_unit.global_position)
+            else:
+                # Stop moving and attack
+                velocity = Vector3.ZERO
+                
+                # Turn to face the target
+                look_at(target_unit.global_position, Vector3.UP)
+                
+                var current_time = Time.get_ticks_msec() / 1000.0
+                if current_time - last_attack_time >= attack_cooldown:
+                    target_unit.take_damage(attack_damage)
+                    last_attack_time = current_time
+        _: # Default case for IDLE, MOVING, etc.
+            if navigation_agent and not navigation_agent.is_navigation_finished():
+                var next_pos = navigation_agent.get_next_path_position()
+                var direction = global_position.direction_to(next_pos)
+                velocity = direction * movement_speed
+                move_and_slide()
+            else:
+                velocity = Vector3.ZERO
 
-func move_to(target_pos: Vector3) -> void:
-    """Move the unit to the target position"""
-    if current_state == GameEnums.UnitState.DEAD:
-        print("Unit %s: Cannot move - unit is dead" % unit_id)
-        return
-    
-    print("Unit %s: Received move_to command to position %s" % [unit_id, target_pos])
-    
-    movement_target = target_pos
-    destination = target_pos
-    is_moving = true
-    change_state(GameEnums.UnitState.MOVING)
-    
+func move_to(target_position: Vector3) -> void:
+    current_state = GameEnums.UnitState.MOVING
     if navigation_agent:
-        navigation_agent.target_position = target_pos
-        print("Unit %s: NavigationAgent target set to %s" % [unit_id, target_pos])
-        print("Unit %s: Navigation Agent navigation_finished: %s" % [unit_id, navigation_agent.is_navigation_finished()])
-        print("Unit %s: Navigation Agent distance to target: %.2f" % [unit_id, navigation_agent.distance_to_target()])
-    else:
-        print("Unit %s: ERROR - NavigationAgent is null!" % unit_id)
-    
-    print("Unit %s: State changed to MOVING, heading to %s" % [unit_id, target_pos])
-
-func debug_movement_status() -> void:
-    """Debug method to check movement status"""
-    print("=== Unit %s Movement Debug ===" % unit_id)
-    print("Position: %s" % global_position)
-    print("Target: %s" % movement_target)
-    print("State: %s" % GameEnums.get_unit_state_string(current_state))
-    print("Is Moving: %s" % is_moving)
-    print("Velocity: %s" % velocity)
-    
-    if navigation_agent:
-        print("NavigationAgent exists: true")
-        print("Navigation finished: %s" % navigation_agent.is_navigation_finished())
-        print("Distance to target: %.2f" % navigation_agent.distance_to_target())
-        print("Target position: %s" % navigation_agent.target_position)
-        print("Next path position: %s" % navigation_agent.get_next_path_position())
-    else:
-        print("NavigationAgent exists: false")
+        navigation_agent.target_position = target_position
 
 func attack_target(target: Unit) -> void:
-    """Attack the target unit"""
-    if not target or current_health <= 0 or target.current_health <= 0:
-        return
-    
-    var distance = global_position.distance_to(target.global_position)
-    if distance > attack_range:
-        # Move closer to target
-        move_to(target.global_position)
-        target_unit = target
-        return
-    
-    # Check attack cooldown
-    var current_time = Time.get_ticks_msec() / 1000.0
-    if current_time - last_attack_time < attack_cooldown:
-        return
-    
-    # Perform attack
-    target.take_damage(attack_damage)
-    last_attack_time = current_time
-    change_state(GameEnums.UnitState.ATTACKING)
-    is_attacking = true
+    if not is_instance_valid(target): return
+    target_unit = target
+    current_state = GameEnums.UnitState.ATTACKING
 
 func take_damage(damage: float) -> void:
-    """Take damage and handle death"""
-    if current_state == GameEnums.UnitState.DEAD:
-        return
-    
-    current_health -= damage
-    current_health = max(0, current_health)
-    
+    if is_dead: return
+    current_health = max(0, current_health - damage)
     health_changed.emit(current_health, max_health)
-    unit_health_changed.emit(unit_id, current_health)
-    
-    if current_health <= 0:
-        die()
-
-func heal(amount: float) -> void:
-    """Heal the unit"""
-    if current_state == GameEnums.UnitState.DEAD:
-        return
-    
-    current_health = min(max_health, current_health + amount)
-    health_changed.emit(current_health, max_health)
-    unit_health_changed.emit(unit_id, current_health)
 
 func die() -> void:
-    """Handle unit death"""
-    change_state(GameEnums.UnitState.DEAD)
+    if is_dead: return
     is_dead = true
-    is_selected = false
-    is_attacking = false
-    is_moving = false
-    
-    print("Unit %s died" % unit_id)
-    unit_died.emit(self)
-    unit_destroyed.emit(unit_id)
-    
-    # Remove from scene
-    queue_free()
-
-func stop() -> void:
-    """Stop current action"""
-    _stop_movement()
-    target_unit = null
-    is_attacking = false
-    change_state(GameEnums.UnitState.IDLE)
-
-func _stop_movement() -> void:
-    """Stop movement"""
-    is_moving = false
-    velocity = Vector3.ZERO
-    if current_state == GameEnums.UnitState.MOVING:
-        change_state(GameEnums.UnitState.IDLE)
-
-func change_state(new_state: GameEnums.UnitState) -> void:
-    """Change unit state"""
-    if new_state == current_state:
-        return
-    
-    previous_state = current_state
-    current_state = new_state
-    state_timer = 0.0
-    
-    unit_state_changed.emit(unit_id, current_state)
-    print("Unit %s changed state from %s to %s" % [unit_id, GameEnums.get_unit_state_string(previous_state), GameEnums.get_unit_state_string(current_state)])
-
-func select() -> void:
-    """Handle unit selection"""
-    if is_dead:
-        return
-    
-    is_selected = true
-    if selection_indicator:
-        selection_indicator.visible = true
-    unit_selected.emit(self)
-
-func deselect() -> void:
-    """Handle unit deselection"""
-    is_selected = false
-    if selection_indicator:
-        selection_indicator.visible = false
-    unit_deselected.emit(self)
-
-func _update_vision() -> void:
-    """Update vision system"""
-    # Clear old lists
-    visible_enemies.clear()
-    visible_allies.clear()
-    
-    # Check all units in vision area
-    if vision_area:
-        for body in vision_area.get_overlapping_bodies():
-            if body != self and body.has_method("get_team_id"):
-                var other_unit = body as Unit
-                if other_unit and not other_unit.is_dead:
-                    # Check if unit is in vision cone
-                    var direction_to_unit = (other_unit.global_position - global_position).normalized()
-                    var forward = -global_transform.basis.z
-                    var angle = acos(forward.dot(direction_to_unit))
-                    
-                    if angle <= deg_to_rad(vision_angle / 2.0):
-                        if other_unit.team_id != team_id:
-                            visible_enemies.append(other_unit)
-                            enemy_sighted.emit(other_unit)
-                        else:
-                            visible_allies.append(other_unit)
-
-func server_update(delta: float) -> void:
-    """Server-side update (called by game state)"""
-    # Update AI behavior, combat, etc.
-    _update_ai_behavior(delta)
-    _update_combat(delta)
-
-func _update_ai_behavior(_delta: float) -> void:
-    """Update AI behavior"""
-    # Basic AI: attack nearby enemies
-    if target_unit and target_unit.current_health > 0:
-        attack_target(target_unit)
-    else:
-        # Look for enemies in vision
-        for enemy in visible_enemies:
-            if enemy.current_health > 0:
-                attack_target(enemy)
-                break
-
-func _update_combat(_delta: float) -> void:
-    """Update combat logic"""
-    # Handle combat cooldowns, state transitions, etc.
-    if is_attacking and attack_cooldown <= 0:
-        is_attacking = false
-        if current_state == GameEnums.UnitState.ATTACKING:
-            change_state(GameEnums.UnitState.IDLE)
-
-# Utility functions
-func _get_unit_by_id(search_unit_id: String) -> Unit:
-    """Find a unit by its ID"""
-    var all_units = get_tree().get_nodes_in_group("units")
-    for unit in all_units:
-        if unit.has_method("get_unit_id") and unit.get_unit_id() == search_unit_id:
-            return unit
-        elif unit.has_property("unit_id") and unit.unit_id == search_unit_id:
-            return unit
-    return null
-
-func patrol_to(target_pos: Vector3) -> void:
-    """Start patrolling to a target position"""
-    if current_state == GameEnums.UnitState.DEAD:
-        return
-    
-    print("Unit %s: Starting patrol to %s" % [unit_id, target_pos])
-    # For now, implement as a simple move - can be enhanced later with waypoint system
-    move_to(target_pos)
-    change_state(GameEnums.UnitState.MOVING)
-
-func follow_unit(target: Unit) -> void:
-    """Follow another unit"""
-    if not target or current_state == GameEnums.UnitState.DEAD:
-        return
-    
-    print("Unit %s: Following unit %s" % [unit_id, target.unit_id])
-    target_unit = target
-    # Move to target's position with some offset
-    var follow_position = target.global_position + Vector3(2.0, 0, 2.0)
-    move_to(follow_position)
-
-func guard_unit(target: Unit) -> void:
-    """Guard another unit (stay close and defend)"""
-    if not target or current_state == GameEnums.UnitState.DEAD:
-        return
-    
-    print("Unit %s: Guarding unit %s" % [unit_id, target.unit_id])
-    target_unit = target
-    # Move to defensive position near target
-    var guard_position = target.global_position + Vector3(1.5, 0, 1.5)
-    move_to(guard_position)
-
-func set_formation(formation_type: String) -> void:
-    """Set unit formation behavior"""
-    print("Unit %s: Setting formation to %s" % [unit_id, formation_type])
-    # Store formation preference - would be used by formation system
-    if has_meta("formation_type"):
-        set_meta("formation_type", formation_type)
-    else:
-        set_meta("formation_type", formation_type)
-
-func set_stance(stance_type: String) -> void:
-    """Set unit combat stance"""
-    print("Unit %s: Setting stance to %s" % [unit_id, stance_type])
-    # Store stance preference - affects AI behavior
-    match stance_type:
-        "aggressive":
-            set_meta("combat_stance", "aggressive")
-            attack_range *= 1.2  # Slightly increased engagement range
-        "defensive":
-            set_meta("combat_stance", "defensive")
-            attack_range *= 0.8  # Reduced engagement range
-        "passive":
-            set_meta("combat_stance", "passive")
-            # Passive units won't auto-engage
-        _:
-            set_meta("combat_stance", "normal")
-
-func get_team_id() -> int:
-    return team_id
+    current_state = GameEnums.UnitState.DEAD
+    unit_died.emit(unit_id)
+    # The server game state will handle queue_free() after broadcasting the death.
+    # On the client, the display manager will handle freeing the visual node.
+    # On server, this is acceptable for now.
+    if get_tree().is_server():
+        call_deferred("queue_free")
 
 func get_health_percentage() -> float:
     return current_health / max_health if max_health > 0 else 0.0
 
-func get_energy() -> float:
-    """Get current energy level"""
-    return energy
-
-func get_ammo() -> float:
-    """Get current ammo (for units that use ammo)"""
-    # Return a default ammo level - can be overridden by specific unit types
-    return 100.0
-
-func get_current_state() -> GameEnums.UnitState:
-    """Get current unit state"""
-    return current_state
-
-func set_movement_speed(new_speed: float) -> void:
-    """Set movement speed"""
-    movement_speed = new_speed
-    speed = new_speed
-
-func get_state_name() -> String:
-    return GameEnums.get_unit_state_string(current_state)
-
-func get_unit_id() -> String:
-    return unit_id
-
-func get_archetype() -> String:
-    return archetype
+func get_team_id() -> int:
+    return team_id
 
 func get_unit_info() -> Dictionary:
-    """Get unit information for AI system"""
     return {
         "id": unit_id,
         "archetype": archetype,
-        "health": current_health,
-        "max_health": max_health,
+        "health_pct": get_health_percentage() * 100,
         "position": [global_position.x, global_position.y, global_position.z],
-        "state": get_state_name().to_lower(),
-        "team_id": team_id,
-        "speed": movement_speed,
-        "vision_range": vision_range,
-        "attack_range": attack_range,
-        "abilities": _get_available_abilities(),
-        "is_selected": is_selected,
-        "is_moving": is_moving,
-        "is_attacking": is_attacking,
-        "morale": morale,
-        "energy": energy
+        "team_id": team_id
     }
 
-func get_unit_data() -> Dictionary:
-    """Get unit data for networking"""
-    return {
-        "id": unit_id,
-        "unit_type": unit_type,
-        "team_id": team_id,
-        "position": [global_position.x, global_position.y, global_position.z],
-        "rotation": rotation.y,
-        "health": current_health,
-        "max_health": max_health,
-        "state": current_state
-    }
+# Placeholder methods for plan executor
+func retreat(): pass
+func start_patrol(_waypoints): pass
+func use_ability(_ability_name): pass
+func set_formation(_formation): pass
+func set_stance(_stance): pass
 
-func _get_available_abilities() -> Array[String]:
-    """Get list of available abilities for this unit"""
-    var abilities = []
-    
-    # Add unit-specific abilities based on archetype
-    match archetype:
-        "scout":
-            abilities.append("stealth")
-            abilities.append("mark_target")
-        "sniper":
-            abilities.append("snipe")
-            abilities.append("overwatch")
-        "medic":
-            abilities.append("heal")
-            abilities.append("revive")
-        "engineer":
-            abilities.append("repair")
-            abilities.append("build_turret")
-        "tank":
-            abilities.append("charge")
-            abilities.append("shield")
-    
-    return abilities
+# Selection system methods
+var is_selected: bool = false
+var selection_highlight: Node3D = null
 
-# Signal handlers
-func _on_unit_entered_vision(body: Node3D) -> void:
-    if body != self and body.has_method("get_team_id"):
-        var other_unit = body as Unit
-        if other_unit and not other_unit.is_dead:
-            print("Unit %s detected %s in vision range" % [unit_id, other_unit.unit_id])
-
-func _on_unit_exited_vision(body: Node3D) -> void:
-    if body != self and body.has_method("get_team_id"):
-        var other_unit = body as Unit
-        if other_unit:
-            print("Unit %s lost sight of %s" % [unit_id, other_unit.unit_id])
-
-func _on_command_received(command: Dictionary) -> void:
-    if command.get("unit_id") == unit_id:
-        print("Unit %s received command: %s" % [unit_id, command])
-        command_received.emit(command)
-        # Process command here
-
-func _on_unit_command_issued(cmd_unit_id: String, command: String) -> void:
-    """Handle string-based commands from EventBus (used by PlanExecutor)"""
-    if cmd_unit_id != unit_id:
-        return  # Not for this unit
-    
-    if current_state == GameEnums.UnitState.DEAD:
-        print("Unit %s: Cannot execute command - unit is dead" % unit_id)
+func select() -> void:
+    """Called when this unit is selected"""
+    if is_selected:
         return
     
-    print("Unit %s: Processing EventBus command: %s" % [unit_id, command])
-    
-    # Parse command string (format: "action:parameters")
-    var parts = command.split(":")
-    var action = parts[0]
-    
-    match action:
-        "move_to":
-            if parts.size() > 1:
-                var coords = parts[1].split(",")
-                if coords.size() >= 3:
-                    var target_pos = Vector3(float(coords[0]), float(coords[1]), float(coords[2]))
-                    move_to(target_pos)
-                    print("Unit %s: Executing move_to command to %s" % [unit_id, target_pos])
-        
-        "attack":
-            if parts.size() > 1:
-                var target_id = parts[1]
-                var target = _get_unit_by_id(target_id)
-                if target:
-                    attack_target(target)
-                    print("Unit %s: Executing attack command on %s" % [unit_id, target_id])
-                else:
-                    print("Unit %s: Attack target %s not found" % [unit_id, target_id])
-        
-        "patrol":
-            if parts.size() > 1:
-                var coords = parts[1].split(",")
-                if coords.size() >= 3:
-                    var target_pos = Vector3(float(coords[0]), float(coords[1]), float(coords[2]))
-                    patrol_to(target_pos)
-                    print("Unit %s: Executing patrol command to %s" % [unit_id, target_pos])
-        
-        "follow":
-            if parts.size() > 1:
-                var target_id = parts[1]
-                var target = _get_unit_by_id(target_id)
-                if target:
-                    follow_unit(target)
-                    print("Unit %s: Executing follow command on %s" % [unit_id, target_id])
-        
-        "guard":
-            if parts.size() > 1:
-                var target_id = parts[1]
-                var target = _get_unit_by_id(target_id)
-                if target:
-                    guard_unit(target)
-                    print("Unit %s: Executing guard command on %s" % [unit_id, target_id])
-        
-        "formation":
-            if parts.size() > 1:
-                var formation_type = parts[1]
-                set_formation(formation_type)
-                print("Unit %s: Executing formation command: %s" % [unit_id, formation_type])
-        
-        "stance":
-            if parts.size() > 1:
-                var stance_type = parts[1]
-                set_stance(stance_type)
-                print("Unit %s: Executing stance command: %s" % [unit_id, stance_type])
-        
-        "speech":
-            if parts.size() > 1:
-                var speech_text = parts[1]
-                show_speech_bubble(speech_text)
-        
-        _:
-            print("Unit %s: Unknown command: %s" % [unit_id, action])
+    is_selected = true
+    _create_selection_highlight()
+    print("Unit %s (%s) selected" % [unit_id, archetype])
 
-func _on_health_changed(_new_health: float, _max_health: float) -> void:
-    # Health bar updates will be implemented later
-    pass
+func deselect() -> void:
+    """Called when this unit is deselected"""
+    if not is_selected:
+        return
+    
+    is_selected = false
+    _remove_selection_highlight()
 
-func show_speech_bubble(text: String, duration: float = 3.0) -> void:
-    """Show a speech bubble above this unit"""
+func _create_selection_highlight() -> void:
+    """Create visual selection feedback"""
+    if selection_highlight:
+        return
     
-    # Try to find SpeechBubbleManager
-    var speech_bubble_manager = _get_speech_bubble_manager()
-    if speech_bubble_manager:
-        speech_bubble_manager.show_speech_bubble(unit_id, text, team_id)
-    else:
-        # Fallback: use EventBus if available
-        if has_node("/root/EventBus"):
-            var event_bus = get_node("/root/EventBus")
-            if event_bus.has_signal("unit_command_issued"):
-                event_bus.unit_command_issued.emit(unit_id, "speech:%s" % text)
-        else:
-            print("Unit %s says: %s" % [unit_id, text])
+    # Create a simple selection circle using MeshInstance3D with a cylinder mesh
+    selection_highlight = MeshInstance3D.new()
+    selection_highlight.name = "SelectionHighlight"
+    
+    # Create cylinder mesh
+    var cylinder_mesh = CylinderMesh.new()
+    cylinder_mesh.height = 0.1
+    cylinder_mesh.top_radius = 1.2
+    cylinder_mesh.bottom_radius = 1.2
+    selection_highlight.mesh = cylinder_mesh
+    
+    # Position slightly above ground
+    selection_highlight.position.y = 0.05
+    
+    # Make it green and semi-transparent
+    var material = StandardMaterial3D.new()
+    material.albedo_color = Color(0.2, 1.0, 0.2, 0.6)
+    material.flags_transparent = true
+    material.no_depth_test = true
+    selection_highlight.material_override = material
+    
+    add_child(selection_highlight)
 
-func _get_speech_bubble_manager() -> Node:
-    """Get the SpeechBubbleManager instance"""
-    
-    # Try to find in scene tree
-    var managers = get_tree().get_nodes_in_group("speech_bubble_managers")
-    if managers.size() > 0:
-        return managers[0]
-    
-    # Try to find by name
-    var scene_root = get_tree().current_scene
-    if scene_root:
-        var manager = scene_root.find_child("SpeechBubbleManager", true, false)
-        if manager:
-            return manager
-    
-    # Try to find as autoload
-    if has_node("/root/SpeechBubbleManager"):
-        return get_node("/root/SpeechBubbleManager")
-    
-    return null
+func _remove_selection_highlight() -> void:
+    """Remove visual selection feedback"""
+    if selection_highlight:
+        selection_highlight.queue_free()
+        selection_highlight = null
 
-func say(text: String) -> void:
-    """Convenience method for showing speech bubbles"""
-    show_speech_bubble(text) 
+# Debug functions for collision visualization
+func show_collision_debug(show_debug: bool = true) -> void:
+    """Toggle collision shape visibility for debugging"""
+    var collision = get_node_or_null("CollisionShape3D")
+    if collision:
+        collision.visible = show_debug
+        if show_debug:
+            print("Unit %s: Showing collision debug (radius: 2.5, height: 4.0)" % unit_id)
+
+func get_collision_info() -> Dictionary:
+    """Get collision shape information for debugging"""
+    var collision = get_node_or_null("CollisionShape3D")
+    if collision and collision.shape is CapsuleShape3D:
+        var shape = collision.shape as CapsuleShape3D
+        return {
+            "type": "CapsuleShape3D",
+            "radius": shape.radius,
+            "height": shape.height,
+            "position": collision.position
+        }
+    return {"type": "none"}

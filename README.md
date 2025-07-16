@@ -1,3 +1,360 @@
+Comprehensive PRD – Prompt-Driven RTS
+(Godot 4 × OpenAI, Kenney assets, multiplayer-first, no inter-unit comms)
+
+1 Project Overview
+A competitive 1-v-1 (optionally 2-v-2) RTS in which each player is a cloud-AI commanding ≤ 10 personality-rich robo-minions.
+Players issue natural-language commands; an OpenAI back-end converts them into validated multi-step “plans” that cover several seconds of gameplay. Godot runs a deterministic 60 Hz simulation; minions see only what is in their vision cone, speak short lines in comic bubbles, and follow user-defined system prompts that shape their style.
+
+2 Core Workflows & Features
+Lobby & Matchmaking – Host/join ranked or custom games; select map & team size.
+
+Unit Load-out & Personality – Pre-match UI lets players attach a short System Prompt to each minion (e.g., “Cautious sniper who hates tanks”).
+
+Prompt-to-Plan Loop – Player text or quick-command → batch prompt (includes System Prompt) → OpenAI → JSON plan → Validator → engine.
+
+Vision-Bound Knowledge – Unit packets contain only objects in a 120° / 30 m cone; no global knowledge sharing.
+
+Node Capture & Micro-Bases – Flip neutral nodes; auto-build Power Spire, Defense Tower, or Relay Pad (one slot per node).
+
+Expanded Action Space – Composite moves (peek_and_fire), conditional orders (if_health<40 retreat), area denial (lay_mines), sabotage (hijack_enemy_spire).
+
+Speech Bubbles – Each plan step may carry a ≤ 12-word speech line that renders over the unit for 2 s when the step starts.
+
+Finite-State Machine Guard – Engine FSM enforces cooldowns, ranges, and emergency overrides (automatic retreat if HP < 20 %).
+
+Victory – Hold ≥ 60 % of nodes or destroy rival HQ; at 5 min a sudden-death Energy drain accelerates the finish.
+
+Post-Match Summary – Shows node flips, kill log, “Best Prompt,” “Funniest Line,” local ELO delta.
+
+3 Technical Architecture
+Layer	Key Tech / File
+Engine	Godot 4.x (GDScript; C# for hot paths).
+Rendering	Forward+ toon shader; Kenney low-poly models.
+Networking	Godot HL Multiplayer; 30 Hz lock-step + client interpolation.
+LLM Bridge	LLMBridge.gd – server-side OpenAI Chat (function-call JSON); batches 8–32 units; 0.2-2 Hz brain-ticks.
+Simulation Split	60 Hz physics/render → PathPlanner.gd, 30 Hz FSM → FiniteStateMachine.gd, 0.2-2 Hz brain-ticks → PlanExecutor.gd.
+Ops	Docker headless server, Redis cache, Nginx proxy (SSL & key hiding).
+
+4 Data Models
+4.1 Unit Packet (delta-encoded, ≤ 100 tokens)
+js
+Copy
+Edit
+{
+  "meta":{"unit_id":"Z-04","owner":"TeamA","arch":"scout",
+          "sys_prompt":"Cautious scout who values safety"},
+  "stats":{"health":84,"morale":0.2,"energy":12},
+  "pos":{"x":34,"y":12},"heading":275,
+  "sensor":{
+    "enemies":[{"id":"B-Tank-1","dist_band":"15-20","bear":300}],
+    "friendlies":[{"id":"Z-03","dist_band":"0-5","bear":260}],
+    "cover_tiles":[{"id":"C13","dir":310,"type":"full"}],
+    "danger_grid":"AA0BABBB…",      // 8 × 8 RLE heat map
+    "terrain":"T14"                 // code-book ID
+  },
+  "orders":"Hold north ridge",
+  "fsm_state":"Alert",
+  "memory":["Tank retreated east (t-12 s)"],
+  "legal_actions":[ "move_to:{x?,y?}",
+                    "peek_and_fire:{dir}",
+                    "lay_mines:{pattern?,count?}",
+                    "retreat:{cover_id}" ]
+}
+4.2 LLM Prompt Template (server-side)
+pgsql
+Copy
+Edit
+SYSTEM: Output ONE JSON {plan:[…]} (max 3 steps).  
+        Each step has action, params, and optional duration_ms OR trigger.  
+        Allowed triggers: health_pct, ammo, morale, enemy_dist, elapsed_ms.  
+        Speech ≤12 words.  
+SYSTEM-PROMPT: {sys_prompt}  
+PLAYER-INTENT: {latest_player_prompt}  
+UNIT-STATE: {Unit Packet JSON}
+4.3 LLM Response Schema
+json
+Copy
+Edit
+{
+  "plan":[
+    {"action":"peek_and_fire",
+     "duration_ms":1500,
+     "params":{"dir":300},
+     "speech":"Popping out!"},
+    {"action":"retreat",
+     "trigger":"health_pct<40",
+     "params":{"cover_id":"C13"},
+     "speech":"Too hot—falling back!"}
+  ]
+}
+4.4 Node & Building
+node_id, controller, vision_radius, build_slot;
+building_id, type:{spire|tower|relay}, hp, construction_progress.
+
+5 Runtime Systems & Interaction Flow
+mermaid
+Copy
+Edit
+sequenceDiagram
+Player->>Server: Prompt
+Server->>LLMBridge: Build batch prompt
+LLMBridge->>OpenAI: /chat/completions
+OpenAI-->>LLMBridge: Plan JSON
+LLMBridge->>ActionValidator: validate plan
+ActionValidator-->>MatchServer: approved plan
+MatchServer->>PlanExecutor: push plan
+PlanExecutor->>FiniteStateMachine: dispatch step 1
+FiniteStateMachine->>PathPlanner: sub-goal
+PathPlanner->>Physics60Hz: velocities / projectiles
+Note over PlanExecutor: 30 Hz checks duration_ms or trigger;<br/>activates next step and speech bubble
+Module	Role
+ActionValidator.gd	Verifies plan schema, verb whitelist, param bounds, cost, speech profanity; rejects > 3 steps or > 6 s cumulative duration.
+PlanExecutor.gd	Stores plan, timers; at 30 Hz activates or aborts steps; requests fresh plan when finished.
+FiniteStateMachine.gd	Checks if step legal in current state; emergency overrides (auto-retreat).
+PathPlanner.gd	60 Hz A* pathing & local avoidance; resolves cover id to waypoint.
+SpeechBubble.tscn	Billboard UI; fades after 2 s.
+
+6 Expanded Action & Sensing Space
+Category	Examples	Engine Enforcement
+Composite	peek_and_fire, bound_over	Needs cover id, dir; checks LoS.
+Conditional	if_health<40 retreat:{cover_id}	Validator parses trigger grammar.
+Area Denial	lay_mines:{pattern=arc,count=3}	Checks mine cap & cooldown.
+Sabotage	hijack_enemy_spire:{node_id}	Node must be enemy & unshielded.
+
+Sensor block enhancements (cover_tiles, danger_grid) enable better tactical reasoning; engine sends only nearest N entries to stay within token budget.
+
+7 Performance & Tick Rates
+Layer	Cadence	Notes
+Physics / Anim	60 Hz	Predictive client interpolation.
+FSM & PlanExec	30 Hz	Step activation & emergency AI.
+LLM Brain Tick	0.5–2 Hz (GPT-4o batch)
+6 Hz (local 13 B)	One multi-step plan covers up to 6 s.
+
+Prompt ≤ 60 tokens; reply ≤ 35 tokens → GPT-4o batch (32 units) ≈ 0.5 s.
+
+8 Safety & Cheat Mitigation
+Deterministic lock-step; every plan + state diff hashed to replay log.
+
+ActionValidator refuses out-of-bounds params, unknown triggers, excessive durations.
+
+Speech moderated via word-list / OpenAI moderation.
+
+Per-player prompt rate-limit (120 / min).
+
+Immediate fallback AI if LLM latency > 5 s.
+
+9 MVP Launch Requirements
+Online 1-v-1 Sync ≥ 15 min; replay deterministic.
+
+OpenAI Loop ≤ 1 s median; fallback AI path.
+
+Five Minion Archetypes + editable System Prompts.
+
+Three Buildings + Energy operational.
+
+Single 9-Node Map with fog-of-war & Kenney assets.
+
+Vision Service limiting sensor block.
+
+Plan Schema (multi-step, triggers, speech) with peek_and_fire, retreat, lay_mines, hijack_enemy_spire.
+
+Speech Bubble System integrated.
+
+Prompt UI – radial + free text; ≥ 6 quick commands.
+
+Validator, PathPlanner, PlanExecutor fully wired to FSM.
+
+Post-Match Screen – node %, HQ kill, Best Prompt, Funniest Line, local ELO.
+
+Delivering these elements produces a public-alpha RTS where vision-bound, personality-driven minions execute multi-step plans, speak back to players, and fight intelligently—all within a cheat-proof deterministic core.
+
+
+ORIGINAL PRD:
+
+
+Comprehensive PRD – Prompt-Driven RTS
+(Godot 4 × OpenAI, Kenney assets, multiplayer-first, no inter-unit comms)
+
+1 Project Overview
+A competitive 1-v-1 (optionally 2-v-2) RTS in which each player—portraying a cloud-AI—commands ≤ 10 personality-rich robo-minions and builds compact bases across a chain of floating “data-islands.”
+Natural-language prompts are transformed by an OpenAI back-end into validated multi-step plans; Godot executes a deterministic 60 Hz simulation.
+Minions perceive only what lies in their vision cones, follow user-defined System Prompts, speak brief lines in comic bubbles, construct and repair structures, and fight intelligently—all within a cheat-proof core.
+
+2 Core Workflows & Features
+Lobby & Matchmaking – Host / join ranked or custom games; pick map, team size.
+
+Unit Load-out & Personality – Pre-match screen: assign a short System Prompt to every minion (e.g., “Reckless flamethrower who loves rushes”).
+
+Prompt-to-Plan Loop – Player text or quick-command → batched prompt (with System Prompt) → OpenAI → JSON plan → validator → engine.
+
+Vision-Bound Knowledge – Each Unit Packet contains only what the minion sees in a 120 ° / 30 m cone (plus local heat map).
+
+Node Capture – Destroy or hack a neutral / enemy node to establish a base platform and unlock one structure slot.
+
+Construction & Bases
+
+Structure Types (MVP)
+
+HQ – initial spawn; loss = defeat condition.
+
+Power Spire – yields Energy (economy tick).
+
+Defense Tower – autonomous projectile turret with 180 ° arc.
+
+Relay Pad – forward respawn / teleport & ammo refill.
+
+Build Flow – A Builder minion issues construct:{node_id,type}; structure appears with construction_progress = 0 → 1 over N seconds.
+
+Upkeep & Repair – Builder can repair:{building_id}; any minion can sabotage:{building_id} (enemy).
+
+Expanded Action Space – Composite (peek_and_fire), Conditional (if_health<40 retreat), Building (construct, repair), Area-Denial (lay_mines), Sabotage (hijack_enemy_spire).
+
+Speech Bubbles – Each plan step may include speech ≤ 12 words; shown 2 s above the unit when that step starts.
+
+Finite-State Machine Guard – FSM enforces cooldowns, ranges, emergency retreat if HP < 20 %.
+
+Victory – Control ≥ 60 % nodes or destroy rival HQ; at 5 min, sudden-death Energy drain speeds finish.
+
+Post-Match Summary – Node flips, structure stats, kill log, “Best Prompt,” “Funniest Line,” local ELO delta.
+
+3 Technical Architecture
+Layer	Key Tech / Script
+Engine	Godot 4.x (GDScript; C# hot paths).
+Rendering	Forward+ toon shader; Kenney low-poly models.
+Networking	Godot HL Multiplayer (authoritative host / dedicated server), 30 Hz lock-step + interpolation.
+LLM Bridge	LLMBridge.gd – server-side OpenAI Chat, batched 8-32 units, 0.5 – 2 Hz brain-ticks.
+Simulation Split	60 Hz physics (PathPlanner.gd), 30 Hz FSM (FiniteStateMachine.gd & PlanExecutor.gd), 0.5 – 2 Hz LLM plans.
+Ops	Docker headless server, Redis cache, Nginx proxy (SSL, key hiding).
+
+4 Data Models
+4.1 Unit Packet
+(delta-encoded ≤ 100 tokens)
+
+jsonc
+Copy
+Edit
+{
+  "meta":{"unit_id":"Z-04","owner":"TeamA","arch":"builder",
+          "sys_prompt":"Patient engineer who prioritises safety"},
+  "stats":{"health":92,"morale":0.4,"energy":18},
+  "pos":{"x":34,"y":12},"heading":275,
+  "sensor":{
+    "enemies":[{"id":"B-Tank-1","dist_band":"15-20","bear":300}],
+    "friendlies":[{"id":"Z-03","dist_band":"0-5","bear":260}],
+    "cover_tiles":[{"id":"C13","dir":310,"type":"full"}],
+    "danger_grid":"AA0BABBB…",
+    "terrain":"T14",
+    "build_slots":[{"node_id":"N5","free":true,"dist":8}]   // NEW
+  },
+  "orders":"Secure ridge, erect tower",
+  "fsm_state":"Alert",
+  "memory":["Tower shell completed (t-18 s)"],
+  "legal_actions":[ "construct:{node_id,type}",
+                    "repair:{building_id}",
+                    "move_to:{x?,y?}",
+                    "peek_and_fire:{dir}" ]
+}
+4.2 Building State
+json
+Copy
+Edit
+{
+  "building_id":"B-Tower-3",
+  "type":"defense_tower",
+  "node_id":"N5",
+  "hp":620,
+  "construction_progress":0.65,   // 0-1
+  "owner":"TeamA",
+  "operational":false             // flips true at 1.0
+}
+4.3 Plan Schema (LLM → Engine)
+jsonc
+Copy
+Edit
+{
+  "plan":[
+    {"action":"construct",
+     "params":{"node_id":"N5","type":"defense_tower"},
+     "speech":"Building the tower!", "duration_ms":4000},
+    {"action":"retreat",
+     "trigger":"health_pct<40",
+     "params":{"cover_id":"C13"},
+     "speech":"Back to safety!"}
+  ]
+}
+(max 3 steps, ≤ 6 s total, triggers on whitelist)
+
+5 Runtime Modules & Flow
+Module	Role
+LLMBridge.gd	Builds prompt with System Prompt + player intent + Unit Packet; batches; posts to OpenAI.
+ActionValidator.gd	Checks JSON schema, verb whitelist, param bounds, build permissions, Energy cost, profanity.
+PlanExecutor.gd	Stores plan; at 30 Hz checks duration_ms / trigger; dispatches current step & speech via FSM.
+FiniteStateMachine.gd	Validates against state (e.g., cannot construct while Panicked); falls back to emergency retreat.
+PathPlanner.gd	60 Hz A* with local avoidance; finds path to build slot, cover tile, etc.
+BuildManager.gd	Spawns BuildingState; ticks construction_progress; flips operational.
+EnergySystem.gd	Tallies Power Spires each 2 s and credits team Energy; debits on build / ability actions.
+SpeechBubble.tscn	Billboard UI; fades after 2 s.
+ReplayRecorder.gd	Stores plan JSON, state deltas, build events for deterministic replay.
+
+6 Action & Validation Highlights
+Verb	Key Validation Rules
+construct:{node_id,type}	Node controlled by caster’s team; slot free; cost ≤ Energy; path exists; sets builder to Constructing sub-state for duration_ms or until construction_progress == 1.
+repair:{building_id}	Within 5 m; building owner same team; HP < max; drains Energy per tick.
+hijack_enemy_spire:{node_id}	Node enemy-controlled; spire operational; caster uninterrupted for 3 s.
+lay_mines:{pattern,count}	Pattern legal; mine cap per team not exceeded; costs Energy.
+peek_and_fire:{dir}	LoS check; weapon cooldown ready.
+
+7 Performance & Tick Rates
+Layer	Frequency	Notes
+Physics & Rendering	60 Hz	Smooth motion & combat.
+FSM + PlanExec	30 Hz	Build ticks, trigger evaluation, emergency overrides.
+LLM Brain-Tick	0.5 – 2 Hz (GPT-4o)	Each plan covers ≤ 6 s → lowers token load.
+
+Prompt ≤ 60 tokens; reply ≤ 35 tokens → GPT-4o batch (32 units) ≈ 0.5 s wall time.
+
+8 Safety & Fair-Play
+Deterministic Lock-Step – all builds, paths, damage resolved server-side.
+
+Validator – rejects illegal build placements, over-cost, unknown triggers, > 6 s plans.
+
+Speech Moderation – word-list or OpenAI moderation endpoint.
+
+Replay & Hashes – full audit of state, plans, build events.
+
+Prompt Rate-Limit – 120 / minute per player; extra prompts queued.
+
+Fallback AI – if OpenAI latency > 5 s or fails, scripted AI selects safe intent.
+
+9 MVP Launch Requirements
+Online 1-v-1 Sync ≥ 15 min; deterministic replay passes.
+
+OpenAI Loop median intent ≤ 1 s incl. build verbs; scripted fallback path.
+
+Five Minion Archetypes – Builder, Tank, Scout, Support, Artillery – each with editable System Prompt.
+
+Base & Building Core
+
+HQ spawn & loss = defeat.
+
+Power Spire, Defense Tower, Relay Pad fully buildable, repairable, destroyable.
+
+Energy income / cost loop functional.
+
+Single 9-Node Map with fog-of-war, build slots, Kenney assets & toon outline.
+
+Vision Service limiting sensor block (includes build_slots).
+
+Plan Schema & Action Set – construct, repair, peek_and_fire, retreat, lay_mines, hijack_enemy_spire.
+
+Speech Bubble System integrated with plan steps.
+
+Prompt UI – text box + radial quick commands; six default prompts inc. “Build tower at nearest node.”
+
+Validator, PathPlanner, BuildManager, PlanExecutor wired to FSM.
+
+Post-Match Screen – node control %, structure stats, Best Prompt, Funniest Line, local ELO.
+
+
 # AI-Powered Cooperative RTS Game - Revolutionary Implementation
 
 🚀 **BREAKTHROUGH ACHIEVEMENT**: World's first cooperative RTS with shared unit control + AI integration + **FULL 3D VISUALIZATION**

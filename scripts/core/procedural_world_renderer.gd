@@ -171,7 +171,19 @@ func apply_procedural_control_points(control_points_data: Dictionary, tile_size:
         
         # Create or update control point
         var control_point_index = int(cp_id.split("_")[1]) + 1  # Convert cp_0 to 1, etc.
-        var control_point = control_points_container.get_node("ControlPoint%d" % control_point_index)
+        var control_point = control_points_container.get_node_or_null("ControlPoint%d" % control_point_index)
+        
+        if not control_point:
+            # Create control point node if it doesn't exist
+            var ControlPointScript = load("res://scripts/gameplay/control_point.gd")
+            control_point = ControlPointScript.new()
+            control_point.name = "ControlPoint%d" % control_point_index
+            control_point.position = world_position
+            # Set control point properties directly instead of calling non-existent setup() method
+            control_point.control_point_id = "CP_%d" % (control_point_index - 1)
+            control_point.control_point_name = "Procedural Point %d" % control_point_index
+            control_points_container.call_deferred("add_child", control_point)
+            logger.info("ProceduralWorldRenderer", "Created control point %d at %s" % [control_point_index, world_position])
         
         if control_point:
             control_point.position = world_position
@@ -258,15 +270,19 @@ func apply_procedural_roads(roads_data: Dictionary) -> void:
                 centered_pos.y * tile_size
             )
             
-            # Use square road asset for everything
-            var asset_type = segment.get("asset_type", "road_square")
+            # Use actual asset type and rotation from road network generation
+            var asset_type = segment.get("asset_type", "road-straight")
+            var rotation = segment.get("rotation", 0.0)
             var road_scene = world_asset_manager.load_road_asset_by_type(asset_type, "")
             
             if road_scene:
-                # Use square Kenny asset
+                # Use correct Kenny asset based on connectivity
                 var road_segment = road_scene.instantiate()
-                road_segment.name = "RoadSquare_%d" % i
+                road_segment.name = "Road_%s_%d" % [asset_type, i]
                 road_segment.position = world_pos
+                
+                # Apply rotation from road network generation
+                road_segment.rotation_degrees = Vector3(0, rotation, 0)
                 
                 # Use optimal scale from road network for proper connectivity
                 if segment.has("optimal_scale") and segment.optimal_scale != null:
@@ -278,20 +294,21 @@ func apply_procedural_roads(roads_data: Dictionary) -> void:
                     road_segment.scale = Vector3(scale_factor, 1.0, scale_factor)
                     logger.info("ProceduralWorldRenderer", "Applied fallback scale %s to road %d" % [Vector3(scale_factor, 1.0, scale_factor), i])
                 
-                # No rotation needed for square tiles
-                road_segment.rotation_degrees = Vector3.ZERO
                 
                 roads_container.call_deferred("add_child", road_segment)
                 created_segments += 1
                 
-                logger.info("ProceduralWorldRenderer", "Created square road tile %d at %s" % [i, world_pos])
+                logger.info("ProceduralWorldRenderer", "Created %s road at %s with rotation %.1f°" % [asset_type, world_pos, rotation])
             else:
-                # Fallback to generic square mesh if Kenny asset fails
+                # Fallback to generic mesh if Kenny asset fails, but still use proper connectivity
                 var road_segment = MeshInstance3D.new()
-                road_segment.name = "RoadSquare_%d_fallback" % i
+                road_segment.name = "Road_%s_%d_fallback" % [asset_type, i]
                 road_segment.position = world_pos
+                
+                # Apply rotation even for fallback
+                road_segment.rotation_degrees = Vector3(0, rotation, 0)
         
-                # Create square road mesh
+                # Create square road mesh (simplified fallback)
                 var box_mesh = BoxMesh.new()
                 box_mesh.size = Vector3(tile_size, 0.1, tile_size)  # Flat square
                 road_segment.mesh = box_mesh
@@ -306,20 +323,16 @@ func apply_procedural_roads(roads_data: Dictionary) -> void:
                 roads_container.call_deferred("add_child", road_segment)
                 created_segments += 1
                 
-                logger.info("ProceduralWorldRenderer", "Created fallback square road tile %d at %s" % [i, world_pos])
+                logger.info("ProceduralWorldRenderer", "Created fallback %s road at %s with rotation %.1f°" % [asset_type, world_pos, rotation])
     
-    logger.info("ProceduralWorldRenderer", "Applied %d square road tiles to 3D world" % created_segments)
+    logger.info("ProceduralWorldRenderer", "Applied %d road segments with proper asset types and rotations to 3D world" % created_segments)
 
 func apply_procedural_buildings(buildings_data: Dictionary) -> void:
-    """Fill the entire map with buildings, ignoring districts and just avoiding roads"""
-    logger.info("ProceduralWorldRenderer", "Filling entire 200x200 map with buildings (ignoring districts)")
+    """Apply procedural buildings to the 3D world based on the provided building data."""
+    logger.info("ProceduralWorldRenderer", "Applying procedural buildings from building placer")
     
-    # Get dynamic tile size from map data
-    var tile_size = 3.33  # Match the 200x200 grid alignment
-    if "tile_size" in buildings_data:
-        tile_size = buildings_data.get("tile_size", 3.33)
+    var tile_size = buildings_data.get("tile_size", 3.33)
     
-    # Create a buildings container if it doesn't exist
     var procedural_buildings_container = scene_3d.get_node("ProceduralBuildings")
     if not procedural_buildings_container:
         procedural_buildings_container = Node3D.new()
@@ -327,127 +340,50 @@ func apply_procedural_buildings(buildings_data: Dictionary) -> void:
         scene_3d.call_deferred("add_child", procedural_buildings_container)
         logger.info("ProceduralWorldRenderer", "Created procedural buildings container")
     
-    # Clear existing buildings
     for child in procedural_buildings_container.get_children():
         child.queue_free()
     
-    # Get road positions to avoid
-    var road_positions = _extract_road_positions_from_scene()
-    logger.info("ProceduralWorldRenderer", "Found %d road positions to avoid" % road_positions.size())
-    
     var building_count = 0
-    var grid_size = 60  # 60x60 tile grid
-    var rng = RandomNumberGenerator.new()
-    rng.randomize()
+    # Assuming a 60x60 grid from map_generator.gd
+    var center_offset = Vector2i(30, 30)
     
-    # Scan the entire 60x60 grid and place buildings where there are no roads
-    for x in range(grid_size):
-        for y in range(grid_size):
-            var tile_pos = Vector2i(x, y)
-            var tile_key = str(x) + "," + str(y)
-            
-            # Skip if there's a road at this position
-            if road_positions.has(tile_key):
-                continue
-            
-            # Skip some tiles randomly to avoid completely filling everything
-            if rng.randf() < 0.3:  # 30% chance to skip (creates some variety)
-                continue
-            
-            # Convert tile position to world position using centered coordinate system
-            var center_offset = Vector2i(30, 30)  # Half of 60x60 grid
-            var centered_tile_pos = tile_pos - center_offset
-            var world_position = Vector3(
-                centered_tile_pos.x * tile_size,
-                0.1,  # Slightly above ground
-                centered_tile_pos.y * tile_size
-            )
-            
-            # Only place buildings within reasonable bounds (avoid extreme edges)
-            if abs(world_position.x) > 95 or abs(world_position.z) > 95:
-                continue
-            
-            # Randomly choose building type and size
-            var building_types = ["commercial", "industrial", "office", "shop", "factory", "warehouse"]
-            var building_type = building_types[rng.randi() % building_types.size()]
-            var building_size = Vector2i(rng.randi_range(1, 3), rng.randi_range(1, 3))
-            
-            # Load appropriate building asset
+    for district_id in buildings_data:
+        if district_id == "tile_size": continue # Skip metadata key
+        
+        var district_buildings = buildings_data[district_id]
+        if not district_buildings is Array:
+            logger.warning("ProceduralWorldRenderer", "District buildings data for '%s' is not an array." % district_id)
+            continue
+
+        for building_info in district_buildings:
+            var building_type = building_info.get("type")
+            var building_pos_tile = building_info.get("position")
+            var building_rotation = building_info.get("rotation", 0.0)
+            var building_scale = building_info.get("optimal_scale", Vector3.ONE)
+
             var building_scene = world_asset_manager.load_building_asset_by_type(building_type)
             
             if building_scene:
-                # Use Kenny asset
                 var building = building_scene.instantiate()
                 building.name = "Building_%d_%s" % [building_count, building_type]
-                building.position = world_position
                 
-                # Apply 2x scaling for better proportions
-                building.scale = Vector3(2.0, 2.0, 2.0)
-                
-                # Random rotation
-                building.rotation_degrees.y = rng.randi_range(0, 3) * 90
-                
-                procedural_buildings_container.call_deferred("add_child", building)
-                building_count += 1
-                
-                if building_count % 100 == 0:  # Log progress every 100 buildings
-                    logger.info("ProceduralWorldRenderer", "Placed %d buildings so far..." % building_count)
-            else:
-                # Create fallback mesh building
-                var building = MeshInstance3D.new()
-                building.name = "Building_%d_%s_fallback" % [building_count, building_type]
-                building.position = world_position
-                
-                # Create building mesh
-                var box_mesh = BoxMesh.new()
-                var height = rng.randf_range(4.0, 12.0)
-                
-                box_mesh.size = Vector3(
-                    building_size.x * tile_size * 0.7,  # Slightly smaller than tile
-                    height,
-                    building_size.y * tile_size * 0.7
+                var centered_tile_pos = building_pos_tile - center_offset
+                var world_position = Vector3(
+                    centered_tile_pos.x * tile_size,
+                    0.1,
+                    centered_tile_pos.y * tile_size
                 )
-                building.mesh = box_mesh
                 
-                # Create building material based on type
-                var material = StandardMaterial3D.new()
-                match building_type:
-                    "commercial":
-                        material.albedo_color = Color.LIGHT_BLUE
-                    "industrial":
-                        material.albedo_color = Color.DARK_GRAY
-                    "office":
-                        material.albedo_color = Color.BLUE
-                    "shop":
-                        material.albedo_color = Color.CYAN
-                    "factory":
-                        material.albedo_color = Color.BROWN
-                    "warehouse":
-                        material.albedo_color = Color.GRAY
-                    _:
-                        material.albedo_color = Color.WHITE
+                building.position = world_position
+                building.scale = building_scale
+                building.rotation_degrees.y = building_rotation
                 
-                material.roughness = rng.randf_range(0.3, 0.8)
-                material.metallic = rng.randf_range(0.1, 0.4)
-                
-                # Add emission for visibility
-                material.emission_enabled = true
-                material.emission = material.albedo_color * 0.1
-                material.emission_energy = 0.5
-                
-                building.material_override = material
-                
-                procedural_buildings_container.call_deferred("add_child", building)
+                procedural_buildings_container.add_child(building)
                 building_count += 1
-            
-            # Stop if we've placed enough buildings
-            if building_count >= 2000:  # Much higher limit for full coverage
-                break
-        
-        if building_count >= 2000:
-            break
+            else:
+                logger.warning("ProceduralWorldRenderer", "Failed to load building asset for type: %s" % building_type)
     
-    logger.info("ProceduralWorldRenderer", "Filled map with %d buildings across entire 200x200 area" % building_count)
+    logger.info("ProceduralWorldRenderer", "Placed %d buildings from building placer data." % building_count)
 
 func _extract_road_positions_from_scene() -> Dictionary:
     """Extract road positions from the scene's ProceduralRoads container to avoid placing buildings on roads"""

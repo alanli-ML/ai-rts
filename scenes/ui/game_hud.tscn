@@ -1,0 +1,118 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/game_hud.gd" id="1_hud"]
+[ext_resource type="Script" path="res://scripts/core/enhanced_selection_system.gd" id="2_selection"]
+
+[node name="GameHUD" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_hud")
+
+[node name="TopBar" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 40.0
+grow_horizontal = 2
+
+[node name="HBoxContainer" type="HBoxContainer" parent="TopBar"]
+layout_mode = 2
+
+[node name="EnergyLabel" type="Label" parent="TopBar/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Energy: 1000/5000 (+5/s)"
+vertical_alignment = 1
+
+[node name="NodeLabel" type="Label" parent="TopBar/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Nodes: 0/9"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="SelectionInfoLabel" type="Label" parent="TopBar/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Selected: 0"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="BottomBar" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -80.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="HBoxContainer" type="HBoxContainer" parent="BottomBar"]
+layout_mode = 2
+alignment = 1
+
+[node name="CommandInput" type="LineEdit" parent="BottomBar/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 3.0
+placeholder_text = "Enter command for your squad..."
+
+[node name="SpawnButtons" type="HBoxContainer" parent="BottomBar/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="SpawnScout" type="Button" parent="BottomBar/HBoxContainer/SpawnButtons"]
+layout_mode = 2
+text = "Scout"
+
+[node name="SpawnTank" type="Button" parent="BottomBar/HBoxContainer/SpawnButtons"]
+layout_mode = 2
+text = "Tank"
+
+[node name="SpawnSniper" type="Button" parent="BottomBar/HBoxContainer/SpawnButtons"]
+layout_mode = 2
+text = "Sniper"
+
+[node name="SpawnMedic" type="Button" parent="BottomBar/HBoxContainer/SpawnButtons"]
+layout_mode = 2
+text = "Medic"
+
+[node name="SpawnEngineer" type="Button" parent="BottomBar/HBoxContainer/SpawnButtons"]
+layout_mode = 2
+text = "Engineer"
+
+[node name="HoverTooltip" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 0
+offset_right = 150.0
+offset_bottom = 50.0
+
+[node name="MarginContainer" type="MarginContainer" parent="HoverTooltip"]
+layout_mode = 2
+theme_override_constants/margin_left = 5
+theme_override_constants/margin_top = 5
+theme_override_constants/margin_right = 5
+theme_override_constants/margin_bottom = 5
+
+[node name="InfoLabel" type="RichTextLabel" parent="HoverTooltip/MarginContainer"]
+layout_mode = 2
+bbcode_enabled = true
+text = "Unit Name
+[color=green]Health: 100/100[/color]"
+fit_content = true
+autowrap_mode = 0
+
+[node name="EnhancedSelectionSystem" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("2_selection")

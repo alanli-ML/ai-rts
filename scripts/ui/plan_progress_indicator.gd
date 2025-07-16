@@ -31,7 +31,7 @@ var step_counter_label: Label
 var target_unit: Node3D = null
 var camera: Camera3D = null
 var current_plan_data: Dictionary = {}
-var is_visible: bool = false
+var _is_visible: bool = false
 var unit_id: String = ""
 var team_id: int = 0
 
@@ -354,7 +354,7 @@ func _show_with_animation() -> void:
     """Show indicator with fade-in animation"""
     
     visible = true
-    is_visible = true
+    _is_visible = true
     
     # Create fade-in tween
     var tween = create_tween()
@@ -369,10 +369,10 @@ func _show_with_animation() -> void:
 func hide_indicator() -> void:
     """Hide indicator with fade-out animation"""
     
-    if not is_visible:
+    if not _is_visible:
         return
     
-    is_visible = false
+    _is_visible = false
     
     # Create fade-out tween
     var tween = create_tween()
@@ -391,14 +391,14 @@ func hide_immediately() -> void:
     """Hide indicator immediately without animation"""
     
     visible = false
-    is_visible = false
+    _is_visible = false
     target_unit = null
     camera = null
 
 func _process(_delta: float) -> void:
     """Update indicator position every frame"""
     
-    if target_unit and camera and is_visible:
+    if target_unit and camera and _is_visible:
         _update_position()
 
 func _gui_input(event: InputEvent) -> void:
@@ -442,7 +442,7 @@ func get_current_plan_data() -> Dictionary:
 
 func is_indicator_visible() -> bool:
     """Check if indicator is currently visible"""
-    return is_visible
+    return _is_visible
 
 func get_display_height() -> float:
     """Get the height of the indicator for positioning"""

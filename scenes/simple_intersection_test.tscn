@@ -1,6 +1,0 @@
-[gd_scene format=3]
-
-[node name="root" type="Node"]
-
-[node name="SimpleIntersectionTest" type="Node" parent="."]
-script = "res://scripts/test/simple_test.gd"

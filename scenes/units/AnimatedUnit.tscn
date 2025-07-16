@@ -4,3 +4,6 @@
 
 [node name="AnimatedUnit" type="CharacterBody3D"]
 script = ExtResource("1_animated_unit") 
+
+[node name="ModelContainer" type="Node3D" parent="."]
+[connection signal="script_changed" from="." to="." method="_on_script_changed"]

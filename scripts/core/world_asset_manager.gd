@@ -116,22 +116,24 @@ func load_road_asset_by_type(road_type: String, direction: String = "horizontal"
     
     var scene: PackedScene = null
     
-    # Map road types to asset loader categories
+    # Map road types to asset loader categories (handle both hyphen and underscore formats)
     match road_type:
-        "road_square":
+        "road_square", "road-square":
             # Use square road tiles for everything
             scene = asset_loader.get_square_road_asset()
-        "road_straight", "main_road", "street":
+        "road_straight", "road-straight", "main_road", "street":
             scene = asset_loader.get_random_road_asset("straight")
-        "road_intersection", "road_crossroad":
+        "road_intersection", "road-intersection":
             scene = asset_loader.get_random_road_asset("intersections")
-        "road_curve", "road_bend":
+        "road_crossroad", "road-crossroad":
+            scene = asset_loader.get_random_road_asset("intersections")
+        "road_curve", "road-curve", "road_bend", "road-bend":
             scene = asset_loader.get_random_road_asset("curves")
-        "road_bridge", "road_end", "road_roundabout":
+        "road_bridge", "road-bridge", "road_end", "road-end", "road_roundabout", "road-roundabout":
             scene = asset_loader.get_random_road_asset("specialized")
         _:
-            # Default to square road for consistency
-            scene = asset_loader.get_square_road_asset()
+            # Default to straight road for better connectivity
+            scene = asset_loader.get_random_road_asset("straight")
     
     if scene:
         logger.info("WorldAssetManager", "Loaded road asset for type: %s, direction: %s" % [road_type, direction])

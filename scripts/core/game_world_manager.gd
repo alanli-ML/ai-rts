@@ -151,15 +151,24 @@ func initialize_game_world() -> void:
         await procedural_world_renderer.initialize_procedural_world(dependency_container)
         
         # Check if procedural generation actually succeeded by looking for procedural elements
-        var procedural_success = scene_3d.get_node_or_null("ProceduralBuildings") != null and scene_3d.get_node("ProceduralBuildings").get_child_count() > 0
+        var procedural_buildings = scene_3d.get_node_or_null("ProceduralBuildings")
+        var procedural_success = procedural_buildings != null and procedural_buildings.get_child_count() > 0
+        
+        logger.info("GameWorldManager", "Checking procedural success: ProceduralBuildings exists: %s, child count: %d" % [procedural_buildings != null, procedural_buildings.get_child_count() if procedural_buildings else 0])
         
         if not procedural_success:
             logger.info("GameWorldManager", "Procedural generation incomplete - falling back to static world")
             static_world_initializer.initialize_static_world()
+        else:
+            logger.info("GameWorldManager", "Procedural generation successful, using procedural world")
+            # Spawn units even when using procedural world
+            logger.info("GameWorldManager", "Spawning units for procedural world")
+            static_world_initializer.initialize_units_3d()
     else:
         logger.info("GameWorldManager", "No map generator - using static world")
         # Fallback to static control points when no map generator
         static_world_initializer.initialize_static_world()
+        # Units are already spawned in initialize_static_world()
     
     world_initialized.emit()
     logger.info("GameWorldManager", "Game world initialized")

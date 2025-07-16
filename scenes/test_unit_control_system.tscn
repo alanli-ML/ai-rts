@@ -1,6 +1,0 @@
-[gd_scene format=3]
-
-[node name="root" type="Node3D"]
-
-[node name="TestRunner" type="Node" parent="."]
-script = "res://scripts/test/simple_unit_control_test.gd"

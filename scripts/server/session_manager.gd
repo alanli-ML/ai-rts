@@ -17,6 +17,7 @@ const SESSION_TIMEOUT: int = 3600  # 1 hour
 # Signals
 signal session_created(session_id: String)
 signal session_destroyed(session_id: String)
+signal match_started(session_id: String)
 signal player_joined_session(session_id: String, player_id: String)
 signal player_left_session(session_id: String, player_id: String)
 
@@ -133,12 +134,21 @@ func get_player_session(peer_id: int) -> String:
     """Get the session ID for a player"""
     return client_sessions.get(peer_id, "")
 
+func get_all_peer_ids_in_session(session_id: String) -> Array[int]:
+    """Get all peer IDs for players in a specific session."""
+    var peer_ids: Array[int] = []
+    var session = get_session(session_id)
+    if not session.is_empty():
+        for player_data in session.players.values():
+            peer_ids.append(player_data.peer_id)
+    return peer_ids
+
 # Client event handlers
 func on_client_connected(peer_id: int) -> void:
     """Handle client connection"""
     logger.info("SessionManager", "Client connected: %d" % peer_id)
 
-func on_client_disconnected(peer_id: int, client_data: Dictionary) -> void:
+func on_client_disconnected(peer_id: int, _client_data: Dictionary) -> void:
     """Handle client disconnection"""
     logger.info("SessionManager", "Client disconnected: %d" % peer_id)
     
@@ -174,7 +184,7 @@ func handle_join_session(peer_id: int, preferred_session_id: String) -> void:
             })
 
 func handle_player_ready(peer_id: int, ready_state: bool) -> void:
-    """Handle player ready state change"""
+    """Handle player ready state changes"""
     var session_id = get_player_session(peer_id)
     
     if session_id == "":
@@ -186,22 +196,29 @@ func handle_player_ready(peer_id: int, ready_state: bool) -> void:
         return
     
     # Find and update player ready state
-    var player_id = "player_%d" % peer_id
-    if player_id in session.players:
-        session.players[player_id]["ready"] = ready_state
-        logger.info("SessionManager", "Player %s ready state: %s" % [player_id, ready_state])
+    var player_id_to_update = ""
+    for pid in session.players:
+        if session.players[pid].peer_id == peer_id:
+            player_id_to_update = pid
+            break
+            
+    if not player_id_to_update.is_empty():
+        session.players[player_id_to_update]["ready"] = ready_state
+        logger.info("SessionManager", "Player %s (Peer %d) ready state: %s" % [player_id_to_update, peer_id, ready_state])
         
         # Broadcast lobby update
         _broadcast_lobby_update(session_id)
         
-        # Check if game can start
-        _check_start_game(session_id)
+        # Check if game can start automatically (e.g. if all players are ready)
+        call_deferred("_check_start_game", session_id)
+    else:
+        logger.warning("SessionManager", "Could not find player for peer_id %d in session %s" % [peer_id, session_id])
 
 func handle_force_start_game(peer_id: int) -> void:
-    """Handle force start game request"""
+    """Handle force start game request from a client (host)."""
     var session_id = get_player_session(peer_id)
     
-    logger.info("SessionManager", "Force start game request from peer %d" % peer_id)
+    logger.info("SessionManager", "Start game request from peer %d" % peer_id)
     
     if session_id == "":
         logger.warning("SessionManager", "Player %d not in any session" % peer_id)
@@ -212,13 +229,18 @@ func handle_force_start_game(peer_id: int) -> void:
         logger.warning("SessionManager", "Session %s not found" % session_id)
         return
     
+    # TODO: Check if peer_id is the host
+    
     if session.state != "waiting":
         logger.warning("SessionManager", "Session %s is not in waiting state (current: %s)" % [session_id, session.state])
         return
-    
-    # Force start regardless of ready state
-    logger.info("SessionManager", "Force starting game for session %s with %d players" % [session_id, session.players.size()])
-    _start_game(session_id)
+
+    if _can_start_game(session_id):
+        logger.info("SessionManager", "Starting game for session %s with %d players" % [session_id, session.players.size()])
+        await _start_game(session_id)
+    else:
+        logger.warning("SessionManager", "Start game request denied. Not all players are ready.")
+        # Optionally, send a message back to the host.
 
 func handle_leave_session(peer_id: int) -> void:
     """Handle leave session request"""
@@ -283,7 +305,7 @@ func _add_player_to_session(peer_id: int, player_id: String, session_id: String)
         _broadcast_lobby_update(session_id)
         
         # Check if game can start
-        _check_start_game(session_id)
+        call_deferred("_check_start_game", session_id)
 
 func _remove_player_from_session_internal(player_id: String, session_id: String) -> void:
     """Remove a player from a session"""
@@ -360,7 +382,7 @@ func _check_start_game(session_id: String) -> void:
             break
     
     if all_ready:
-        _start_game(session_id)
+        await _start_game(session_id)
 
 func _start_game(session_id: String) -> void:
     """Start the game for a session"""
@@ -375,8 +397,14 @@ func _start_game(session_id: String) -> void:
     session.state = "active"
     session.last_activity = Time.get_ticks_msec()
     
+    if multiplayer.is_server():
+        match_started.emit(session_id)
+        
+        # Load the map on the server side for unit spawning
+        _load_server_map()
+        
     # Initialize game content
-    _initialize_game_content(session)
+    await _initialize_game_content(session)
     
     # Get root node for RPC calls
     var root_node = get_tree().get_root().get_node("UnifiedMain")
@@ -401,11 +429,43 @@ func _start_game(session_id: String) -> void:
     
     logger.info("SessionManager", "Game started for session %s" % session_id)
 
+func _load_server_map() -> void:
+    """Load the map on the server side for unit spawning"""
+    logger.info("SessionManager", "Loading map on server side for unit spawning")
+    
+    # Check if map is already loaded
+    var map_node = get_tree().get_root().find_child("TestMap", true, false)
+    if map_node:
+        logger.info("SessionManager", "Map already loaded on server")
+        return
+    
+    # Load the test map scene
+    const TEST_MAP_SCENE = "res://scenes/maps/test_map.tscn"
+    var map_scene = load(TEST_MAP_SCENE)
+    if map_scene:
+        var map_instance = map_scene.instantiate()
+        map_instance.name = "TestMap"
+        
+        # Add map to the UnifiedMain node
+        var unified_main = get_tree().get_root().get_node("UnifiedMain")
+        if unified_main:
+            unified_main.add_child(map_instance)
+            logger.info("SessionManager", "Map loaded successfully on server")
+        else:
+            logger.error("SessionManager", "Could not find UnifiedMain to attach map")
+    else:
+        logger.error("SessionManager", "Could not load map scene")
+
 func _initialize_game_content(session: Dictionary) -> void:
     """Initialize game content when a game starts"""
     var session_id = session.id
     logger.info("SessionManager", "Initializing game content for session %s" % session_id)
     
+    var map_node = get_tree().get_root().find_child("TestMap", true, false)
+    if not map_node:
+        logger.error("SessionManager", "Could not find map node 'TestMap' in the scene tree.")
+        return
+
     # Get the game state to add players and spawn units
     if game_state:
         # Initialize all game systems
@@ -424,7 +484,7 @@ func _initialize_game_content(session: Dictionary) -> void:
         _initialize_team_systems(session)
         
         # Initialize control points
-        _initialize_control_points(session)
+        _initialize_control_points(session, map_node)
         
         # Initialize resource management
         _initialize_resource_management(session)
@@ -433,7 +493,7 @@ func _initialize_game_content(session: Dictionary) -> void:
         _initialize_ai_systems(session)
         
         # Spawn initial units for each team
-        _spawn_initial_units(session)
+        await _spawn_initial_units(session, map_node)
         
         # Set game state to active
         game_state.set_match_state("active")
@@ -441,7 +501,7 @@ func _initialize_game_content(session: Dictionary) -> void:
     else:
         logger.warning("SessionManager", "No game state available to initialize content")
 
-func _initialize_game_systems(session: Dictionary) -> void:
+func _initialize_game_systems(_session: Dictionary) -> void:
     """Initialize all game systems for the session"""
     logger.info("SessionManager", "Initializing game systems")
     
@@ -479,7 +539,7 @@ func _initialize_team_systems(session: Dictionary) -> void:
         if team_id not in team_ids:
             team_ids.append(team_id)
     
-    logger.info("SessionManager", "Teams in session: %s" % team_ids)
+    logger.info("SessionManager", "Teams in session: %s" % str(team_ids))
     
     # Initialize resource manager for teams
     var dependency_container = get_node("/root/DependencyContainer")
@@ -487,9 +547,9 @@ func _initialize_team_systems(session: Dictionary) -> void:
         var resource_manager = dependency_container.get_resource_manager()
         if resource_manager:
             # ResourceManager handles team initialization internally in _ready()
-            logger.info("SessionManager", "Resource manager initialized for teams: %s" % team_ids)
+            logger.info("SessionManager", "Resource manager initialized for teams: %s" % str(team_ids))
 
-func _initialize_control_points(session: Dictionary) -> void:
+func _initialize_control_points(_session: Dictionary, map_node: Node) -> void:
     """Initialize control points for the session"""
     logger.info("SessionManager", "Initializing control points")
     
@@ -497,10 +557,10 @@ func _initialize_control_points(session: Dictionary) -> void:
     if dependency_container:
         var node_capture_system = dependency_container.get_node_capture_system()
         if node_capture_system:
-            node_capture_system.initialize_control_points()
+            node_capture_system.initialize_control_points(map_node)
             logger.info("SessionManager", "Control points initialized")
 
-func _initialize_resource_management(session: Dictionary) -> void:
+func _initialize_resource_management(_session: Dictionary) -> void:
     """Initialize resource management for the session"""
     logger.info("SessionManager", "Initializing resource management")
     
@@ -509,10 +569,10 @@ func _initialize_resource_management(session: Dictionary) -> void:
         var resource_manager = dependency_container.get_resource_manager()
         if resource_manager:
             # Start resource generation for all teams
-            resource_manager.start_resource_generation()
+            resource_manager.start_match()
             logger.info("SessionManager", "Resource generation started")
 
-func _initialize_ai_systems(session: Dictionary) -> void:
+func _initialize_ai_systems(_session: Dictionary) -> void:
     """Initialize AI systems for the session"""
     logger.info("SessionManager", "Initializing AI systems")
     
@@ -523,28 +583,29 @@ func _initialize_ai_systems(session: Dictionary) -> void:
             # AI system is ready for command processing
             logger.info("SessionManager", "AI command processor initialized")
 
-func _spawn_initial_units(session: Dictionary) -> void:
+func _spawn_initial_units(session: Dictionary, map_node: Node) -> void:
     """Spawn initial units for each team"""
     logger.info("SessionManager", "Spawning initial units")
     
+    var team_spawns = {
+        1: map_node.get_node("SpawnPoints/Team1Spawn").global_position,
+        2: map_node.get_node("SpawnPoints/Team2Spawn").global_position
+    }
+
     # Spawn some initial units for each team
     for player_id in session.players.keys():
         var player = session.players[player_id]
         var team_id = player.team_id
         
-        # Spawn units closer to the camera's view area (camera is at 0,15,12 looking down)
-        var spawn_positions = [
-            Vector3(-5, 0, -5),   # Team 1 area - closer to camera view
-            Vector3(5, 0, 5),     # Team 2 area - closer to camera view
-        ]
+        var base_position = team_spawns.get(team_id, Vector3.ZERO)
         
-        var base_position = spawn_positions[team_id - 1] if team_id <= 2 else Vector3.ZERO
-        
-        # Spawn 3 units for each player with better spacing
-        for i in range(3):
-            var unit_position = base_position + Vector3(i * 3, 0, 0)  # More spacing between units
-            var unit_id = game_state.spawn_unit("scout", team_id, unit_position, player_id)
-            logger.info("SessionManager", "Spawned unit %s for player %s at %s" % [unit_id, player_id, unit_position])
+        # Spawn a mixed squad for each team
+        var archetypes = ["scout", "tank", "sniper", "medic", "engineer"]
+        for i in range(archetypes.size()):
+            var archetype = archetypes[i]
+            var unit_position = base_position + Vector3(i * 3, 0, 0) # Increased spacing
+            var unit_id = await game_state.spawn_unit(archetype, team_id, unit_position, player_id)
+            logger.info("SessionManager", "Spawned %s unit %s for player %s at %s" % [archetype, unit_id, player_id, unit_position])
     
     logger.info("SessionManager", "Initial units spawned")
 

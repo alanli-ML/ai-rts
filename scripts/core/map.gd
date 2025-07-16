@@ -13,14 +13,14 @@ var node_positions: Array[Vector3] = []
 var team_spawns: Dictionary = {}
 
 func _ready() -> void:
-	Logger.info("Map", "Loading map: %s" % map_name)
+	print("Map: Loading map: %s" % map_name)
 	setup_capture_nodes()
 	setup_spawn_points()
 
 func setup_capture_nodes() -> void:
 	# Create a 3x3 grid of capture nodes
 	var spacing = map_size.x / 4  # Divide map into quarters
-	var center = Vector3(map_size.x / 2, 0, map_size.y / 2)
+	var center = Vector3.ZERO # Center the nodes on the ground plane at origin
 	
 	for i in range(3):
 		for j in range(3):
@@ -68,7 +68,7 @@ func setup_spawn_points() -> void:
 		if child is Marker3D:
 			var team_name = child.name.replace("Spawn", "")
 			team_spawns[team_name] = child.position
-			Logger.debug("Map", "Registered spawn point for %s at %s" % [team_name, child.position])
+			print("Map: Registered spawn point for %s at %s" % [team_name, child.position])
 
 func get_spawn_position(team: String) -> Vector3:
 	return team_spawns.get(team, Vector3.ZERO)

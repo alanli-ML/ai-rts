@@ -149,7 +149,7 @@ func _on_connection_failed() -> void:
     logger.error("DedicatedServer", "Connection failed")
 
 # Handler methods (called by UnifiedMain RPC delegation)
-func handle_authentication(peer_id: int, player_name: String, auth_token: String) -> void:
+func handle_authentication(peer_id: int, player_name: String, _auth_token: String) -> void:
     """Handle client authentication request"""
     logger.info("DedicatedServer", "Authentication request from %d: %s" % [peer_id, player_name])
     

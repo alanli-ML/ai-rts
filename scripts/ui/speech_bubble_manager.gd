@@ -29,7 +29,7 @@ var team_colors: Dictionary = {
 var ai_command_processor: Node = null
 var logger: Node = null
 
-func setup(logger_instance, game_constants_instance) -> void:
+func setup(logger_instance, _game_constants_instance) -> void:
     """Setup the SpeechBubbleManager with dependencies"""
     logger = logger_instance
     # game_constants = game_constants_instance  # Can use this if needed
@@ -39,7 +39,7 @@ func setup(logger_instance, game_constants_instance) -> void:
     else:
         print("SpeechBubbleManager setup completed")
 
-func initialize(speech_bubble_manager_instance = null) -> void:
+func initialize(_speech_bubble_manager_instance = null) -> void:
     """Initialize the SpeechBubbleManager system"""
     if logger:
         logger.info("SpeechBubbleManager", "SpeechBubbleManager initialized")
@@ -148,10 +148,16 @@ func _connect_to_event_bus() -> void:
 func show_speech_bubble(unit_id: String, text: String, team_id: int = 0) -> bool:
     """Show a speech bubble for a unit"""
     
-    # Find the unit
-    var unit = _find_unit_by_id(unit_id)
-    if not unit:
-        print("SpeechBubbleManager: Unit not found: %s" % unit_id)
+    # On the client, the "unit" is the visual representation node.
+    # We find it via the ClientDisplayManager.
+    var display_manager = get_node_or_null("/root/UnifiedMain/ClientDisplayManager")
+    if not display_manager or not display_manager.displayed_units.has(unit_id):
+        logger.warning("SpeechBubbleManager", "Could not find displayed unit for ID: %s" % unit_id)
+        return false
+
+    var unit = display_manager.displayed_units[unit_id]
+    if not is_instance_valid(unit):
+        logger.warning("SpeechBubbleManager", "Unit instance for ID %s is invalid." % unit_id)
         return false
     
     # Check if unit already has a bubble

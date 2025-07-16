@@ -65,7 +65,7 @@ func initialize_static_world() -> void:
     if buildings_container:
         initialize_buildings_3d()
     
-    # Initialize unit containers
+    # Initialize unit containers - but only if not in active multiplayer session
     if units_container:
         initialize_units_3d()
     
@@ -144,11 +144,12 @@ func _create_control_points_grid() -> void:
             control_point.name = "ControlPoint%d" % control_point_index
             control_point.position = world_position
             
-            # Set control point properties
-            control_point.setup("CP_%d" % (control_point_index - 1), "Grid Point %d" % control_point_index)
+            # Set control point properties directly instead of calling non-existent setup() method
+            control_point.control_point_id = "CP_%d" % (control_point_index - 1)
+            control_point.control_point_name = "Grid Point %d" % control_point_index
             
-            # Add to control points container
-            control_points_container.add_child(control_point)
+            # Add to control points container using call_deferred to avoid parent busy errors
+            control_points_container.call_deferred("add_child", control_point)
             
             logger.info("StaticWorldInitializer", "Created control point %d at %s" % [control_point_index, world_position])
             
@@ -164,237 +165,95 @@ func initialize_buildings_3d() -> void:
 
 func initialize_units_3d() -> void:
     """Initialize unit containers in the 3D world"""
-    logger.info("StaticWorldInitializer", "Initializing units in 3D world")
+    print("StaticWorldInitializer: Initializing units in 3D world")
     
-    # Create and setup team unit spawner for dynamic unit spawning
-    var TeamUnitSpawnerScript = load("res://scripts/units/team_unit_spawner.gd")
-    var team_unit_spawner = TeamUnitSpawnerScript.new()
-    team_unit_spawner.name = "TeamUnitSpawner"
+    # Check if we're in server mode with an active session
+    # If so, units should be spawned by SessionManager, not here
+    var dependency_container = get_node_or_null("/root/DependencyContainer")
+    if dependency_container and dependency_container.is_server_mode():
+        var session_manager = dependency_container.get_node_or_null("SessionManager")
+        if session_manager and session_manager.get_session_count() > 0:
+            print("StaticWorldInitializer: Server mode with active session detected - skipping demo unit spawning")
+            print("StaticWorldInitializer: Units will be spawned by SessionManager instead")
+            return
     
-    # Add to units container for easy access
-    units_container.add_child(team_unit_spawner)
+    # Only spawn demo units if we're not in a proper multiplayer session
+    print("StaticWorldInitializer: No active session found - spawning demo units for testing")
+    _spawn_demo_units_for_teams()
     
-    # Set map reference to the scene root for spawning
-    team_unit_spawner.map_node = scene_3d
-    
-    logger.info("StaticWorldInitializer", "TeamUnitSpawner initialized and ready for dynamic spawning")
+    print("StaticWorldInitializer: Demo units spawned for both teams")
 
 func _fill_map_with_buildings() -> void:
-    """Fill the entire 200x200 map with buildings, ignoring districts and just avoiding home bases"""
-    logger.info("StaticWorldInitializer", "Filling entire 200x200 map with buildings")
-    
-    # Create a buildings container if it doesn't exist
-    var procedural_buildings_container = scene_3d.get_node_or_null("ProceduralBuildings")
-    if not procedural_buildings_container:
-        procedural_buildings_container = Node3D.new()
-        procedural_buildings_container.name = "ProceduralBuildings"
-        scene_3d.add_child(procedural_buildings_container)
-        logger.info("StaticWorldInitializer", "Created ProceduralBuildings container")
-    
-    # Clear existing buildings
-    for child in procedural_buildings_container.get_children():
-        child.queue_free()
-    
-    var building_count = 0
-    var grid_size = 60  # 60x60 tile grid
-    var tile_size = 3.33  # Match the 200x200 grid alignment
-    var rng = RandomNumberGenerator.new()
-    rng.randomize()
-    
-    # Define areas to avoid (home bases and immediate surroundings)
-    var home_base_exclusions = {
-        # Team 1 home base at (-40, 0, -40) with buffer
-        "team1": Vector2i(18, 18),  # Tile coordinates for (-40, -40)
-        "team2": Vector2i(42, 42)   # Tile coordinates for (40, 40)
-    }
-    
-    # Create a road network pattern to avoid placing buildings on roads
-    var road_tiles = _generate_road_network(grid_size)
-    
-    logger.info("StaticWorldInitializer", "Generated road network with %d road tiles" % road_tiles.size())
-    
-    # Scan the entire 60x60 grid and place buildings
-    for x in range(grid_size):
-        for y in range(grid_size):
-            var tile_pos = Vector2i(x, y)
-            
-            # Skip home base areas (5x5 exclusion zones around each base)
-            var skip_this_tile = false
-            for base_pos in home_base_exclusions.values():
-                if abs(tile_pos.x - base_pos.x) <= 2 and abs(tile_pos.y - base_pos.y) <= 2:
-                    skip_this_tile = true
-                    break
-            
-            if skip_this_tile:
-                continue
-            
-            # Skip road tiles - buildings should never be placed on roads
-            if road_tiles.has(tile_pos):
-                continue
-            
-            # Check if this tile is near a road (within 2 tiles for accessibility)
-            var near_road = false
-            for dx in range(-2, 3):
-                for dy in range(-2, 3):
-                    if dx == 0 and dy == 0:
-                        continue
-                    var nearby_tile = Vector2i(tile_pos.x + dx, tile_pos.y + dy)
-                    if road_tiles.has(nearby_tile):
-                        near_road = true
-                        break
-                if near_road:
-                    break
-            
-            # Only place buildings near roads for accessibility (realistic city planning)
-            if not near_road:
-                continue
-            
-            # Skip some tiles randomly for variety
-            if rng.randf() < 0.3:  # Reduced to 30% since we're already filtering heavily
-                continue
-            
-            # Convert tile position to world position using centered coordinate system
-            var center_offset = Vector2i(30, 30)  # Half of 60x60 grid
-            var centered_tile_pos = tile_pos - center_offset
-            var world_position = Vector3(
-                centered_tile_pos.x * tile_size,
-                0.1,  # Slightly above ground
-                centered_tile_pos.y * tile_size
-            )
-            
-            # Only place buildings within reasonable bounds
-            if abs(world_position.x) > 95 or abs(world_position.z) > 95:
-                continue
-            
-            # Create fallback mesh building (since we don't have world_asset_manager here)
-            var building = MeshInstance3D.new()
-            var building_types = ["commercial", "industrial", "office", "shop", "factory", "warehouse"]
-            var building_type = building_types[rng.randi() % building_types.size()]
-            building.name = "Building_%d_%s" % [building_count, building_type]
-            building.position = world_position
-            
-            # Create building mesh
-            var box_mesh = BoxMesh.new()
-            var height = rng.randf_range(4.0, 12.0)
-            var size_x = rng.randf_range(2.0, 4.0)
-            var size_z = rng.randf_range(2.0, 4.0)
-            
-            box_mesh.size = Vector3(size_x, height, size_z)
-            building.mesh = box_mesh
-            
-            # Create building material based on type
-            var material = StandardMaterial3D.new()
-            match building_type:
-                "commercial":
-                    material.albedo_color = Color.LIGHT_BLUE
-                "industrial":
-                    material.albedo_color = Color.DARK_GRAY
-                "office":
-                    material.albedo_color = Color.BLUE
-                "shop":
-                    material.albedo_color = Color.CYAN
-                "factory":
-                    material.albedo_color = Color.BROWN
-                "warehouse":
-                    material.albedo_color = Color.GRAY
-                _:
-                    material.albedo_color = Color.WHITE
-            
-            material.roughness = rng.randf_range(0.3, 0.8)
-            material.metallic = rng.randf_range(0.1, 0.4)
-            
-            # Add emission for visibility
-            material.emission_enabled = true
-            material.emission = material.albedo_color * 0.1
-            material.emission_energy = 0.5
-            
-            building.material_override = material
-            
-            # Random rotation
-            building.rotation_degrees.y = rng.randi_range(0, 3) * 90
-            
-            procedural_buildings_container.add_child(building)
-            building_count += 1
-            
-            # Log progress every 200 buildings
-            if building_count % 200 == 0:
-                logger.info("StaticWorldInitializer", "Placed %d buildings so far..." % building_count)
-            
-            # Stop if we've placed enough buildings
-            if building_count >= 1500:  # Reasonable limit for full coverage
-                break
-        
-        if building_count >= 1500:
-            break
-    
-    logger.info("StaticWorldInitializer", "Filled map with %d buildings across entire 200x200 area" % building_count)
+    """This function is a fallback and should not perform complex procedural generation.
+    It's simplified to avoid confusion with the main procedural renderer."""
+    logger.info("StaticWorldInitializer", "Skipping complex building placement in static fallback.")
+    # The static world should be simple. The complex procedural generation
+    # is handled by the MapGenerator and ProceduralWorldRenderer. If that fails,
+    # we don't want another complex system running here. This function can be
+    # used to place a few key static buildings if needed.
 
 func _generate_road_network(grid_size: int) -> Dictionary:
-    """Generate a realistic road network pattern for building placement avoidance"""
-    var road_tiles = {}
+    """This function is no longer needed as _fill_map_with_buildings is simplified."""
+    return {}
+
+func _spawn_demo_units_for_teams() -> void:
+    """Spawn demo units for both teams at their home base positions"""
+    var unit_archetypes = ["scout", "tank", "sniper", "medic", "engineer"]
+    var team_spawn_positions = {
+        1: Vector3(-40, 0, -52),  # Team 1 spawn position
+        2: Vector3(40, 0, 28)     # Team 2 spawn position
+    }
     
-    # Create main arterial roads (major cross routes)
-    var center = grid_size / 2
-    
-    # Main North-South arterial road through center
-    for y in range(grid_size):
-        road_tiles[Vector2i(center, y)] = true
-        road_tiles[Vector2i(center - 1, y)] = true  # Make it 2 lanes wide
-    
-    # Main East-West arterial road through center  
-    for x in range(grid_size):
-        road_tiles[Vector2i(x, center)] = true
-        road_tiles[Vector2i(x, center - 1)] = true  # Make it 2 lanes wide
-    
-    # Secondary grid roads every 8 tiles (creating city blocks)
-    var road_spacing = 8
-    for i in range(0, grid_size, road_spacing):
-        # Vertical secondary roads
-        if i != center and i != center - 1:  # Don't duplicate main roads
-            for y in range(grid_size):
-                road_tiles[Vector2i(i, y)] = true
+    for team_id in [1, 2]:
+        var base_position = team_spawn_positions.get(team_id, Vector3.ZERO)
+        print("StaticWorldInitializer: Spawning %d units for team %d at %s" % [unit_archetypes.size(), team_id, base_position])
         
-        # Horizontal secondary roads
-        if i != center and i != center - 1:  # Don't duplicate main roads
-            for x in range(grid_size):
-                road_tiles[Vector2i(x, i)] = true
-    
-    # Add perimeter roads around the edge for access
-    for i in range(grid_size):
-        # Top and bottom edges
-        road_tiles[Vector2i(i, 0)] = true
-        road_tiles[Vector2i(i, grid_size - 1)] = true
+        # Get team container
+        var team_container = null
+        if team_id == 1:
+            team_container = units_container.get_node("Team1Units")
+        else:
+            team_container = units_container.get_node("Team2Units")
         
-        # Left and right edges  
-        road_tiles[Vector2i(0, i)] = true
-        road_tiles[Vector2i(grid_size - 1, i)] = true
+        if not team_container:
+            print("StaticWorldInitializer ERROR: Could not find team container for team %d" % team_id)
+            continue
+        
+        # Spawn 5 units in formation
+        for i in range(unit_archetypes.size()):
+            var archetype = unit_archetypes[i]
+            var unit_position = _get_formation_position(base_position, i, unit_archetypes.size())
+            var unit = _create_demo_unit(archetype, team_id, unit_position)
+            
+            if unit:
+                team_container.call_deferred("add_child", unit)
+                print("StaticWorldInitializer: Spawned %s unit for team %d at %s" % [archetype, team_id, unit_position])
+
+func _get_formation_position(base_position: Vector3, index: int, total_units: int) -> Vector3:
+    """Generate formation positions around base position"""
+    var spacing = 8.0
+    var rows = 2
+    var cols = 3
     
-    # Add diagonal connector roads for more realistic traffic flow
-    var quarter = grid_size / 4
-    var three_quarter = (grid_size * 3) / 4
+    var row = index / cols
+    var col = index % cols
+    var x_offset = (col - 1) * spacing
+    var z_offset = (row - 0.5) * spacing
     
-    # Diagonal from northwest to center
-    for i in range(quarter):
-        var x = quarter - i
-        var y = quarter - i
-        if x >= 0 and y >= 0:
-            road_tiles[Vector2i(x, y)] = true
+    return base_position + Vector3(x_offset, 0, z_offset)
+
+func _create_demo_unit(archetype: String, team_id: int, position: Vector3) -> Node:
+    """Create a demo unit with the specified archetype"""
+    var unit_scene = preload("res://scenes/units/AnimatedUnit.tscn")
+    var unit = unit_scene.instantiate()
     
-    # Diagonal from northeast to center
-    for i in range(quarter):
-        var x = three_quarter + i
-        var y = quarter - i
-        if x < grid_size and y >= 0:
-            road_tiles[Vector2i(x, y)] = true
+    if unit:
+        unit.archetype = archetype
+        unit.team_id = team_id
+        unit.position = position
+        unit.name = "AnimatedUnit_%s_Team%d" % [archetype, team_id]
     
-    logger.info("StaticWorldInitializer", "Generated road network: %d arterial + %d secondary + %d perimeter + %d connector roads" % [
-        4 * grid_size,  # 2 main roads * 2 lanes each * grid_size
-        ((grid_size / road_spacing) - 1) * 2 * grid_size,  # Secondary roads
-        4 * grid_size,  # Perimeter roads
-        quarter * 2  # Diagonal connectors
-    ])
-    
-    return road_tiles
+    return unit
 
 func cleanup() -> void:
     """Cleanup static world initializer resources"""

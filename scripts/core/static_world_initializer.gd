@@ -167,6 +167,10 @@ func initialize_units_3d() -> void:
     """Initialize unit containers in the 3D world"""
     print("StaticWorldInitializer: Initializing units in 3D world")
     
+    # DISABLED: Demo unit spawning is disabled to prevent redundant placeholder units
+    # All unit spawning is now handled exclusively by the SessionManager during matches
+    print("StaticWorldInitializer: Demo unit spawning is disabled - units managed by SessionManager")
+    
     # Check if we're in server mode with an active session
     # If so, units should be spawned by SessionManager, not here
     var dependency_container = get_node_or_null("/root/DependencyContainer")
@@ -177,11 +181,13 @@ func initialize_units_3d() -> void:
             print("StaticWorldInitializer: Units will be spawned by SessionManager instead")
             return
     
+    # DISABLED: Demo unit spawning to prevent redundant units alongside SessionManager units
     # Only spawn demo units if we're not in a proper multiplayer session
-    print("StaticWorldInitializer: No active session found - spawning demo units for testing")
-    _spawn_demo_units_for_teams()
-    
-    print("StaticWorldInitializer: Demo units spawned for both teams")
+    # print("StaticWorldInitializer: No active session found - spawning demo units for testing")
+    # _spawn_demo_units_for_teams()
+    # 
+    # print("StaticWorldInitializer: Demo units spawned for both teams")
+    print("StaticWorldInitializer: Demo unit spawning disabled - no units created")
 
 func _fill_map_with_buildings() -> void:
     """This function is a fallback and should not perform complex procedural generation.

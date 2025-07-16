@@ -163,7 +163,6 @@ func _on_game_started(data: Dictionary) -> void:
     logger.info("UnifiedMain", "Game start signal received from server.")
     client_team_id = data.get("player_team", -1)
     _on_match_start_requested()
-    _on_match_start_requested()
 
 @rpc("any_peer", "call_local") # Use unreliable for high-frequency state updates
 func _on_game_state_update(state: Dictionary) -> void:

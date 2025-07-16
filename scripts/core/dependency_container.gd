@@ -20,6 +20,10 @@ var plan_executor: Node
 var resource_manager: Node
 var node_capture_system: Node
 var team_unit_spawner: Node
+var placeable_entity_manager: Node
+var openai_client: Node
+var langsmith_client: Node
+var audio_manager: Node
 
 # UI Systems  
 var speech_bubble_manager: Node
@@ -33,6 +37,7 @@ var current_mode: String = "unknown"
 const GameConstantsClass = preload("res://scripts/shared/constants/game_constants.gd")
 const NetworkMessagesClass = preload("res://scripts/shared/types/network_messages.gd")
 const LoggerClass = preload("res://scripts/shared/utils/logger.gd")
+const AudioManagerClass = preload("res://scripts/autoload/audio_manager.gd")
 
 # Mode-specific classes
 const SessionManagerClass = preload("res://scripts/server/session_manager.gd")
@@ -43,9 +48,12 @@ const NetworkManagerClass = preload("res://scripts/core/network_manager.gd")
 const AICommandProcessorClass = preload("res://scripts/ai/ai_command_processor.gd")
 const ActionValidatorClass = preload("res://scripts/ai/action_validator.gd")
 const PlanExecutorClass = preload("res://scripts/ai/plan_executor.gd")
+const OpenAIClientClass = preload("res://scripts/ai/openai_client.gd")
+const LangSmithClientClass = preload("res://scripts/ai/langsmith_client.gd")
 const ResourceManagerClass = preload("res://scripts/gameplay/resource_manager.gd")
 const NodeCaptureSystemClass = preload("res://scripts/gameplay/node_capture_system.gd")
 const TeamUnitSpawnerClass = preload("res://scripts/units/team_unit_spawner.gd")
+const PlaceableEntityManagerClass = preload("res://scripts/server/placeable_entity_manager.gd")
 
 # Preload UI system classes
 const SpeechBubbleManagerClass = preload("res://scripts/ui/speech_bubble_manager.gd")
@@ -62,6 +70,10 @@ func _create_shared_dependencies() -> void:
     logger = LoggerClass.new()
     logger.name = "Logger"
     add_child(logger)
+
+    audio_manager = AudioManagerClass.new()
+    audio_manager.name = "AudioManager"
+    add_child(audio_manager)
     
     game_constants = GameConstantsClass.new()
     network_messages = NetworkMessagesClass.new()
@@ -103,6 +115,14 @@ func create_server_dependencies() -> void:
     plan_executor.name = "PlanExecutor"
     add_child(plan_executor)
 
+    openai_client = OpenAIClientClass.new()
+    openai_client.name = "OpenAIClient"
+    add_child(openai_client)
+
+    langsmith_client = LangSmithClientClass.new()
+    langsmith_client.name = "LangSmithClient"
+    add_child(langsmith_client)
+
     # Create gameplay systems
     resource_manager = ResourceManagerClass.new()
     resource_manager.name = "ResourceManager"
@@ -116,6 +136,10 @@ func create_server_dependencies() -> void:
     team_unit_spawner.name = "TeamUnitSpawner"
     add_child(team_unit_spawner)
 
+    placeable_entity_manager = PlaceableEntityManagerClass.new()
+    placeable_entity_manager.name = "PlaceableEntityManager"
+    add_child(placeable_entity_manager)
+
     _setup_server_dependencies()
     logger.info("DependencyContainer", "Server dependencies created")
 
@@ -126,11 +150,13 @@ func _setup_server_dependencies() -> void:
     dedicated_server.setup(logger, session_manager)
     
     # Setup AI system dependencies
-    ai_command_processor.setup(logger, game_constants, action_validator, plan_executor)
+    langsmith_client.setup_openai_client(openai_client)
+    ai_command_processor.setup(logger, game_constants, action_validator, plan_executor, langsmith_client)
     plan_executor.setup(logger, game_state)
     
     # Setup gameplay systems
     team_unit_spawner.resource_manager = resource_manager
+    placeable_entity_manager.setup(logger)
     
     _connect_server_systems()
     logger.info("DependencyContainer", "Server dependencies setup complete")
@@ -179,6 +205,7 @@ func _connect_server_systems() -> void:
 
 # Getter methods for dependencies
 func get_logger(): return logger
+func get_audio_manager(): return audio_manager
 func get_network_manager(): return get_node_or_null("NetworkManager")
 func get_game_constants(): return game_constants
 func get_network_messages(): return network_messages
@@ -187,6 +214,7 @@ func get_ai_command_processor(): return ai_command_processor
 func get_resource_manager(): return resource_manager
 func get_node_capture_system(): return node_capture_system
 func get_team_unit_spawner(): return team_unit_spawner
+func get_placeable_entity_manager(): return placeable_entity_manager
 func get_game_hud(): return null  # GameHUD is created from scene when match starts
 func get_speech_bubble_manager(): return speech_bubble_manager
 func get_plan_progress_manager(): return plan_progress_manager

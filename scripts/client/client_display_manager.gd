@@ -3,9 +3,12 @@ class_name ClientDisplayManager
 extends Node
 
 const UNIT_SCENE = preload("res://scenes/units/AnimatedUnit.tscn")
+const MINE_SCENE = preload("res://scripts/gameplay/mine.gd")
 
 var displayed_units: Dictionary = {} # unit_id -> Node
+var displayed_mines: Dictionary = {} # mine_id -> Node
 var units_node: Node
+var mines_node: Node
 var latest_state: Dictionary
 
 func _ready() -> void:
@@ -20,6 +23,12 @@ func setup_map_references(map_node: Node) -> void:
 	units_node = map_node.find_child("Units", true, false)
 	if not units_node:
 		print("ClientDisplayManager: ERROR - Could not find 'Units' node in the provided map node.")
+
+	mines_node = map_node.find_child("Mines", true, false)
+	if not mines_node:
+		mines_node = Node3D.new()
+		mines_node.name = "Mines"
+		map_node.add_child(mines_node)
 
 func _physics_process(delta: float) -> void:
 	if not latest_state or not latest_state.has("units"):
@@ -45,6 +54,21 @@ func _physics_process(delta: float) -> void:
 		if unit_id not in server_unit_ids:
 			remove_unit(unit_id)
 
+	# Process mines
+	if latest_state.has("mines"):
+		var server_mine_ids = []
+		for mine_data in latest_state.mines:
+			server_mine_ids.append(mine_data.id)
+
+			if not displayed_mines.has(mine_data.id):
+				_create_mine(mine_data)
+		
+		# Remove mines that are on the client but not in the server state
+		var client_mine_ids = displayed_mines.keys()
+		for mine_id in client_mine_ids:
+			if mine_id not in server_mine_ids:
+				remove_mine(mine_id)
+
 func update_state(state: Dictionary) -> void:
 	latest_state = state
 
@@ -55,6 +79,10 @@ func _create_unit(unit_data: Dictionary) -> void:
 	unit_instance.team_id = unit_data.team_id
 	unit_instance.archetype = unit_data.archetype
 	
+	# Add a placeholder for the shield node if it's a tank
+	if unit_data.archetype == "tank":
+		unit_instance.set("shield_node", null)
+
 	# Add to scene tree FIRST before setting position
 	units_node.add_child(unit_instance)
 	
@@ -64,6 +92,28 @@ func _create_unit(unit_data: Dictionary) -> void:
 	
 	displayed_units[unit_id] = unit_instance
 	print("ClientDisplayManager: Created unit %s" % unit_id)
+
+func _create_mine(mine_data: Dictionary) -> void:
+	var mine_id = mine_data.id
+	var mine_instance = MINE_SCENE.new()
+	mine_instance.mine_id = mine_id
+	mine_instance.team_id = mine_data.team_id
+	
+	mines_node.add_child(mine_instance)
+	
+	var pos_arr = mine_data.position
+	mine_instance.global_position = Vector3(pos_arr.x, pos_arr.y, pos_arr.z)
+	
+	displayed_mines[mine_id] = mine_instance
+	print("ClientDisplayManager: Created mine %s" % mine_id)
+
+func remove_mine(mine_id: String) -> void:
+	if displayed_mines.has(mine_id):
+		var mine_instance = displayed_mines[mine_id]
+		displayed_mines.erase(mine_id)
+		if is_instance_valid(mine_instance):
+			mine_instance.queue_free()
+		print("ClientDisplayManager: Removed mine %s" % mine_id)
 
 func _update_unit(unit_data: Dictionary, delta: float) -> void:
 	var unit_id = unit_data.id
@@ -77,6 +127,74 @@ func _update_unit(unit_data: Dictionary, delta: float) -> void:
 	var server_velocity = Vector3(unit_data.velocity.x, unit_data.velocity.y, unit_data.velocity.z)
 	if unit_instance.has_method("update_client_visuals"):
 		unit_instance.update_client_visuals(server_velocity, delta)
+
+	# Update shield visual
+	if unit_data.has("shield_active"):
+		if unit_data.shield_active and not is_instance_valid(unit_instance.get("shield_node")):
+			var shield_scene = preload("res://scenes/fx/ShieldEffect.tscn")
+			var shield_effect = shield_scene.instantiate()
+			unit_instance.add_child(shield_effect)
+			unit_instance.shield_node = shield_effect
+		elif not unit_data.shield_active and is_instance_valid(unit_instance.get("shield_node")):
+			unit_instance.shield_node.queue_free()
+			unit_instance.shield_node = null
+
+	# Update stealth visual
+	if unit_data.has("is_stealthed"):
+		var model_container = unit_instance.get_node_or_null("ModelContainer")
+		if model_container:
+			if unit_data.is_stealthed:
+				_set_model_transparency(model_container, 0.3)
+			else:
+				_set_model_transparency(model_container, 1.0)
+
+func _set_model_transparency(model_container: Node3D, alpha_value: float) -> void:
+	"""Set transparency for all MeshInstance3D nodes in the model container"""
+	if not is_instance_valid(model_container):
+		return
+	
+	# Find all MeshInstance3D nodes recursively
+	var mesh_instances = _find_all_mesh_instances(model_container)
+	
+	for mesh_instance in mesh_instances:
+		if not is_instance_valid(mesh_instance):
+			continue
+			
+		# Get or create material
+		var material = mesh_instance.get_surface_override_material(0)
+		if not material:
+			material = mesh_instance.get_surface_override_material(0)
+			if not material:
+				# Create a new StandardMaterial3D if none exists
+				material = StandardMaterial3D.new()
+				mesh_instance.set_surface_override_material(0, material)
+		
+		# Clone material to avoid affecting other instances
+		if material and not material.resource_local_to_scene:
+			material = material.duplicate()
+			mesh_instance.set_surface_override_material(0, material)
+		
+		# Set transparency properties
+		if material is StandardMaterial3D:
+			var std_material = material as StandardMaterial3D
+			if alpha_value < 1.0:
+				std_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+				std_material.albedo_color.a = alpha_value
+			else:
+				std_material.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+				std_material.albedo_color.a = 1.0
+
+func _find_all_mesh_instances(node: Node) -> Array[MeshInstance3D]:
+	"""Recursively find all MeshInstance3D nodes"""
+	var mesh_instances: Array[MeshInstance3D] = []
+	
+	if node is MeshInstance3D:
+		mesh_instances.append(node as MeshInstance3D)
+	
+	for child in node.get_children():
+		mesh_instances.append_array(_find_all_mesh_instances(child))
+	
+	return mesh_instances
 
 func remove_unit(unit_id: String) -> void:
 	if displayed_units.has(unit_id):
@@ -100,3 +218,9 @@ func cleanup() -> void:
 		if is_instance_valid(unit):
 			unit.queue_free()
 	displayed_units.clear()
+
+	for mine_id in displayed_mines:
+		var mine = displayed_mines[mine_id]
+		if is_instance_valid(mine):
+			mine.queue_free()
+	displayed_mines.clear()

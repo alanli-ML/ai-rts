@@ -42,8 +42,8 @@ func _initialize_server():
 
 func start_server(port: int = DEFAULT_PORT) -> bool:
     """Start the dedicated server"""
-    if is_running:
-        logger.warning("DedicatedServer", "Server already running")
+    if is_running or multiplayer.has_multiplayer_peer():
+        logger.warning("DedicatedServer", "Server or multiplayer peer already active, aborting start.")
         return false
     
     multiplayer_peer = ENetMultiplayerPeer.new()

@@ -19,6 +19,7 @@ var resource_manager
 var node_capture_system
 var team_unit_spawner
 var selection_system
+var audio_manager
 
 func _ready() -> void:
     # Get system references from DependencyContainer
@@ -27,6 +28,7 @@ func _ready() -> void:
         resource_manager = dc.get_resource_manager()
         node_capture_system = dc.get_node_capture_system()
         team_unit_spawner = dc.get_team_unit_spawner()
+        audio_manager = dc.get_audio_manager()
 
     # Find the selection system - it might not be ready immediately
     call_deferred("_find_selection_system")
@@ -48,11 +50,65 @@ func _ready() -> void:
     spawn_medic_button.pressed.connect(func(): _on_spawn_pressed("medic"))
     spawn_engineer_button.pressed.connect(func(): _on_spawn_pressed("engineer"))
     
+    # Make command input active by default and capture keyboard input
+    _setup_command_input()
+    
     # Initial UI update
     _update_energy_display(1000, 0.0)
     _update_node_display(0)
     _update_selection_display([])
     hover_tooltip.visible = false
+
+func _setup_command_input():
+    """Setup command input to be active by default and capture all keyboard input"""
+    if command_input:
+        # Ensure the LineEdit is properly configured for interaction
+        command_input.editable = true
+        command_input.mouse_filter = Control.MOUSE_FILTER_PASS
+        command_input.focus_mode = Control.FOCUS_ALL
+        
+        # Make the command input grab focus immediately
+        call_deferred("_grab_command_focus")
+        
+        # Connect focus signals to maintain focus
+        command_input.focus_exited.connect(_on_command_input_focus_lost)
+        
+        print("GameHUD: Command input configured for automatic keyboard capture")
+
+func _grab_command_focus():
+    """Grab focus for command input with a frame delay"""
+    if command_input and is_visible_in_tree():
+        command_input.grab_focus()
+        print("GameHUD: Command input focus grabbed")
+
+func _on_command_input_focus_lost():
+    """Automatically regrab focus when command input loses focus"""
+    # Small delay to avoid conflicts with other UI interactions
+    await get_tree().process_frame
+    if command_input and is_visible_in_tree():
+        command_input.grab_focus()
+
+func _unhandled_input(event: InputEvent):
+    """Capture keyboard input and route it to command input"""
+    if not command_input or not is_visible_in_tree():
+        return
+        
+    # Handle Enter key specifically for command submission
+    if event is InputEventKey and event.pressed:
+        if event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
+            if not command_input.has_focus():
+                # If command input doesn't have focus but user pressed Enter, 
+                # focus it and let them type
+                command_input.grab_focus()
+                get_viewport().set_input_as_handled()
+                return
+            # If it already has focus, the text_submitted signal will handle it
+            return
+        
+        # For any other key, ensure command input has focus
+        if not command_input.has_focus():
+            command_input.grab_focus()
+            # Let the input be processed by the LineEdit
 
 func _physics_process(_delta):
     if hover_tooltip.visible:
@@ -110,23 +166,43 @@ func _on_unit_hovered(unit: Unit):
         hover_tooltip.visible = false
 
 func _on_command_submitted(text: String):
-    if text.is_empty() or not selection_system: return
+    if text.is_empty():
+        print("GameHUD: Empty command entered")
+        command_input.grab_focus()  # Keep focus for next command
+        return
+        
+    if not selection_system:
+        print("GameHUD: No selection system available")
+        command_input.clear()
+        command_input.grab_focus()
+        return
     
     var selected_units = selection_system.get_selected_units()
     if selected_units.is_empty():
-        print("No units selected to command.")
+        print("GameHUD: No units selected to command")
+        command_input.clear()
+        command_input.grab_focus()
         return
 
     var unit_ids = []
     for unit in selected_units:
         unit_ids.append(unit.unit_id)
 
+    print("GameHUD: Submitting command '%s' to %d units" % [text, unit_ids.size()])
+    
+    if audio_manager:
+        audio_manager.play_sound_2d("res://assets/audio/ui/command_submit_01.wav")
+    
     # Send command to server via RPC
     get_node("/root/UnifiedMain").rpc("submit_command_rpc", text, unit_ids)
     
     command_input.clear()
+    command_input.grab_focus()  # Immediately ready for next command
 
 func _on_spawn_pressed(archetype: String):
+    if audio_manager:
+        audio_manager.play_sound_2d("res://assets/audio/ui/click_01.wav")
+
     if team_unit_spawner:
         # Assuming client is team 1 for now
         # In a real game, we'd get the client's actual team ID

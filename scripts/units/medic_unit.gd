@@ -2,47 +2,43 @@
 class_name MedicUnit
 extends AnimatedUnit
 
-# Medic-specific properties
-var heal_range: float = 15.0
-var heal_rate: float = 10.0
-var heal_cooldown: float = 2.0
-var last_heal_time: float = 0.0
+@export var heal_rate: float = 15.0 # HP per second
 
 func _ready() -> void:
 	archetype = "medic"
 	super._ready()
-	_setup_medic_abilities()
+	system_prompt = "You are a combat medic. Your primary directive is to keep your teammates alive. Stay near your squad and automatically use `heal_target` on any injured ally who is not at full health. Prioritize healing units that are under fire or have the lowest health. You should avoid direct combat and position yourself safely behind your teammates."
 
-func _setup_medic_abilities() -> void:
-	# Stats are loaded from GameConstants in base Unit class
-	# This is for unique abilities
-	pass
+# --- Action Implementation ---
 
-func _physics_process(delta: float) -> void:
-	super._physics_process(delta)
-	# Auto-heal logic can go here
-	_auto_heal_system(delta)
-
-func _auto_heal_system(_delta: float):
-	var current_time = Time.get_ticks_msec() / 1000.0
-	if current_time - last_heal_time < heal_cooldown:
+func heal_target(params: Dictionary):
+	var target_id = params.get("target_id", "")
+	if target_id.is_empty():
+		print("Medic %s: No target specified for heal command." % unit_id)
 		return
 
-	var allies = get_tree().get_nodes_in_group("units")
-	for ally in allies:
-		if ally is Unit and ally.team_id == self.team_id and ally != self:
-			if ally.current_health < ally.max_health:
-				if global_position.distance_to(ally.global_position) <= heal_range:
-					heal_unit(ally)
-					last_heal_time = current_time
-					break # Heal one ally at a time
+	var game_state = get_node("/root/DependencyContainer").get_game_state()
+	if not game_state: return
 
-func heal_unit(target: Unit) -> bool:
-	if not is_instance_valid(target) or target.is_dead or target.team_id != self.team_id:
-		return false
+	var target = game_state.units.get(target_id)
 	
-	if target.current_health >= target.max_health:
-		return false
-	
-	target.take_damage(-heal_rate) # Negative damage to heal
-	return true
+	# Validate target
+	if not is_instance_valid(target):
+		print("Medic %s: Heal target %s is not valid." % [unit_id, target_id])
+		return
+	if target.team_id != self.team_id:
+		print("Medic %s: Cannot heal enemy target %s." % [unit_id, target_id])
+		return
+	if target.get_health_percentage() >= 1.0:
+		print("Medic %s: Target %s is already at full health." % [unit_id, target_id])
+		return
+
+	# Set state to HEALING
+	self.target_unit = target
+	self.current_state = GameEnums.UnitState.HEALING
+	print("%s is moving to heal target %s." % [unit_id, target_id])
+
+
+func triage(_params: Dictionary):
+	print("%s is performing triage on nearby allies." % unit_id)
+	pass

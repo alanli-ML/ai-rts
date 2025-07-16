@@ -102,10 +102,9 @@ func submit_command_rpc(command_text: String, unit_ids: Array[String]):
     var ai_processor = dependency_container.get_ai_command_processor()
     if ai_processor:
         var game_state = dependency_container.get_game_state()
-        var state_dict = {} # Simplified game state for now
-        if game_state:
-            # In the future, gather relevant state from game_state
-            pass
+        var state_dict = {}
+        if game_state and game_state.has_method("get_context_for_ai"):
+            state_dict = game_state.get_context_for_ai()
         ai_processor.process_command(command_text, unit_ids, state_dict)
 
 func _on_match_start_requested() -> void:
@@ -186,6 +185,20 @@ func display_speech_bubble_rpc(unit_id: String, speech_text: String):
         else:
             # Fallback if unit not found on client yet
             speech_manager.show_speech_bubble(unit_id, speech_text, 0)
+
+@rpc("any_peer", "reliable")
+func spawn_explosion_effect_rpc(position: Vector3):
+    # This runs on clients to show a visual-only effect
+    if dependency_container.is_server_mode(): return
+
+    var impact_effect_scene = preload("res://scenes/fx/ImpactEffect.tscn")
+    if impact_effect_scene:
+        var effect = impact_effect_scene.instantiate()
+        # Add to a container for effects, or root for now
+        get_tree().root.add_child(effect)
+        effect.global_position = position
+        effect.emitting = true
+        logger.info("UnifiedMain", "Spawned explosion effect at %s" % str(position))
     
 # =============================================================================
 

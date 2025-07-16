@@ -60,7 +60,8 @@ const WEAPON_SPECS = {
 		"reload_time": 1.5,
 		"max_ammo": 15,
 		"weight": "light",
-		"rarity": "common"
+		"rarity": "common",
+		"fire_sound": "res://assets/audio/sfx/blaster_light_01.wav"
 	},
 	"blaster-b": {
 		"name": "Standard Rifle",
@@ -72,7 +73,8 @@ const WEAPON_SPECS = {
 		"reload_time": 2.0,
 		"max_ammo": 30,
 		"weight": "medium",
-		"rarity": "common"
+		"rarity": "common",
+		"fire_sound": "res://assets/audio/sfx/blaster_medium_01.wav"
 	},
 	"blaster-c": {
 		"name": "Scout Pistol",
@@ -84,7 +86,8 @@ const WEAPON_SPECS = {
 		"reload_time": 1.2,
 		"max_ammo": 12,
 		"weight": "light",
-		"rarity": "common"
+		"rarity": "common",
+		"fire_sound": "res://assets/audio/sfx/blaster_light_02.wav"
 	},
 	"blaster-d": {
 		"name": "Sniper Rifle",
@@ -96,7 +99,8 @@ const WEAPON_SPECS = {
 		"reload_time": 3.0,
 		"max_ammo": 8,
 		"weight": "heavy",
-		"rarity": "rare"
+		"rarity": "rare",
+		"fire_sound": "res://assets/audio/sfx/blaster_heavy_01.wav"
 	},
 	"blaster-e": {
 		"name": "Utility Carbine",
@@ -108,7 +112,8 @@ const WEAPON_SPECS = {
 		"reload_time": 2.2,
 		"max_ammo": 25,
 		"weight": "medium",
-		"rarity": "common"
+		"rarity": "common",
+		"fire_sound": "res://assets/audio/sfx/blaster_medium_02.wav"
 	},
 	"blaster-f": {
 		"name": "Battle Rifle",
@@ -120,7 +125,8 @@ const WEAPON_SPECS = {
 		"reload_time": 2.5,
 		"max_ammo": 20,
 		"weight": "medium",
-		"rarity": "uncommon"
+		"rarity": "uncommon",
+		"fire_sound": "res://assets/audio/sfx/blaster_medium_01.wav"
 	},
 	"blaster-g": {
 		"name": "Submachine Gun",
@@ -132,7 +138,8 @@ const WEAPON_SPECS = {
 		"reload_time": 1.8,
 		"max_ammo": 40,
 		"weight": "light",
-		"rarity": "common"
+		"rarity": "common",
+		"fire_sound": "res://assets/audio/sfx/blaster_rapid_01.wav"
 	},
 	"blaster-h": {
 		"name": "Scout Carbine",
@@ -144,7 +151,8 @@ const WEAPON_SPECS = {
 		"reload_time": 1.6,
 		"max_ammo": 18,
 		"weight": "light",
-		"rarity": "common"
+		"rarity": "common",
+		"fire_sound": "res://assets/audio/sfx/blaster_medium_02.wav"
 	},
 	"blaster-i": {
 		"name": "Marksman Rifle",
@@ -156,7 +164,8 @@ const WEAPON_SPECS = {
 		"reload_time": 2.8,
 		"max_ammo": 12,
 		"weight": "heavy",
-		"rarity": "uncommon"
+		"rarity": "uncommon",
+		"fire_sound": "res://assets/audio/sfx/blaster_heavy_02.wav"
 	},
 	"blaster-j": {
 		"name": "Heavy Blaster",
@@ -168,7 +177,8 @@ const WEAPON_SPECS = {
 		"reload_time": 3.2,
 		"max_ammo": 10,
 		"weight": "heavy",
-		"rarity": "rare"
+		"rarity": "rare",
+		"fire_sound": "res://assets/audio/sfx/blaster_cannon_01.wav"
 	},
 	"blaster-k": {
 		"name": "Assault Cannon",
@@ -180,7 +190,8 @@ const WEAPON_SPECS = {
 		"reload_time": 3.5,
 		"max_ammo": 8,
 		"weight": "heavy",
-		"rarity": "rare"
+		"rarity": "rare",
+		"fire_sound": "res://assets/audio/sfx/blaster_cannon_01.wav"
 	},
 	"blaster-l": {
 		"name": "Combat Rifle",
@@ -192,7 +203,8 @@ const WEAPON_SPECS = {
 		"reload_time": 2.1,
 		"max_ammo": 25,
 		"weight": "medium",
-		"rarity": "common"
+		"rarity": "common",
+		"fire_sound": "res://assets/audio/sfx/blaster_medium_01.wav"
 	},
 	"blaster-m": {
 		"name": "Precision Rifle",
@@ -204,7 +216,8 @@ const WEAPON_SPECS = {
 		"reload_time": 3.2,
 		"max_ammo": 6,
 		"weight": "heavy",
-		"rarity": "epic"
+		"rarity": "epic",
+		"fire_sound": "res://assets/audio/sfx/blaster_heavy_01.wav"
 	},
 	"blaster-n": {
 		"name": "Destroyer",
@@ -216,7 +229,8 @@ const WEAPON_SPECS = {
 		"reload_time": 4.0,
 		"max_ammo": 6,
 		"weight": "heavy",
-		"rarity": "epic"
+		"rarity": "epic",
+		"fire_sound": "res://assets/audio/sfx/blaster_cannon_02.wav"
 	},
 	"blaster-o": {
 		"name": "Multi-Tool Gun",
@@ -228,7 +242,8 @@ const WEAPON_SPECS = {
 		"reload_time": 2.3,
 		"max_ammo": 22,
 		"weight": "medium",
-		"rarity": "uncommon"
+		"rarity": "uncommon",
+		"fire_sound": "res://assets/audio/sfx/blaster_utility_01.wav"
 	},
 	"blaster-p": {
 		"name": "Medic Blaster",
@@ -240,7 +255,8 @@ const WEAPON_SPECS = {
 		"reload_time": 1.5,
 		"max_ammo": 30,
 		"weight": "light",
-		"rarity": "common"
+		"rarity": "common",
+		"fire_sound": "res://assets/audio/sfx/blaster_support_01.wav"
 	},
 	"blaster-q": {
 		"name": "Hunter Rifle",
@@ -252,7 +268,8 @@ const WEAPON_SPECS = {
 		"reload_time": 2.9,
 		"max_ammo": 10,
 		"weight": "heavy",
-		"rarity": "uncommon"
+		"rarity": "uncommon",
+		"fire_sound": "res://assets/audio/sfx/blaster_heavy_02.wav"
 	},
 	"blaster-r": {
 		"name": "Support Carbine",
@@ -264,7 +281,8 @@ const WEAPON_SPECS = {
 		"reload_time": 1.8,
 		"max_ammo": 28,
 		"weight": "light",
-		"rarity": "common"
+		"rarity": "common",
+		"fire_sound": "res://assets/audio/sfx/blaster_support_01.wav"
 	}
 }
 

@@ -5,7 +5,13 @@ enum UnitState {
     IDLE,
     MOVING,
     ATTACKING,
-    DEAD
+    FOLLOWING,
+    DEAD,
+    CHARGING_SHOT,
+    HEALING,
+    CONSTRUCTING,
+    REPAIRING,
+    LAYING_MINES
 }
 
 # Unit types
@@ -37,6 +43,7 @@ enum GamePhase {
 enum CommandType {
     MOVE_TO,
     ATTACK,
+    FOLLOW,
     PEEK_AND_FIRE,
     LAY_MINES,
     HIJACK_ENEMY_SPIRE,
@@ -92,7 +99,13 @@ static func get_unit_state_string(state: UnitState) -> String:
         UnitState.IDLE: return "IDLE"
         UnitState.MOVING: return "MOVING"
         UnitState.ATTACKING: return "ATTACKING"
+        UnitState.FOLLOWING: return "FOLLOWING"
         UnitState.DEAD: return "DEAD"
+        UnitState.CHARGING_SHOT: return "CHARGING_SHOT"
+        UnitState.HEALING: return "HEALING"
+        UnitState.CONSTRUCTING: return "CONSTRUCTING"
+        UnitState.REPAIRING: return "REPAIRING"
+        UnitState.LAYING_MINES: return "LAYING_MINES"
         _: return "UNKNOWN"
 
 static func get_unit_type_string(type: UnitType) -> String:
@@ -115,6 +128,7 @@ static func get_command_type_string(type: CommandType) -> String:
     match type:
         CommandType.MOVE_TO: return "MOVE_TO"
         CommandType.ATTACK: return "ATTACK"
+        CommandType.FOLLOW: return "FOLLOW"
         CommandType.PEEK_AND_FIRE: return "PEEK_AND_FIRE"
         CommandType.LAY_MINES: return "LAY_MINES"
         CommandType.HIJACK_ENEMY_SPIRE: return "HIJACK_ENEMY_SPIRE"

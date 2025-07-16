@@ -151,9 +151,6 @@ func _on_request_completed(_result: int, response_code: int, _headers: PackedStr
 	if callback.is_valid():
 		callback.call(response_data)
 	request_completed.emit(response_data)
-	_process_queue()
-	if callback.is_valid():
-		callback.call(response_data)
 	
 	_process_queue()
 

@@ -40,12 +40,17 @@ signal unit_spawned(unit_id: String)
 signal unit_destroyed(unit_id: String)
 signal match_ended(result: int)
 
+var ai_think_timer: Timer
 var tick_counter: int = 0
 const NETWORK_TICK_RATE = 2 # ~30 times per second if physics is 60fps
 
 func _ready() -> void:
     # Systems will be initialized via dependency injection
-    pass
+    ai_think_timer = Timer.new()
+    ai_think_timer.name = "AIThinkTimer"
+    ai_think_timer.wait_time = 2.0 # Each unit's AI thinks every 2 seconds
+    ai_think_timer.timeout.connect(_on_ai_think_timer_timeout)
+    add_child(ai_think_timer)
 
 func _physics_process(_delta: float) -> void:
     if match_state != "active":
@@ -58,19 +63,33 @@ func _physics_process(_delta: float) -> void:
 
 func _gather_game_state() -> Dictionary:
     var state = {
-        "units": []
+        "units": [],
+        "mines": []
     }
+    
+    var placeable_entity_manager = get_node("/root/DependencyContainer").get_placeable_entity_manager()
+    if placeable_entity_manager:
+        state.mines = placeable_entity_manager.get_all_mines_data()
+        
     for unit_id in units:
         var unit = units[unit_id]
         if is_instance_valid(unit):
-            state.units.append({
+            var unit_data = {
                 "id": unit.unit_id,
                 "archetype": unit.archetype,
                 "team_id": unit.team_id,
                 "position": { "x": unit.global_position.x, "y": unit.global_position.y, "z": unit.global_position.z },
                 "velocity": { "x": unit.velocity.x, "y": unit.velocity.y, "z": unit.velocity.z },
-                "health": unit.current_health
-            })
+                "health": unit.current_health,
+                "is_stealthed": unit.is_stealthed if "is_stealthed" in unit else false,
+                "shield_active": false,
+                "shield_pct": 0.0
+            }
+            if unit.has_method("get") and "shield_active" in unit:
+                unit_data["shield_active"] = unit.shield_active
+                if unit.max_shield_health > 0:
+                    unit_data["shield_pct"] = (unit.shield_health / unit.max_shield_health) * 100.0
+            state.units.append(unit_data)
     return state
 
 func _broadcast_game_state() -> void:
@@ -130,9 +149,8 @@ func _connect_system_signals() -> void:
     
     # Connect node capture system signals
     if node_capture_system:
-        # This is now handled by connecting to individual ControlPoint nodes
-        # in a higher-level manager like UnifiedMain when the map is loaded.
-        pass
+        if not node_capture_system.victory_achieved.is_connected(_on_victory_achieved):
+            node_capture_system.victory_achieved.connect(_on_victory_achieved)
     
     logger.info("ServerGameState", "System signals connected")
 
@@ -336,15 +354,19 @@ func spawn_unit(archetype: String, team_id: int, position: Vector3, owner_id: St
         return ""
     
     var unit = await team_unit_spawner.spawn_unit(team_id, position, archetype)
-    if unit:
+    if unit and is_instance_valid(unit) and not unit.unit_id.is_empty():
         units[unit.unit_id] = unit
         if owner_id in players:
             players[owner_id].units.append(unit.unit_id)
         
-        unit.unit_died.connect(_on_unit_died)
+        if unit.has_signal("unit_died"):
+            unit.unit_died.connect(_on_unit_died)
+        
         unit_spawned.emit(unit.unit_id)
+        logger.info("ServerGameState", "Added unit %s (%s) to game state for team %d" % [unit.unit_id, archetype, team_id])
         return unit.unit_id
     
+    logger.error("ServerGameState", "Failed to spawn unit or unit initialization failed for archetype %s." % archetype)
     return ""
 
 func _on_unit_died(unit_id: String):
@@ -366,8 +388,106 @@ func _on_unit_died(unit_id: String):
         
         unit_destroyed.emit(unit_id)
 
+func get_context_for_ai(unit: Unit) -> Dictionary:
+    if not is_instance_valid(unit):
+        return {}
+
+    # 1. Global State
+    var global_state = {
+        "game_time_sec": game_time,
+        "team_resources": team_resources.get(unit.team_id, {}),
+        "controlled_nodes": node_capture_system.team_control_counts if node_capture_system else {}
+    }
+
+    # 2. Unit's Own State
+    var unit_state = unit.get_unit_info()
+
+    # 3. Sensor Data (Visible Entities)
+    var sensor_data = {
+        "visible_enemies": [],
+        "visible_allies": [],
+        "visible_buildings": [],
+        "visible_mines": [],
+        "nearby_cover": [] # Placeholder for cover system
+    }
+
+    for other_unit_id in units:
+        var other_unit = units[other_unit_id]
+        if not is_instance_valid(other_unit) or other_unit == unit:
+            continue
+
+        # Simple distance-based "vision" check
+        var dist = unit.global_position.distance_to(other_unit.global_position)
+        if dist < 40.0: # Vision range
+            # Check if target is stealthed
+            if other_unit.team_id != unit.team_id and other_unit.get("is_stealthed", false):
+                continue # Skip stealthed enemies
+
+            var other_info = other_unit.get_unit_info()
+            other_info["dist"] = dist
+            if other_unit.team_id != unit.team_id:
+                sensor_data.visible_enemies.append(other_info)
+            else:
+                sensor_data.visible_allies.append(other_info)
+    
+    # Sort by distance
+    sensor_data.visible_enemies.sort_custom(func(a, b): return a.dist < b.dist)
+    sensor_data.visible_allies.sort_custom(func(a, b): return a.dist < b.dist)
+
+    var placeable_entity_manager = get_node("/root/DependencyContainer").get_placeable_entity_manager()
+    if placeable_entity_manager:
+        var all_mines = placeable_entity_manager.get_all_mines_data()
+        for mine_data in all_mines:
+            var mine_pos = Vector3(mine_data.position.x, mine_data.position.y, mine_data.position.z)
+            var dist = unit.global_position.distance_to(mine_pos)
+            if dist < 40.0: # Vision range
+                var mine_info = mine_data.duplicate()
+                mine_info["dist"] = dist
+                sensor_data.visible_mines.append(mine_info)
+
+    # 4. Team Context (simplified)
+    var team_context = {
+        "teammates_status": sensor_data.visible_allies, # For now, teammates are just visible allies
+        "recent_player_commands": [] # Placeholder
+    }
+
+    # Assemble the final context object
+    var full_context = {
+        "global_state": global_state,
+        "unit_state": unit_state,
+        "sensor_data": sensor_data,
+        "team_context": team_context
+    }
+
+    return full_context
+
+func _on_ai_think_timer_timeout():
+    if match_state != "active":
+        return
+
+    # Get idle units and request plans
+    var plan_executor = get_node_or_null("/root/DependencyContainer/PlanExecutor")
+    if not plan_executor:
+        logger.error("ServerGameState", "PlanExecutor not found for AI thinking.")
+        return
+
+    for unit_id in units:
+        # A unit is considered "idle" for autonomous action if it has no active plan.
+        if not plan_executor.active_plans.has(unit_id) or plan_executor.active_plans.get(unit_id, []).is_empty():
+            var unit = units[unit_id]
+            if is_instance_valid(unit) and not unit.is_dead:
+                logger.info("ServerGameState", "Requesting autonomous plan for idle unit %s" % unit_id)
+                # Use a generic command for autonomous action.
+                # The AICommandProcessor will see this and generate a suitable prompt.
+                ai_command_processor.process_command("autonomously decide next action", [unit_id])
+
 func set_match_state(new_state: String):
     match_state = new_state
     logger.info("ServerGameState", "Match state changed to: %s" % new_state)
+    
+    if new_state == "active":
+        if ai_think_timer: ai_think_timer.start()
+    else:
+        if ai_think_timer: ai_think_timer.stop()
 
 # Existing methods continue...

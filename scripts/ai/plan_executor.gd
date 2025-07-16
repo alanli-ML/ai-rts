@@ -82,7 +82,9 @@ func _is_step_complete(unit_id: String, step: Dictionary, unit: Node) -> bool:
         return not is_instance_valid(target) or target.is_dead
 
     if step.has("trigger") and not step.trigger.is_empty():
-        return _evaluate_trigger_enhanced(step.trigger, unit, unit_id)
+        # We need the full context to evaluate triggers now.
+        var context = game_state.get_context_for_ai(unit)
+        return _evaluate_trigger(step.trigger, unit, context)
     
     if step.has("duration_ms") and step.duration_ms > 0:
         return step_timers[unit_id] * 1000.0 >= step.duration_ms
@@ -90,28 +92,79 @@ func _is_step_complete(unit_id: String, step: Dictionary, unit: Node) -> bool:
     # For actions without duration or trigger, assume they are complete after one frame
     return true
 
-func _evaluate_trigger_enhanced(trigger: String, unit: Node, _unit_id: String) -> bool:
-    # Simplified trigger evaluation
-    var parts = trigger.split(" ")
-    if parts.size() != 3: return false
-    
-    var metric = parts[0]
-    var op = parts[1]
-    var value = float(parts[2])
-    var current_value = 0.0
+func _evaluate_trigger(trigger_string: String, unit: Node, unit_context: Dictionary) -> bool:
+    if trigger_string.is_empty():
+        return false
 
-    match metric:
-        "health_pct":
-            if unit.has_method("get_health_percentage"):
-                current_value = unit.get_health_percentage() * 100
-        "enemy_dist":
-            # Placeholder for enemy distance logic
-            current_value = 999.0
-    
+    # For now, we only support simple triggers. Complex parsing (AND/OR) can be added later.
+    var parts = trigger_string.split(" ", false, 2)
+    if parts.size() != 3:
+        logger.warning("PlanExecutor", "Invalid trigger format: '%s'" % trigger_string)
+        return false
+
+    var metric = parts[0].strip_edges()
+    var op = parts[1].strip_edges()
+    var value_str = parts[2].strip_edges()
+    var value
+
+    # Convert value to the correct type (float or bool)
+    if value_str == "true":
+        value = true
+    elif value_str == "false":
+        value = false
+    else:
+        value = float(value_str)
+
+    var current_value = _get_metric_value(metric, unit, unit_context)
+
     match op:
+        "==": return current_value == value
+        "!=": return current_value != value
         "<": return current_value < value
+        "<=": return current_value <= value
         ">": return current_value > value
-    return false
+        ">=": return current_value >= value
+        _:
+            logger.warning("PlanExecutor", "Unknown operator in trigger: '%s'" % op)
+            return false
+
+func _get_metric_value(metric: String, unit: Node, unit_context: Dictionary) -> Variant:
+    match metric:
+        "elapsed_ms":
+            return step_timers.get(unit.unit_id, 0.0) * 1000.0
+        "health_pct":
+            return unit.get_health_percentage() * 100.0 if unit.has_method("get_health_percentage") else 0.0
+        "ammo_pct":
+            return (float(unit.ammo) / unit.max_ammo) * 100.0 if unit.max_ammo > 0 else 0.0
+        "morale":
+            return unit.morale
+        "under_fire":
+            return unit_context.get("unit_state", {}).get("is_under_fire", false)
+        "target_dead":
+            return not is_instance_valid(unit.target_unit) or unit.target_unit.is_dead
+        "enemy_in_range":
+            var enemies = unit_context.get("sensor_data", {}).get("visible_enemies", [])
+            for enemy in enemies:
+                if enemy.dist <= unit.attack_range:
+                    return true
+            return false
+        "enemy_dist":
+            var enemies = unit_context.get("sensor_data", {}).get("visible_enemies", [])
+            if enemies.is_empty(): return 9999.0
+            return enemies[0].dist # Assumes enemies are sorted by distance
+        "ally_health_low":
+            var allies = unit_context.get("sensor_data", {}).get("visible_allies", [])
+            for ally in allies:
+                if ally.health_pct < 50.0:
+                    return true
+            return false
+        "nearby_enemies":
+            return unit_context.get("sensor_data", {}).get("visible_enemies", []).size()
+        "is_moving":
+            return unit.velocity.length_squared() > 0.1
+        _:
+            logger.warning("PlanExecutor", "Unknown metric in trigger: '%s'" % metric)
+            return null
 
 func _complete_step(unit_id: String) -> void:
     step_executed.emit(unit_id, current_steps[unit_id])
@@ -170,6 +223,29 @@ func _execute_step_action(unit_id: String, step: Dictionary) -> void:
         "stance":
             if unit.has_method("set_stance") and params.has("stance"):
                 unit.set_stance(params.stance)
+        "follow":
+            if params.has("target_id"):
+                var target = game_state.units.get(params.target_id)
+                if is_instance_valid(target) and unit.has_method("follow"):
+                    unit.follow(target)
+        "activate_stealth":
+            if unit.has_method("activate_stealth"): unit.activate_stealth(params)
+        "activate_shield":
+            if unit.has_method("activate_shield"): unit.activate_shield(params)
+        "taunt_enemies":
+            if unit.has_method("taunt_enemies"): unit.taunt_enemies(params)
+        "charge_shot":
+            if unit.has_method("charge_shot"): unit.charge_shot(params)
+        "find_cover":
+            if unit.has_method("find_cover"): unit.find_cover(params)
+        "heal_target":
+            if unit.has_method("heal_target"): unit.heal_target(params)
+        "construct":
+            if unit.has_method("construct"): unit.construct(params)
+        "repair":
+            if unit.has_method("repair"): unit.repair(params)
+        "lay_mines":
+            if unit.has_method("lay_mines"): unit.lay_mines(params)
 
 func _complete_plan(unit_id: String) -> void:
     active_plans.erase(unit_id)

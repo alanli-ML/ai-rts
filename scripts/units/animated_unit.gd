@@ -12,6 +12,8 @@ const MODEL_PATHS = {
 
 var animation_player: AnimationPlayer
 var model_container: Node3D
+const WeaponDatabase = preload("res://scripts/units/weapon_database.gd")
+var weapon_db = WeaponDatabase.new()
 
 func _ready() -> void:
 	super._ready()
@@ -19,6 +21,7 @@ func _ready() -> void:
 	model_container = $ModelContainer
 	
 	_load_model()
+	call_deferred("_attach_weapon")
 
 func _load_archetype_stats() -> void:
 	# This is now handled by the base Unit class
@@ -79,11 +82,33 @@ func _on_script_changed():
 	if Engine.is_editor_hint():
 		_load_model()
 
+func get_skeleton() -> Skeleton3D:
+	if model_container and model_container.get_child_count() > 0:
+		var model_instance = model_container.get_child(0)
+		if model_instance:
+			return model_instance.find_child("Skeleton3D", true, false)
+	return null
+
+func _attach_weapon():
+	var WeaponAttachmentScene = preload("res://scenes/units/WeaponAttachment.tscn")
+	weapon_attachment = WeaponAttachmentScene.instantiate()
+	weapon_attachment.name = "WeaponAttachment"
+	add_child(weapon_attachment)
+
+	var weapon_type = weapon_db.get_weapon_for_archetype(archetype)
+	
+	var success = weapon_attachment.equip_weapon(self, weapon_type, team_id)
+	if not success:
+		print("Failed to attach weapon to %s" % unit_id)
+		weapon_attachment.queue_free()
+		weapon_attachment = null
+
 func die_and_cleanup():
 	# Prevent further actions
 	is_dead = true
 	set_collision_layer_value(1, false) # No more selection/raycast hits
 	
+	_play_death_sound()
 	play_animation("Death")
 	
 	# Wait for animation to finish before freeing
@@ -101,3 +126,9 @@ func die_and_cleanup():
 	
 	if is_instance_valid(self):
 		queue_free()
+
+func _play_death_sound():
+	var audio_manager = get_node_or_null("/root/DependencyContainer/AudioManager")
+	if audio_manager:
+		# In the future, this could be archetype-specific from the database
+		audio_manager.play_sound_3d("res://assets/audio/sfx/unit_death_01.wav", global_position)

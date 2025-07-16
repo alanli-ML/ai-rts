@@ -2,7 +2,14 @@
 class_name ActionValidator
 extends Node
 
-const ALLOWED_ACTIONS = ["move_to", "attack", "retreat", "patrol", "use_ability", "formation", "stance"]
+const ALLOWED_ACTIONS = [
+    "move_to", "attack", "retreat", "patrol", "stance", "follow", # General
+    "activate_stealth", # Scout
+    "activate_shield", "taunt_enemies", # Tank
+    "charge_shot", "find_cover", # Sniper
+    "heal_target", # Medic
+    "construct", "repair", "lay_mines" # Engineer
+]
 const VALID_FORMATIONS = ["line", "column", "wedge", "scattered"]
 const VALID_STANCES = ["aggressive", "defensive", "passive"]
 const MAX_COORDINATE = 100.0
@@ -59,5 +66,21 @@ func _validate_parameters(action: String, params: Dictionary) -> bool:
         "use_ability":
             if not params.has("ability_name") or not params.ability_name is String:
                 return false
+        "follow":
+            if not params.has("target_id") or not params.target_id is String:
+                return false
+        "heal_target":
+            if not params.has("target_id") or not params.target_id is String:
+                return false
+        "construct":
+            if not params.has("building_type") or not params.building_type is String:
+                return false
+            if not params.has("position") or not params.position is Array or params.position.size() != 3:
+                return false
+        "repair":
+            if not params.has("target_id") or not params.target_id is String:
+                return false
+        "lay_mines":
+            pass # No parameters needed
     
     return true

@@ -197,7 +197,7 @@ func setup_openai_client(client: OpenAIClient) -> void:
 	openai_client = client
 	print("LangSmith wrapper configured for OpenAI client")
 
-func traced_chat_completion(messages: Array, callback: Callable, metadata: Dictionary = {}) -> String:
+func traced_chat_completion(messages: Array, callback: Callable, error_callback: Callable = Callable(), metadata: Dictionary = {}) -> String:
 	"""
 	Send a traced chat completion request
 	
@@ -247,8 +247,8 @@ func traced_chat_completion(messages: Array, callback: Callable, metadata: Dicti
 		print("LangSmith: Wrapped error callback called for trace %s" % trace_id)
 		_complete_trace(trace_id, {}, error_message)
 		# Call original error handling if available
-		if callback.get_method() and callback.get_object().has_signal("request_failed"):
-			callback.get_object().emit_signal("request_failed", error_type, error_message)
+		if error_callback.is_valid():
+			error_callback.call(error_type, error_message)
 	
 	# Send request with wrapped callbacks
 	if openai_client:

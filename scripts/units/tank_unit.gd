@@ -2,61 +2,49 @@
 class_name TankUnit
 extends AnimatedUnit
 
-# Tank-specific properties
-var armor_bonus: float = 0.5  # Damage reduction
+# Shield properties
 var shield_active: bool = false
-var shield_cooldown: float = 10.0
-var shield_duration: float = 5.0
-var shield_timer: float = 0.0
-var taunt_range: float = 15.0
-var is_taunting: bool = false
+var shield_health: float = 0.0
+@export var max_shield_health: float = 100.0
+@export var shield_cooldown: float = 15.0
+var shield_cooldown_timer: float = 0.0
+var shield_node: Node3D = null
 
 func _ready() -> void:
 	archetype = "tank"
 	super._ready()
-	_setup_tank_abilities()
+	system_prompt = "You are a heavy tank, the spearhead of our assault. Your job is to absorb damage and protect your allies. Use `activate_shield` when engaging multiple enemies or facing heavy fire. Always try to be at the front of your squad, drawing enemy fire. Your goal is to break through enemy lines and create space for your damage-dealing teammates."
 
-func _setup_tank_abilities() -> void:
-	# Tank-specific stats are loaded from GameConstants in the base Unit class
-	# This function can be used for unique visual setup or ability initialization.
+func _physics_process(delta: float):
+	if shield_cooldown_timer > 0:
+		shield_cooldown_timer -= delta
+	super._physics_process(delta)
+
+# --- Action Implementation ---
+
+func activate_shield(_params: Dictionary):
+	if shield_cooldown_timer > 0:
+		return # Ability is on cooldown
+	shield_active = true
+	shield_health = max_shield_health
+	shield_cooldown_timer = shield_cooldown
+	print("%s activated its shield." % unit_id)
+
+func taunt_enemies(_params: Dictionary):
+	print("%s is taunting nearby enemies." % unit_id)
 	pass
 
-func _physics_process(delta: float) -> void:
-	super._physics_process(delta)
-	
-	if shield_timer > 0:
-		shield_timer -= delta
-		if shield_timer <= 0 and shield_active:
-			deactivate_shield()
-
+# Override take_damage to use the shield
 func take_damage(damage: float) -> void:
-	var reduced_damage = damage * (1.0 - armor_bonus)
+	if is_dead: return
+	
 	if shield_active:
-		reduced_damage *= 0.5
-	super.take_damage(reduced_damage)
-
-func activate_shield() -> void:
-	if shield_timer > 0:
-		return
-	shield_active = true
-	shield_timer = shield_duration
-	modulate = Color(0.8, 0.8, 1.2, 1.0)
-	await get_tree().create_timer(shield_duration).timeout
-	if shield_active:
-		deactivate_shield()
-
-func deactivate_shield() -> void:
-	shield_active = false
-	shield_timer = shield_cooldown
-	modulate = Color.WHITE
-
-func taunt_enemies() -> void:
-	is_taunting = true
-	var nearby_enemies = get_tree().get_nodes_in_group("units")
-	for node in nearby_enemies:
-		if node is Unit and node.team_id != self.team_id:
-			if global_position.distance_to(node.global_position) <= taunt_range:
-				# Logic to make 'node' target this unit would go here
-				pass
-	await get_tree().create_timer(3.0).timeout
-	is_taunting = false
+		var damage_to_shield = min(shield_health, damage)
+		shield_health -= damage_to_shield
+		damage -= damage_to_shield
+		if shield_health <= 0:
+			shield_active = false
+			print("%s's shield was broken." % unit_id)
+			
+	if damage > 0:
+		super.take_damage(damage) # Call the original method in Unit.gd

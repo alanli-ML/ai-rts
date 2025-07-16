@@ -10,6 +10,7 @@ const GameConstants = preload("res://scripts/shared/constants/game_constants.gd"
 @export var unit_id: String = ""
 @export var archetype: String = "scout"
 @export var team_id: int = 1
+@export var system_prompt: String = "You are a generic RTS unit. Follow orders precisely."
 
 # Unit stats
 var max_health: float = 100.0
@@ -19,11 +20,18 @@ var attack_damage: float = 10.0
 var attack_range: float = 15.0
 var attack_cooldown: float = 1.0
 var last_attack_time: float = 0.0
+var ammo: int = 30
+var max_ammo: int = 30
+var morale: float = 1.0
+const FOLLOW_DISTANCE = 5.0
 
 # State
 var current_state: GameEnums.UnitState = GameEnums.UnitState.IDLE
 var is_dead: bool = false
 var target_unit: Unit = null
+var follow_target: Unit = null
+var target_building: Node = null
+var weapon_attachment: Node = null
 
 # Movement
 var navigation_agent: NavigationAgent3D
@@ -77,6 +85,18 @@ func _load_archetype_stats() -> void:
 func _physics_process(delta: float) -> void:
     if is_dead: return
 
+    if current_state == GameEnums.UnitState.FOLLOWING:
+        if not is_instance_valid(follow_target) or follow_target.is_dead:
+            current_state = GameEnums.UnitState.IDLE
+            follow_target = null
+        else:
+            var distance_to_follow_target = global_position.distance_to(follow_target.global_position)
+            if distance_to_follow_target > FOLLOW_DISTANCE:
+                navigation_agent.target_position = follow_target.global_position
+            else:
+                # Stop moving if close enough
+                navigation_agent.target_position = global_position
+
     match current_state:
         GameEnums.UnitState.ATTACKING:
             if not is_instance_valid(target_unit) or target_unit.is_dead:
@@ -96,9 +116,53 @@ func _physics_process(delta: float) -> void:
                 
                 var current_time = Time.get_ticks_msec() / 1000.0
                 if current_time - last_attack_time >= attack_cooldown:
-                    target_unit.take_damage(attack_damage)
+                    if weapon_attachment and weapon_attachment.has_method("fire"):
+                        if weapon_attachment.can_fire():
+                            weapon_attachment.fire()
+                    else:
+                        # Fallback for units without weapon attachment
+                        target_unit.take_damage(attack_damage)
                     last_attack_time = current_time
-        _: # Default case for IDLE, MOVING, etc.
+        
+        GameEnums.UnitState.HEALING:
+            if not is_instance_valid(target_unit) or target_unit.is_dead or target_unit.get_health_percentage() >= 1.0:
+                current_state = GameEnums.UnitState.IDLE
+                return
+
+            var distance = global_position.distance_to(target_unit.global_position)
+            if distance > attack_range: # Use attack_range as heal_range for simplicity
+                move_to(target_unit.global_position)
+            else:
+                velocity = Vector3.ZERO
+                if target_unit.has_method("receive_healing"):
+                    # Assumes medic unit has a 'heal_rate' property
+                    var heal_rate = self.heal_rate if "heal_rate" in self else 10.0
+                    target_unit.receive_healing(heal_rate * delta)
+    
+        GameEnums.UnitState.CONSTRUCTING, GameEnums.UnitState.REPAIRING:
+            if not is_instance_valid(target_building):
+                current_state = GameEnums.UnitState.IDLE
+                return
+            
+            var distance = global_position.distance_to(target_building.global_position)
+            if distance > attack_range: # Use attack_range as build_range
+                move_to(target_building.global_position)
+            else:
+                velocity = Vector3.ZERO
+                if target_building.has_method("add_construction_progress"):
+                    # Assumes engineer has a build_rate property
+                    var build_rate = self.build_rate if "build_rate" in self else 0.1
+                    target_building.add_construction_progress(build_rate * delta)
+                
+                # If construction is done, go back to idle
+                if target_building.is_operational:
+                    current_state = GameEnums.UnitState.IDLE
+                    target_building = null
+        
+        GameEnums.UnitState.LAYING_MINES:
+            velocity = Vector3.ZERO # Cannot move while laying mines
+    
+        _: # Default case for IDLE, MOVING, FOLLOWING etc.
             if navigation_agent and not navigation_agent.is_navigation_finished():
                 var next_pos = navigation_agent.get_next_path_position()
                 var direction = global_position.direction_to(next_pos)
@@ -115,11 +179,24 @@ func move_to(target_position: Vector3) -> void:
 func attack_target(target: Unit) -> void:
     if not is_instance_valid(target): return
     target_unit = target
+    follow_target = null
     current_state = GameEnums.UnitState.ATTACKING
+
+func follow(target: Unit) -> void:
+    if not is_instance_valid(target) or target == self:
+        return
+    current_state = GameEnums.UnitState.FOLLOWING
+    follow_target = target
+    target_unit = null # Clear attack target
 
 func take_damage(damage: float) -> void:
     if is_dead: return
     current_health = max(0, current_health - damage)
+    health_changed.emit(current_health, max_health)
+
+func receive_healing(amount: float):
+    if is_dead: return
+    current_health = min(current_health + amount, max_health)
     health_changed.emit(current_health, max_health)
 
 func die() -> void:
@@ -130,7 +207,7 @@ func die() -> void:
     # The server game state will handle queue_free() after broadcasting the death.
     # On the client, the display manager will handle freeing the visual node.
     # On server, this is acceptable for now.
-    if get_tree().is_server():
+    if multiplayer.is_server():
         call_deferred("queue_free")
 
 func get_health_percentage() -> float:
@@ -140,13 +217,32 @@ func get_team_id() -> int:
     return team_id
 
 func get_unit_info() -> Dictionary:
-    return {
+    # This provides the detailed "unit_state" portion of the AI context.
+    var info = {
         "id": unit_id,
         "archetype": archetype,
         "health_pct": get_health_percentage() * 100,
+        "ammo_pct": (float(ammo) / max_ammo) * 100 if max_ammo > 0 else 0.0,
+        "morale": morale,
         "position": [global_position.x, global_position.y, global_position.z],
-        "team_id": team_id
+        "current_state": GameEnums.get_unit_state_string(current_state),
+        "is_under_fire": false, # This would be managed by a combat state tracker
+        "current_plan_summary": "", # This would be set by the plan executor
+        "team_id": team_id,
+        "is_dead": is_dead,
+        "is_stealthed": false, # Default values
+        "shield_active": false
     }
+    if is_instance_valid(target_unit):
+        info["target_id"] = target_unit.unit_id
+
+    # Add archetype-specific info safely
+    if "is_stealthed" in self:
+        info["is_stealthed"] = self.is_stealthed
+    if "shield_active" in self:
+        info["shield_active"] = self.shield_active
+    
+    return info
 
 # Placeholder methods for plan executor
 func retreat(): pass
@@ -166,6 +262,11 @@ func select() -> void:
     
     is_selected = true
     _create_selection_highlight()
+    
+    var audio_manager = get_node_or_null("/root/DependencyContainer/AudioManager")
+    if audio_manager:
+        audio_manager.play_sound_2d("res://assets/audio/ui/click_01.wav")
+    
     print("Unit %s (%s) selected" % [unit_id, archetype])
 
 func deselect() -> void:

@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 uid="uid://dpsa45s8fghj1"]
+
+[ext_resource type="Script" path="res://scripts/fx/projectile.gd" id="1_proj"]
+
+[sub_resource type="SphereMesh" id="SphereMesh_1"]
+radius = 0.1
+height = 0.2
+
+[node name="Projectile" type="Area3D"]
+script = ExtResource("1_proj")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_1")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("SphereMesh_1")

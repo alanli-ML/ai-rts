@@ -2,6 +2,9 @@
 class_name WeaponAttachment
 extends Node3D
 
+const WeaponDatabase = preload("res://scripts/units/weapon_database.gd")
+var weapon_db = WeaponDatabase.new()
+
 # Weapon properties
 var weapon_model: Node3D
 var weapon_type: String = "blaster-a"
@@ -32,6 +35,9 @@ var is_firing: bool = false
 var current_ammo: int = 30
 var max_ammo: int = 30
 var last_fire_time: float = 0.0
+
+# Projectile
+const PROJECTILE_SCENE = preload("res://scenes/fx/Projectile.tscn")
 
 # Parent references
 var parent_unit: Node3D
@@ -152,28 +158,61 @@ func equip_weapon(unit: Node3D, weapon_variant: String, team_id: int = 1) -> boo
 func _load_weapon_model(weapon_variant: String) -> bool:
 	"""Load the weapon model from assets"""
 	var weapon_path = WEAPON_BASE_PATH + weapon_variant + ".glb"
-	var weapon_scene = load(weapon_path)
 	
+	# Try to load the weapon scene
+	var weapon_scene = load(weapon_path)
 	if not weapon_scene:
 		_log_error("Failed to load weapon asset: %s" % weapon_path)
-		return false
+		# Try fallback weapon if available
+		weapon_scene = _try_fallback_weapon(weapon_variant)
+		if not weapon_scene:
+			return false
 	
 	# Remove existing weapon model
-	if weapon_model:
+	if weapon_model and is_instance_valid(weapon_model):
 		weapon_model.queue_free()
+		weapon_model = null
 	
-	# Instantiate weapon model
+	# Instantiate weapon model with error checking
 	weapon_model = weapon_scene.instantiate()
+	if not weapon_model:
+		_log_error("Failed to instantiate weapon model: %s" % weapon_variant)
+		return false
+		
 	weapon_model.name = "WeaponModel"
 	
 	# Scale weapon appropriately
 	var scale_factor = 1.0  # Weapons are already properly scaled
 	weapon_model.scale = Vector3(scale_factor, scale_factor, scale_factor)
 	
-	# Add to scene
-	add_child(weapon_model)
+	# Add to scene with error checking
+	if is_inside_tree():
+		add_child(weapon_model)
+	else:
+		_log_error("WeaponAttachment not in scene tree - cannot add weapon model")
+		weapon_model.queue_free()
+		weapon_model = null
+		return false
 	
 	return true
+
+func _try_fallback_weapon(weapon_variant: String) -> PackedScene:
+	"""Try to load a fallback weapon if the requested one fails"""
+	# Try basic blaster variants as fallbacks
+	var fallback_weapons = ["blaster-a", "blaster-b", "blaster-c"]
+	
+	for fallback in fallback_weapons:
+		if fallback != weapon_variant:  # Don't try the same weapon again
+			var fallback_path = WEAPON_BASE_PATH + fallback + ".glb"
+			var fallback_scene = load(fallback_path)
+			if fallback_scene:
+				if logger:
+					logger.warning("WeaponAttachment", "Using fallback weapon %s for %s" % [fallback, weapon_variant])
+				else:
+					print("WeaponAttachment: Using fallback weapon %s for %s" % [fallback, weapon_variant])
+				return fallback_scene
+	
+	return null
 
 func _attach_to_skeleton() -> bool:
 	"""Attach weapon to character skeleton"""
@@ -359,20 +398,38 @@ func add_attachment(attachment_type: String) -> bool:
 		return false
 	
 	var attachment_node = attachment_scene.instantiate()
+	if not attachment_node:
+		_log_error("Failed to instantiate attachment: %s" % attachment_type)
+		return false
+		
 	attachment_node.name = attachment_type
 	
-	# Attach to appropriate point
+	# Attach to appropriate point with error checking
 	if attachment_type.begins_with("scope"):
-		scope_attachment_point.add_child(attachment_node)
-		scope = attachment_node
-		# Improve accuracy with scope
-		accuracy = min(accuracy + 0.1, 1.0)
+		if scope_attachment_point and is_instance_valid(scope_attachment_point):
+			scope_attachment_point.add_child(attachment_node)
+			scope = attachment_node
+			# Improve accuracy with scope
+			accuracy = min(accuracy + 0.1, 1.0)
+		else:
+			_log_error("Scope attachment point not available")
+			attachment_node.queue_free()
+			return false
 	elif attachment_type.begins_with("clip"):
-		clip_attachment_point.add_child(attachment_node)
-		clip = attachment_node
-		# Increase ammo capacity
-		max_ammo = int(max_ammo * 1.5)
-		current_ammo = max_ammo
+		if clip_attachment_point and is_instance_valid(clip_attachment_point):
+			clip_attachment_point.add_child(attachment_node)
+			clip = attachment_node
+			# Increase ammo capacity
+			max_ammo = int(max_ammo * 1.5)
+			current_ammo = max_ammo
+		else:
+			_log_error("Clip attachment point not available")
+			attachment_node.queue_free()
+			return false
+	else:
+		_log_error("Unknown attachment category: %s" % attachment_type)
+		attachment_node.queue_free()
+		return false
 	
 	accessories.append(attachment_node)
 	
@@ -418,6 +475,9 @@ func fire() -> Dictionary:
 	
 	# Create muzzle flash effect
 	_create_muzzle_flash()
+
+	_spawn_projectile()
+	_play_fire_sound()
 	
 	weapon_fired.emit(weapon_type, damage)
 	
@@ -452,6 +512,52 @@ func _create_muzzle_flash() -> void:
 	tween.tween_property(muzzle_flash, "scale", Vector3(2.0, 2.0, 2.0), 0.05)
 	tween.tween_property(muzzle_flash, "scale", Vector3(0.1, 0.1, 0.1), 0.05)
 	tween.tween_callback(func(): muzzle_flash.queue_free())
+
+func _spawn_projectile() -> void:
+	"""Spawn a projectile from the weapon"""
+	if not PROJECTILE_SCENE:
+		if logger:
+			logger.warning("WeaponAttachment", "Projectile scene not found")
+		return
+	
+	if not muzzle_point:
+		if logger:
+			logger.warning("WeaponAttachment", "Muzzle point not found for projectile spawn")
+		return
+	
+	var projectile = PROJECTILE_SCENE.instantiate()
+	if not projectile:
+		if logger:
+			logger.error("WeaponAttachment", "Failed to instantiate projectile")
+		return
+	
+	# Set projectile properties
+	projectile.damage = damage
+	projectile.speed = 50.0 + (range * 2.0)  # Speed based on weapon range
+	projectile.shooter_team_id = parent_unit.team_id if parent_unit else 1
+	projectile.lifetime = range / 20.0  # Lifetime based on range
+	
+	# Calculate direction (forward from muzzle point)
+	var forward_direction = -muzzle_point.global_transform.basis.z.normalized()
+	projectile.direction = forward_direction
+	
+	# Add some accuracy variation
+	var accuracy_spread = (1.0 - accuracy) * 0.2  # Max 20 degree spread for 0% accuracy
+	var random_spread = Vector3(
+		randf_range(-accuracy_spread, accuracy_spread),
+		randf_range(-accuracy_spread, accuracy_spread),
+		0.0
+	)
+	projectile.direction = (projectile.direction + random_spread).normalized()
+	
+	# Position projectile at muzzle
+	projectile.global_position = muzzle_point.global_position
+	
+	# Add to scene tree
+	get_tree().root.add_child(projectile)
+	
+	if logger:
+		logger.debug("WeaponAttachment", "Spawned projectile from %s" % weapon_type)
 
 func _auto_reload() -> void:
 	"""Auto-reload weapon when empty"""
@@ -670,6 +776,17 @@ func _get_base_weapon_position() -> Vector3:
 		"engineer": Vector3(0.33, 0.88, 0.26)
 	}
 	return base_positions.get(archetype, Vector3(0.35, 0.9, 0.25))
+
+func _play_fire_sound():
+	var specs = weapon_db.get_weapon_specs(weapon_type)
+	var sound_path = specs.get("fire_sound", "")
+	
+	if not sound_path.is_empty():
+		var audio_manager = get_node_or_null("/root/DependencyContainer/AudioManager")
+		if audio_manager:
+			audio_manager.play_sound_3d(sound_path, muzzle_point.global_position)
+		else:
+			if logger: logger.warning("WeaponAttachment", "AudioManager not found")
 
 func _get_base_weapon_rotation() -> Vector3:
 	"""Get the base weapon rotation for current weapon type"""

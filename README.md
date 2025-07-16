@@ -64,7 +64,7 @@ Edit
 pgsql
 Copy
 Edit
-SYSTEM: Output ONE JSON {plan:[…]} (max 3 steps).  
+SYSTEM: Output ONE JSON {plan:[…]} (exactly 3 steps, each with triggers, at least one "enemy_in_range").  
         Each step has action, params, and optional duration_ms OR trigger.  
         Allowed triggers: health_pct, ammo, morale, enemy_dist, elapsed_ms.  
         Speech ≤12 words.  
@@ -282,7 +282,7 @@ Edit
      "speech":"Back to safety!"}
   ]
 }
-(max 3 steps, ≤ 6 s total, triggers on whitelist)
+(exactly 3 steps, each with triggers, at least one "enemy_in_range", ≤ 6 s total)
 
 5 Runtime Modules & Flow
 Module	Role

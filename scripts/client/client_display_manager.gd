@@ -7,6 +7,7 @@ const MINE_SCENE = preload("res://scripts/gameplay/mine.gd")
 
 var displayed_units: Dictionary = {} # unit_id -> Node
 var displayed_mines: Dictionary = {} # mine_id -> Node
+var displayed_control_points: Dictionary = {} # cp_id -> { "node": ControlPoint, "team_id": int }
 var units_node: Node
 var mines_node: Node
 var latest_state: Dictionary
@@ -30,7 +31,20 @@ func setup_map_references(map_node: Node) -> void:
 		mines_node.name = "Mines"
 		map_node.add_child(mines_node)
 
+	var capture_nodes_container = map_node.find_child("CaptureNodes", true, false)
+	if capture_nodes_container:
+		for cp_node in capture_nodes_container.get_children():
+			# Check if it's a ControlPoint and has a valid ID
+			if cp_node is ControlPoint and not cp_node.control_point_id.is_empty():
+				displayed_control_points[cp_node.control_point_id] = { "node": cp_node, "team_id": 0 }
+		print("ClientDisplayManager: Found and mapped %d control points." % displayed_control_points.size())
+	else:
+		print("ClientDisplayManager: ERROR - Could not find 'CaptureNodes' container.")
+
 func _physics_process(delta: float) -> void:
+	if multiplayer.is_server():
+		return # Do not run display logic on the server/host
+
 	if not latest_state or not latest_state.has("units"):
 		return
 		
@@ -69,7 +83,31 @@ func _physics_process(delta: float) -> void:
 			if mine_id not in server_mine_ids:
 				remove_mine(mine_id)
 
+	# Process control points
+	if latest_state.has("control_points"):
+		for cp_data in latest_state.control_points:
+			var cp_id = cp_data.id
+			if displayed_control_points.has(cp_id):
+				var cp_node_data = displayed_control_points[cp_id]
+				var cp_node = cp_node_data.node
+				var old_team_id = cp_node_data.team_id
+				var new_team_id = cp_data.get("team_id", 0)
+
+				if is_instance_valid(cp_node) and cp_node.has_method("update_client_visuals"):
+					cp_node.update_client_visuals(cp_data)
+				
+				# Play sound on capture
+				if new_team_id != old_team_id and new_team_id != 0:
+					var audio_manager = get_node_or_null("/root/DependencyContainer/AudioManager")
+					if audio_manager:
+						audio_manager.play_sound_2d("res://assets/audio/ui/command_submit_01.wav") # Using a known-good sound
+				
+				# Update stored team id
+				cp_node_data.team_id = new_team_id
+
 func update_state(state: Dictionary) -> void:
+	if multiplayer.is_server():
+		return # Do not run display logic on the server/host
 	latest_state = state
 
 func _create_unit(unit_data: Dictionary) -> void:
@@ -128,6 +166,21 @@ func _update_unit(unit_data: Dictionary, delta: float) -> void:
 	if unit_instance.has_method("update_client_visuals"):
 		unit_instance.update_client_visuals(server_velocity, delta)
 
+	# Update plan summary from server
+	if unit_data.has("plan_summary"):
+		if unit_instance.has_method("update_plan_summary"):
+			unit_instance.update_plan_summary(unit_data.plan_summary)
+		else:
+			unit_instance.plan_summary = unit_data.plan_summary
+	
+	# Update full plan data from server
+	if unit_data.has("full_plan"):
+		# Store full plan data directly on the unit for HUD access
+		unit_instance.full_plan = unit_data.full_plan
+		# Also call update method if available
+		if unit_instance.has_method("update_full_plan"):
+			unit_instance.update_full_plan(unit_data.full_plan)
+
 	# Update shield visual
 	if unit_data.has("shield_active"):
 		if unit_data.shield_active and not is_instance_valid(unit_instance.get("shield_node")):
@@ -143,10 +196,13 @@ func _update_unit(unit_data: Dictionary, delta: float) -> void:
 	if unit_data.has("is_stealthed"):
 		var model_container = unit_instance.get_node_or_null("ModelContainer")
 		if model_container:
-			if unit_data.is_stealthed:
-				_set_model_transparency(model_container, 0.3)
-			else:
-				_set_model_transparency(model_container, 1.0)
+			var was_stealthed = unit_instance.get_meta("was_stealthed", false)
+			if unit_data.is_stealthed != was_stealthed:
+				if unit_data.is_stealthed:
+					_set_model_transparency(model_container, 0.3)
+				else:
+					_set_model_transparency(model_container, 1.0)
+				unit_instance.set_meta("was_stealthed", unit_data.is_stealthed)
 
 func _set_model_transparency(model_container: Node3D, alpha_value: float) -> void:
 	"""Set transparency for all MeshInstance3D nodes in the model container"""
@@ -235,3 +291,4 @@ func cleanup() -> void:
 		if is_instance_valid(mine):
 			mine.queue_free()
 	displayed_mines.clear()
+	displayed_control_points.clear()

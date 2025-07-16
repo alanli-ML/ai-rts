@@ -27,16 +27,22 @@ func setup_capture_nodes() -> void:
 			var node_index = i * 3 + j
 			var x_offset = (i - 1) * spacing
 			var z_offset = (j - 1) * spacing
-			var pos = Vector3(center.x + x_offset, 0, center.z + z_offset)
+			# Raise control points to sit on top of the ground plane (at y=0.5)
+			var pos = Vector3(center.x + x_offset, 0.5, center.z + z_offset)
 			
 			node_positions.append(pos)
 			
+			var node_name = "Node%d" % (node_index + 1)
+			
 			# Position existing nodes or create new ones
 			if node_index < capture_nodes.get_child_count():
-				var node = capture_nodes.get_child(node_index)
+				var node = capture_nodes.get_child(node_index) as ControlPoint
 				node.position = pos
+				node.name = node_name
+				node.control_point_id = node_name
+				node.control_point_name = node_name
 			else:
-				create_capture_node(pos, "Node%d" % (node_index + 1))
+				create_capture_node(pos, node_name)
 
 func create_capture_node(pos: Vector3, node_name: String) -> void:
 	var ControlPointScript = load("res://scripts/gameplay/control_point.gd")
@@ -44,6 +50,7 @@ func create_capture_node(pos: Vector3, node_name: String) -> void:
 	
 	control_point.name = node_name
 	control_point.control_point_name = node_name
+	control_point.control_point_id = node_name
 	control_point.global_position = pos
 	
 	capture_nodes.add_child(control_point)

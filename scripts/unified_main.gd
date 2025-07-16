@@ -90,7 +90,7 @@ func handle_start_game_rpc():
         if session_manager:
             session_manager.call_deferred("handle_force_start_game", peer_id)
 
-@rpc("any_peer")
+@rpc("any_peer", "call_local")
 func submit_command_rpc(command_text: String, unit_ids: Array[String]):
     if not dependency_container.is_server_mode():
         return
@@ -100,11 +100,7 @@ func submit_command_rpc(command_text: String, unit_ids: Array[String]):
     
     var ai_processor = dependency_container.get_ai_command_processor()
     if ai_processor:
-        var game_state = dependency_container.get_game_state()
-        var state_dict = {}
-        if game_state and game_state.has_method("get_context_for_ai"):
-            state_dict = game_state.get_context_for_ai()
-        ai_processor.process_command(command_text, unit_ids, state_dict)
+        ai_processor.process_command(command_text, unit_ids, peer_id)
 
 func _on_match_start_requested() -> void:
     logger.info("UnifiedMain", "Match start requested.")
@@ -176,7 +172,7 @@ func remove_unit_rpc(unit_id: String):
     if client_display_manager:
         client_display_manager.remove_unit(unit_id)
 
-@rpc("any_peer")
+@rpc("any_peer", "call_local")
 func display_speech_bubble_rpc(unit_id: String, speech_text: String):
     if not dependency_container.is_client_mode(): return
 

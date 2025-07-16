@@ -9,6 +9,7 @@ var game_state: Node
 var sessions: Dictionary = {}  # session_id -> Session
 var client_sessions: Dictionary = {}  # peer_id -> session_id
 var session_counter: int = 0
+var cleanup_timer: Timer
 
 # Session configuration
 const MAX_PLAYERS_PER_SESSION: int = 4
@@ -34,7 +35,7 @@ func setup(logger_ref, game_state_ref):
 func _initialize_session_manager():
     """Initialize session management"""
     # Setup session cleanup timer
-    var cleanup_timer = Timer.new()
+    cleanup_timer = Timer.new()
     cleanup_timer.wait_time = 60.0  # Check every minute
     cleanup_timer.timeout.connect(_cleanup_sessions)
     add_child(cleanup_timer)
@@ -392,6 +393,11 @@ func _start_game(session_id: String) -> void:
         logger.warning("SessionManager", "Cannot start game - session %s not found" % session_id)
         return
     
+    # CRITICAL: Prevent duplicate game starts for the same session
+    if session.state == "active":
+        logger.warning("SessionManager", "Game already started for session %s - ignoring duplicate start request" % session_id)
+        return
+    
     logger.info("SessionManager", "Starting game for session %s" % session_id)
     
     session.state = "active"
@@ -585,7 +591,7 @@ func _initialize_ai_systems(_session: Dictionary) -> void:
 
 func _spawn_initial_units(session: Dictionary, map_node: Node) -> void:
     """Spawn initial units for each team"""
-    logger.info("SessionManager", "Spawning initial units")
+    logger.info("SessionManager", "Spawning initial units for session %s" % session.id)
     
     var team_spawns = {
         1: map_node.get_node("SpawnPoints/Team1Spawn").global_position,
@@ -617,6 +623,7 @@ func _spawn_initial_units(session: Dictionary, map_node: Node) -> void:
             var archetype = archetypes[i]
             # Spacing increased from 3 to 6 to prevent collision shapes (radius 2.5) from overlapping at spawn.
             var unit_position = base_position + Vector3(i * 6, 1, 0) # Spawn at Y=1 to be above ground
+            
             var unit_id = await game_state.spawn_unit(archetype, team_id, unit_position, representative_player)
             logger.info("SessionManager", "Spawned %s unit %s for team %d at %s" % [archetype, unit_id, team_id, unit_position])
     
@@ -650,16 +657,10 @@ func _broadcast_lobby_update(session_id: String) -> void:
             root_node.rpc_id(player_peer_id, "_on_lobby_update", lobby_data)
 
 func _can_start_game(session_id: String) -> bool:
-    """Check if game can start (all players ready or single player)"""
+    """Check if a session can start"""
     var session = sessions.get(session_id)
-    if not session or session.state != "waiting":
+    if not session:
         return false
-    
-    var player_count = session.players.size()
-    
-    # Allow single-player games
-    if player_count == 1:
-        return true
     
     # Check if all players are ready
     for player_id in session.players.keys():
@@ -667,7 +668,7 @@ func _can_start_game(session_id: String) -> bool:
         if not player.ready:
             return false
     
-    return true
+    return session.players.size() > 0
 
 func _cleanup_sessions() -> void:
     """Cleanup expired sessions"""
@@ -698,3 +699,6 @@ func cleanup() -> void:
     logger.info("SessionManager", "Session manager cleaned up")
 
 # Note: RPC methods are now handled by UnifiedMain root node 
+
+func _ready() -> void:
+    pass 

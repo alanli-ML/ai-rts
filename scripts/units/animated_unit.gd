@@ -111,6 +111,30 @@ func _on_script_changed():
 	if Engine.is_editor_hint():
 		_load_model()
 
+func _physics_process(delta: float):
+	super._physics_process(delta)
+
+	# If we are the server but not headless, we are the host. Animate ourselves.
+	# Pure clients will have their visuals updated by ClientDisplayManager.
+	if multiplayer.is_server() and DisplayServer.get_name() != "headless":
+		# Basic animation state machine
+		if current_state == GameEnums.UnitState.ATTACKING:
+			play_animation("Attack")
+		elif current_state == GameEnums.UnitState.DEAD:
+			# Animation handled by die_and_cleanup()
+			pass
+		else:
+			# Handle movement/idle animations
+			if velocity.length_squared() > 0.01:
+				var target_rotation_y = atan2(velocity.x, velocity.z)
+				# Use slerp for smooth rotation
+				var current_quat = model_container.transform.basis.get_rotation_quaternion()
+				var target_quat = Quaternion(Vector3.UP, target_rotation_y)
+				model_container.transform.basis = Basis(current_quat.slerp(target_quat, delta * 10.0))
+				play_animation("Run")
+			else:
+				play_animation("Idle")
+
 func get_skeleton() -> Skeleton3D:
 	if model_container and model_container.get_child_count() > 0:
 		var model_instance = model_container.get_child(0)

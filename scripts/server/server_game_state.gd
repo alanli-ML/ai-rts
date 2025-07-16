@@ -46,11 +46,16 @@ var ai_think_timer: Timer
 var tick_counter: int = 0
 const NETWORK_TICK_RATE = 2 # ~30 times per second if physics is 60fps
 
+# Autonomous command rate limiting
+var units_waiting_for_ai: Dictionary = {}  # unit_id -> timestamp when request was sent
+var last_autonomous_request_time: float = 0.0
+var autonomous_request_cooldown: float = 5.0  # Don't send autonomous requests faster than every 5 seconds
+
 func _ready() -> void:
     # Systems will be initialized via dependency injection
     ai_think_timer = Timer.new()
     ai_think_timer.name = "AIThinkTimer"
-    ai_think_timer.wait_time = 2.0 # Each unit's AI thinks every 2 seconds
+    ai_think_timer.wait_time = 10.0 # Each unit's AI thinks every 10 seconds
     ai_think_timer.timeout.connect(_on_ai_think_timer_timeout)
     add_child(ai_think_timer)
 
@@ -66,7 +71,8 @@ func _physics_process(_delta: float) -> void:
 func _gather_game_state() -> Dictionary:
     var state = {
         "units": [],
-        "mines": []
+        "mines": [],
+        "control_points": []
     }
     
     var placeable_entity_manager = get_node("/root/DependencyContainer").get_placeable_entity_manager()
@@ -77,18 +83,49 @@ func _gather_game_state() -> Dictionary:
         var unit = units[unit_id]
         if is_instance_valid(unit):
             var plan_summary = "Idle"
-            if plan_executor and plan_executor.current_steps.has(unit_id):
-                var step = plan_executor.current_steps[unit_id]
-                if step and step is Dictionary:
-                    var action = step.get("action", "...")
+            var full_plan_data = []
+
+            if plan_executor:
+                # 1. Process sequential plan for UI
+                var active_plan = plan_executor.active_plans.get(unit_id, [])
+                var current_step = plan_executor.current_steps.get(unit_id, null)
+                var current_step_index = -1
+                if current_step:
+                    current_step_index = active_plan.find(current_step)
+
+                for i in range(active_plan.size()):
+                    var step = active_plan[i]
+                    var action = step.get("action", "unknown")
                     var params = step.get("params", {})
-                    plan_summary = "%s" % action.capitalize().replace("_", " ")
+                    var action_display = action.capitalize().replace("_", " ")
                     if params.has("target_id"):
-                        var target_id = str(params.target_id)
-                        plan_summary += " %s" % target_id.right(4)
+                        action_display += " " + str(params.target_id).right(4)
                     elif params.has("position"):
-                        var p = params.position
-                        plan_summary += " (%d, %d)" % [p[0], p[2]]
+                        action_display += " (%d, %d)" % [params.position[0], params.position[2]]
+
+                    var step_status = "pending"
+                    if i < current_step_index:
+                        step_status = "completed"
+                    elif i == current_step_index:
+                        step_status = "active"
+                    
+                    full_plan_data.append({"action": action_display, "status": step_status, "trigger": ""})
+                
+                # Set plan summary from current sequential step
+                if current_step:
+                    plan_summary = full_plan_data[current_step_index].action
+
+                # 2. Process triggered actions for UI
+                var triggered_actions = plan_executor.active_triggered_actions.get(unit_id, [])
+                for step in triggered_actions:
+                    var action = step.get("action", "unknown")
+                    var params = step.get("params", {})
+                    var trigger = step.get("trigger", "")
+                    var action_display = action.capitalize().replace("_", " ")
+                    if params.has("target_id"):
+                        action_display += " " + str(params.target_id).right(4)
+                    
+                    full_plan_data.append({"action": action_display, "status": "triggered", "trigger": trigger})
 
             var unit_data = {
                 "id": unit.unit_id,
@@ -100,13 +137,23 @@ func _gather_game_state() -> Dictionary:
                 "is_stealthed": unit.is_stealthed if "is_stealthed" in unit else false,
                 "shield_active": false,
                 "shield_pct": 0.0,
-                "plan_summary": plan_summary
+                "plan_summary": plan_summary,
+                "full_plan": full_plan_data
             }
             if unit.has_method("get") and "shield_active" in unit:
                 unit_data["shield_active"] = unit.shield_active
                 if unit.max_shield_health > 0:
                     unit_data["shield_pct"] = (unit.shield_health / unit.max_shield_health) * 100.0
             state.units.append(unit_data)
+
+    if node_capture_system and not node_capture_system.control_points.is_empty():
+        for cp in node_capture_system.control_points:
+            if is_instance_valid(cp):
+                state.control_points.append({
+                    "id": cp.control_point_id,
+                    "team_id": cp.get_controlling_team(),
+                    "capture_value": cp.capture_value
+                })
     return state
 
 func _broadcast_game_state() -> void:
@@ -172,30 +219,29 @@ func _connect_system_signals() -> void:
     logger.info("ServerGameState", "System signals connected")
 
 # AI System Integration
-func _on_ai_plan_processed(plans: Array, _message: String) -> void:
-    """Handle AI plan creation"""
-    for plan_data in plans:
-        var unit_id = plan_data.get("unit_id")
-        if unit_id.is_empty():
-            continue
-            
-        logger.info("ServerGameState", "AI plan processed for unit %s" % unit_id)
-        
-        # Update AI progress data for clients
-        ai_progress_data[unit_id] = {
-            "plan_id": plan_data.get("plan_id", unit_id), # No plan_id anymore, use unit_id
-            "status": "active",
-            "progress": 0.0,
-            "current_step": 0,
-            "total_steps": plan_data.get("steps", []).size()
-        }
-        # Broadcast to clients
-        _broadcast_ai_progress_update(unit_id)
-
-func _on_ai_command_failed(error_message: String) -> void:
-    logger.error("ServerGameState", "AI Command failed: %s" % error_message)
-    # TODO: Broadcast failure to the relevant client
+func _on_ai_plan_processed(plans: Array, message: String) -> void:
+    """Handle successful AI plan processing"""
+    logger.info("ServerGameState", "AI plan processed successfully: %s" % message)
     
+    # Clear waiting status for units that got plans
+    for plan_data in plans:
+        var unit_id = plan_data.get("unit_id", "")
+        if not unit_id.is_empty() and unit_id in units_waiting_for_ai:
+            units_waiting_for_ai.erase(unit_id)
+            logger.info("ServerGameState", "Cleared waiting status for unit %s" % unit_id)
+
+func _on_ai_command_failed(error: String) -> void:
+    """Handle failed AI command processing"""
+    logger.warning("ServerGameState", "AI command failed: %s" % error)
+    
+    # Clear all waiting units since the command failed
+    # We don't know which specific units were affected, so clear all to prevent permanent blocking
+    if not units_waiting_for_ai.is_empty():
+        logger.info("ServerGameState", "Clearing waiting status for %d units due to AI command failure" % units_waiting_for_ai.size())
+        var cleared_units = units_waiting_for_ai.keys()
+        units_waiting_for_ai.clear()
+        logger.info("ServerGameState", "Cleared waiting units: %s" % cleared_units)
+
 # Resource System Integration
 func _on_resource_changed(team_id: int, resource_type: int, current_amount: int) -> void:
     """Handle resource changes"""
@@ -371,17 +417,27 @@ func spawn_unit(archetype: String, team_id: int, position: Vector3, owner_id: St
         return ""
     
     var unit = await team_unit_spawner.spawn_unit(team_id, position, archetype)
-    if unit and is_instance_valid(unit) and not unit.unit_id.is_empty():
-        units[unit.unit_id] = unit
-        if owner_id in players:
-            players[owner_id].units.append(unit.unit_id)
-        
-        if unit.has_signal("unit_died"):
-            unit.unit_died.connect(_on_unit_died)
-        
-        unit_spawned.emit(unit.unit_id)
-        logger.info("ServerGameState", "Added unit %s (%s) to game state for team %d" % [unit.unit_id, archetype, team_id])
-        return unit.unit_id
+    if unit and is_instance_valid(unit):
+        var unit_id = ""
+        if "unit_id" in unit:
+            unit_id = unit.unit_id
+        elif unit.has_method("get"):
+            unit_id = unit.get("unit_id", "")
+        else:
+            unit_id = "unit_" + str(randi())
+            
+        if not unit_id.is_empty():
+            units[unit_id] = unit
+            
+            if owner_id in players:
+                players[owner_id].units.append(unit_id)
+            
+            if unit.has_signal("unit_died"):
+                unit.unit_died.connect(_on_unit_died)
+            
+            unit_spawned.emit(unit_id)
+            logger.info("ServerGameState", "Added unit %s (%s) to game state for team %d" % [unit_id, archetype, team_id])
+            return unit_id
     
     logger.error("ServerGameState", "Failed to spawn unit or unit initialization failed for archetype %s." % archetype)
     return ""
@@ -416,8 +472,10 @@ func get_context_for_ai(unit: Unit) -> Dictionary:
         "controlled_nodes": node_capture_system.team_control_counts if node_capture_system else {}
     }
 
-    # 2. Unit's Own State
+    # 2. Unit's Own State (including current plan)
     var unit_state = unit.get_unit_info()
+    if plan_executor:
+        unit_state["action_queue"] = _get_plan_info_for_unit(unit.unit_id)
 
     # 3. Sensor Data (Visible Entities)
     var sensor_data = {
@@ -436,13 +494,21 @@ func get_context_for_ai(unit: Unit) -> Dictionary:
 
         # Simple distance-based "vision" check
         var dist = unit.global_position.distance_to(other_unit.global_position)
-        if dist < 40.0: # Vision range
-            # Check if target is stealthed
-            if other_unit.team_id != unit.team_id and other_unit.get("is_stealthed", false):
-                continue # Skip stealthed enemies
-
+        if dist < unit.vision_range:
             var other_info = other_unit.get_unit_info()
+            
+            # Skip stealthed enemies
+            if other_unit.team_id != unit.team_id and other_info.get("is_stealthed", false):
+                continue
+
             other_info["dist"] = dist
+            
+            # Add plan information for visible units
+            if plan_executor:
+                var other_plan_info = _get_plan_info_for_unit(other_unit.unit_id)
+                if not other_plan_info.is_empty():
+                    other_info["current_plan"] = other_plan_info
+            
             if other_unit.team_id != unit.team_id:
                 sensor_data.visible_enemies.append(other_info)
             else:
@@ -473,13 +539,13 @@ func get_context_for_ai(unit: Unit) -> Dictionary:
                     "name": cp.control_point_name,
                     "position": [cp.global_position.x, cp.global_position.y, cp.global_position.z],
                     "controlling_team": cp.get_controlling_team(),
-                    "capture_value": cp.capture_value, # -1 (team 2) to 1 (team 1)
-                    "dist": dist
+                    "capture_value": cp.capture_value # -1 (team 2) to 1 (team 1)
+                    #"dist": dist
                 }
                 sensor_data.visible_control_points.append(cp_data)
         
         # Sort by distance
-        sensor_data.visible_control_points.sort_custom(func(a, b): return a.dist < b.dist)
+        #sensor_data.visible_control_points.sort_custom(func(a, b): return a.dist < b.dist)
 
     # 4. Team Context (simplified)
     var team_context = {
@@ -497,6 +563,28 @@ func get_context_for_ai(unit: Unit) -> Dictionary:
 
     return full_context
 
+func _get_plan_info_for_unit(unit_id: String) -> Dictionary:
+    """Helper method to extract current plan information for a unit for the AI context."""
+    if not plan_executor:
+        return {}
+
+    var plan_context = {
+        "steps": [],
+        "triggered_actions": []
+    }
+
+    # Get sequential plan
+    var active_plan = plan_executor.active_plans.get(unit_id, [])
+    for step in active_plan:
+        plan_context.steps.append(step)
+
+    # Get triggered actions
+    var triggered_actions = plan_executor.active_triggered_actions.get(unit_id, [])
+    for step in triggered_actions:
+        plan_context.triggered_actions.append(step)
+
+    return plan_context
+
 func _on_ai_think_timer_timeout():
     if match_state != "active":
         return
@@ -507,16 +595,66 @@ func _on_ai_think_timer_timeout():
         logger.error("ServerGameState", "PlanExecutor not found for AI thinking.")
         return
 
+    var current_time = Time.get_unix_time_from_system()
+    
+    # Clean up old waiting units (units that have been waiting too long)
+    var units_to_remove = []
+    for unit_id in units_waiting_for_ai:
+        var wait_time = current_time - units_waiting_for_ai[unit_id]
+        if wait_time > 60.0:  # 60 second timeout
+            logger.warning("ServerGameState", "Unit %s has been waiting for AI response for %.1f seconds - clearing" % [unit_id, wait_time])
+            units_to_remove.append(unit_id)
+    
+    for unit_id in units_to_remove:
+        units_waiting_for_ai.erase(unit_id)
+    
+    # Check cooldown to prevent spam
+    if current_time - last_autonomous_request_time < autonomous_request_cooldown:
+        var remaining_cooldown = autonomous_request_cooldown - (current_time - last_autonomous_request_time)
+        logger.info("ServerGameState", "Autonomous command cooldown active - %.1f seconds remaining" % remaining_cooldown)
+        return
+    
+    # Find ALL idle units for group command
+    var idle_units_by_team: Dictionary = {}  # team_id -> Array[String]
+    
     for unit_id in units:
+        # Skip units already waiting for AI response
+        if unit_id in units_waiting_for_ai:
+            continue
+            
         # A unit is considered "idle" for autonomous action if it has no active plan.
         if not plan_executor.active_plans.has(unit_id) or plan_executor.active_plans.get(unit_id, []).is_empty():
             var unit = units[unit_id]
             if is_instance_valid(unit) and not unit.is_dead:
-                logger.info("ServerGameState", "Requesting autonomous plan for idle unit %s" % unit_id)
-                # Use a generic command for autonomous action.
-                # The AICommandProcessor will see this and generate a suitable prompt.
-                var unit_id_array: Array[String] = [unit_id]
-                ai_command_processor.process_command("autonomously decide next action", unit_id_array)
+                var team_id = unit.team_id
+                if not idle_units_by_team.has(team_id):
+                    var typed_array: Array[String] = []
+                    idle_units_by_team[team_id] = typed_array
+
+                idle_units_by_team[team_id].append(unit_id)
+    
+    # Process autonomous commands for each team that has idle units
+    for team_id in idle_units_by_team:
+        var team_idle_units: Array[String] = idle_units_by_team[team_id]  # Properly type the variable
+        
+        if team_idle_units.size() > 0:
+            logger.info("ServerGameState", "Requesting autonomous group plan for %d idle units from team %d: %s" % [team_idle_units.size(), team_id, team_idle_units])
+            
+            # Mark all units as waiting for AI response
+            for unit_id in team_idle_units:
+                units_waiting_for_ai[unit_id] = current_time
+            
+            last_autonomous_request_time = current_time
+            
+            # Send group command for autonomous action
+            # Empty unit_ids array will trigger group command processing in AICommandProcessor
+            ai_command_processor.process_command("autonomously coordinate team tactics", team_idle_units)
+            
+            # Only process one team per timer cycle to avoid overwhelming the AI
+            break
+    
+    if idle_units_by_team.is_empty():
+        logger.info("ServerGameState", "No idle units found for autonomous actions (total units: %d, waiting: %d)" % [units.size(), units_waiting_for_ai.size()])
 
 func set_match_state(new_state: String):
     match_state = new_state

@@ -6,7 +6,7 @@ extends Node
 @export var api_key: String = ""
 @export var base_url: String = "https://api.openai.com/v1"
 @export var model: String = "gpt-4o-mini"
-@export var max_tokens: int = 500
+@export var max_tokens: int = 16384
 @export var temperature: float = 0.7
 
 # Rate limiting
@@ -125,38 +125,67 @@ func _send_request(request_info: Dictionary) -> void:
 		active_requests -= 1
 		request_failed.emit(APIError.NETWORK_ERROR, "Failed to send request")
 
-func _on_request_completed(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+func _on_request_completed(result: int, response_code: int, headers: PackedStringArray, body: PackedByteArray) -> void:
+	print("=== OpenAI HTTP Response ===")
+	print("Result code: %d" % result)
+	print("Response code: %d" % response_code) 
+	print("Headers: %s" % headers)
+	
 	active_requests -= 1
 	var callback = http_request.get_meta("callback") as Callable
 	
-	if response_code != HTTPClient.RESPONSE_OK:
-		var error_message = "HTTP Error " + str(response_code)
-		if body.size() > 0:
-			var error_json = JSON.new()
-			if error_json.parse(body.get_string_from_utf8()) == OK:
-				var error_data = error_json.data
-				if error_data.has("error") and error_data.error is Dictionary:
-					error_message = error_data.error.get("message", error_message)
-		request_failed.emit(_get_error_type(response_code), error_message)
+	var response_text = body.get_string_from_utf8()
+	print("Response body length: %d" % response_text.length())
+	if response_text.length() > 0:
+		print("Response preview: %s..." % response_text.substr(0, min(200, response_text.length())))
+	
+	if result != HTTPRequest.RESULT_SUCCESS:
+		print("ERROR: HTTP request failed with result: %d" % result)
+		var error_type = APIError.NETWORK_ERROR
+		var error_message = "HTTP request failed: " + str(result)
+		request_failed.emit(error_type, error_message)
 		_process_queue()
 		return
 	
-	var response_json = JSON.new()
-	if response_json.parse(body.get_string_from_utf8()) != OK:
+	if response_code < 200 or response_code >= 300:
+		print("ERROR: HTTP response code indicates failure: %d" % response_code)
+		var error_type = _get_error_type_from_code(response_code)
+		var error_message = "HTTP error %d: %s" % [response_code, response_text]
+		request_failed.emit(error_type, error_message)
+		_process_queue()
+		return
+	
+	if response_text.is_empty():
+		print("ERROR: Empty response body")
+		request_failed.emit(APIError.UNKNOWN_ERROR, "Empty response from API")
+		_process_queue()
+		return
+	
+	print("SUCCESS: Parsing JSON response...")
+	var json = JSON.new()
+	var parse_result = json.parse(response_text)
+	if parse_result != OK:
+		print("ERROR: JSON parsing failed: %s" % json.get_error_message())
 		request_failed.emit(APIError.UNKNOWN_ERROR, "Invalid JSON response")
 		_process_queue()
 		return
 	
-	var response_data = response_json.data
-	if callback.is_valid():
-		callback.call(response_data)
-	request_completed.emit(response_data)
+	var response_data = json.data
+	print("SUCCESS: JSON parsed, calling callback...")
 	
+	if callback.is_valid():
+		print("Calling response callback...")
+		callback.call(response_data)
+		print("Callback completed")
+	else:
+		print("ERROR: Callback is not valid!")
+	
+	request_completed.emit(response_data)
 	_process_queue()
 
-func _get_error_type(response_code: int) -> APIError:
-	match response_code:
+func _get_error_type_from_code(code: int) -> APIError:
+	match code:
 		401: return APIError.INVALID_API_KEY
-		429: return APIError.RATE_LIMITED
-		402: return APIError.QUOTA_EXCEEDED
-		_: return APIError.NETWORK_ERROR
+		429: return APIError.RATE_LIMITED  
+		403: return APIError.QUOTA_EXCEEDED
+		_: return APIError.UNKNOWN_ERROR

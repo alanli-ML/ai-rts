@@ -5,6 +5,7 @@ extends CharacterBody3D
 # Load shared components
 const GameEnums = preload("res://scripts/shared/types/game_enums.gd")
 const GameConstants = preload("res://scripts/shared/constants/game_constants.gd")
+const UnitStatusBarScene = preload("res://scenes/units/UnitStatusBar.tscn")
 
 # Unit identification
 @export var unit_id: String = ""
@@ -18,6 +19,7 @@ var current_health: float = 100.0
 var movement_speed: float = 5.0
 var attack_damage: float = 10.0
 var attack_range: float = 15.0
+var vision_range: float = 30.0
 var attack_cooldown: float = 1.0
 var last_attack_time: float = 0.0
 var ammo: int = 30
@@ -28,10 +30,14 @@ const FOLLOW_DISTANCE = 5.0
 # State
 var current_state: GameEnums.UnitState = GameEnums.UnitState.IDLE
 var is_dead: bool = false
+var plan_summary: String = "Idle"  # Client-side display of current plan status
+var full_plan: Array = []  # Client-side storage of complete plan data
 var target_unit: Unit = null
 var follow_target: Unit = null
 var target_building: Node = null
 var weapon_attachment: Node = null
+var can_move: bool = true
+var status_bar: Node3D = null
 
 # Movement
 var navigation_agent: NavigationAgent3D
@@ -56,20 +62,12 @@ func _ready() -> void:
     # Ensure a collision shape exists for physics queries
     var collision = get_node_or_null("CollisionShape3D")
     if not collision:
-        collision = CollisionShape3D.new()
-        collision.name = "CollisionShape3D"
-        var shape = CapsuleShape3D.new()
-        shape.radius = 2.5 # Much larger radius for realistic character selection
-        shape.height = 4.0 # Taller to match typical character height
-        collision.shape = shape
-        collision.position = Vector3(0, shape.height / 2.0, 0) # Center capsule above the unit's origin
-        add_child(collision)
-        
-        # Optional: Enable debug visualization in editor
-        if Engine.is_editor_hint():
-            collision.visible = true
+        # The collision shape should now be part of the scene.
+        # If it's not here, it's an error.
+        push_error("Unit %s is missing its CollisionShape3D." % name)
     
-    print("Unit %s: Collision shape - radius: %s, height: %s" % [unit_id, 2.5, 4.0])
+    # Create status bar
+    _create_status_bar()
     
     _load_archetype_stats()
     health_changed.connect(func(new_health, _max_health): if new_health <= 0: die())
@@ -82,6 +80,7 @@ func _load_archetype_stats() -> void:
         movement_speed = config.get("speed", 5.0)
         attack_damage = config.get("damage", 10.0)
         attack_range = config.get("range", 15.0)
+        vision_range = config.get("vision", 30.0)
 
 func _physics_process(delta: float) -> void:
     if is_dead: return
@@ -160,17 +159,22 @@ func _physics_process(delta: float) -> void:
                     else:
                         navigation_agent.target_position = global_position # Stop
 
-            if navigation_agent and not navigation_agent.is_navigation_finished():
-                var next_pos = navigation_agent.get_next_path_position()
-                var direction = global_position.direction_to(next_pos)
-                var horizontal_direction = Vector3(direction.x, 0, direction.z).normalized()
-                velocity.x = horizontal_direction.x * movement_speed
-                velocity.z = horizontal_direction.z * movement_speed
-            else:
-                velocity.x = 0
-                velocity.z = 0
+    # Calculate horizontal velocity from navigation agent if the unit can move
+    if can_move:
+        if navigation_agent and not navigation_agent.is_navigation_finished():
+            var next_pos = navigation_agent.get_next_path_position()
+            var direction = global_position.direction_to(next_pos)
+            var horizontal_direction = Vector3(direction.x, 0, direction.z).normalized()
+            velocity.x = horizontal_direction.x * movement_speed
+            velocity.z = horizontal_direction.z * movement_speed
+        else:
+            velocity.x = 0
+            velocity.z = 0
+    else:
+        velocity.x = 0
+        velocity.z = 0
 
-    # Always call move_and_slide to apply physics
+    # Always call move_and_slide to apply physics and update velocity
     move_and_slide()
 
 func move_to(target_position: Vector3) -> void:
@@ -334,3 +338,37 @@ func get_collision_info() -> Dictionary:
             "position": collision.position
         }
     return {"type": "none"}
+
+func _create_status_bar() -> void:
+    """Create and attach the status bar to this unit"""
+    if status_bar:
+        return  # Already has a status bar
+    
+    status_bar = UnitStatusBarScene.instantiate()
+    add_child(status_bar)
+    
+    # Initialize with current plan summary
+    if status_bar.has_method("update_status"):
+        status_bar.update_status(plan_summary)
+
+func update_plan_summary(new_summary: String) -> void:
+    """Update the plan summary and refresh the status bar"""
+    plan_summary = new_summary
+    
+    # Update status bar if it exists
+    if status_bar and status_bar.has_method("update_status"):
+        status_bar.update_status(plan_summary)
+
+func update_full_plan(full_plan_data: Array) -> void:
+    """Update the full plan data and refresh the status bar"""
+    # Update status bar with full plan if it exists
+    if status_bar and status_bar.has_method("update_full_plan"):
+        status_bar.update_full_plan(full_plan_data)
+    elif status_bar and status_bar.has_method("update_status"):
+        # Fallback to summary if full plan method doesn't exist
+        status_bar.update_status(plan_summary)
+
+func set_status_bar_visibility(visible: bool) -> void:
+    """Set the visibility of the status bar"""
+    if status_bar and status_bar.has_method("set_visibility"):
+        status_bar.set_visibility(visible)

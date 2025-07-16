@@ -5,7 +5,7 @@ extends Control
 # UI References
 @onready var energy_label = $TopBar/HBoxContainer/EnergyLabel
 @onready var node_label = $TopBar/HBoxContainer/NodeLabel
-@onready var selection_info_container = $TopBar/HBoxContainer/SelectionInfoContainer
+@onready var action_queue_list = $UnitActionQueuePanel/MarginContainer/ScrollContainer/ActionQueueList
 @onready var command_input = $BottomBar/HBoxContainer/CommandInput
 @onready var spawn_scout_button = $BottomBar/HBoxContainer/SpawnButtons/SpawnScout
 @onready var spawn_tank_button = $BottomBar/HBoxContainer/SpawnButtons/SpawnTank
@@ -216,23 +216,163 @@ func _update_node_display(count: int):
 
 func _update_selection_display(selected_units: Array):
     # Clear previous labels
-    for child in selection_info_container.get_children():
+    for child in action_queue_list.get_children():
         child.queue_free()
 
     if selected_units.is_empty():
         var label = Label.new()
-        label.text = "Selected: 0"
-        label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-        selection_info_container.add_child(label)
+        label.text = "No units selected."
+        action_queue_list.add_child(label)
     else:
+        # Show detailed plan data for selected units
         for unit in selected_units:
             if not is_instance_valid(unit): continue
-            var plan_summary = unit.get("plan_summary", "Idle")
-            var label_text = "%s (%s): %s" % [unit.archetype.capitalize(), unit.unit_id.right(4), plan_summary]
-            var label = Label.new()
-            label.text = label_text
-            label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-            selection_info_container.add_child(label)
+            
+            var unit_short_id = unit.unit_id.right(4) if unit.unit_id.length() >= 4 else unit.unit_id
+            var unit_header = "[font_size=20][b]%s (%s)[/b][/font_size]" % [unit.archetype.capitalize(), unit_short_id]
+            
+            # Add unit header
+            var header_label = RichTextLabel.new()
+            header_label.bbcode_enabled = true
+            header_label.text = unit_header
+            header_label.fit_content = true
+            action_queue_list.add_child(header_label)
+            
+            # Show detailed plan if available
+            var full_plan = []
+            if "full_plan" in unit and unit.full_plan is Array:
+                full_plan = unit.full_plan
+            
+            if not full_plan.is_empty():
+                var sequential_steps = full_plan.filter(func(s): return s.get("status") != "triggered")
+                var triggered_steps = full_plan.filter(func(s): return s.get("status") == "triggered")
+
+                if not sequential_steps.is_empty():
+                    _add_detailed_plan_display(sequential_steps)
+                else:
+                    var no_plan_label = RichTextLabel.new()
+                    no_plan_label.bbcode_enabled = true
+                    no_plan_label.text = "[i]No sequential plan.[/i]"
+                    no_plan_label.fit_content = true
+                    action_queue_list.add_child(no_plan_label)
+
+                if not triggered_steps.is_empty():
+                    var separator = RichTextLabel.new()
+                    separator.bbcode_enabled = true
+                    separator.text = "\n[center][color=gray]Conditional Actions[/color][/center]"
+                    separator.fit_content = true
+                    action_queue_list.add_child(separator)
+                    _add_detailed_plan_display(triggered_steps)
+            else:
+                _add_simple_status_display(unit)
+            
+            # Add separator between units if multiple selected
+            if selected_units.size() > 1:
+                var separator = Label.new()
+                separator.text = "─────────────────"
+                separator.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+                action_queue_list.add_child(separator)
+
+
+
+func _add_detailed_plan_display(full_plan: Array) -> void:
+    """Add detailed plan display to the action queue panel"""
+    for i in range(full_plan.size()):
+        var step = full_plan[i]
+        var action = step.get("action", "Unknown")
+        var status = step.get("status", "pending")
+        var trigger = step.get("trigger", "")
+        
+        # Status indicator
+        var status_icon = ""
+        var status_color = "white"
+        match status:
+            "completed":
+                status_icon = "✓"
+                status_color = "green"
+            "active":
+                status_icon = "►"
+                status_color = "yellow"
+            "pending":
+                status_icon = "○"
+                status_color = "gray"
+            "triggered":
+                status_icon = "⚡" # Lightning bolt for trigger
+                status_color = "orange"
+        
+        # Action color
+        var action_color = _get_action_color_hud(action)
+        
+        # Build step text
+        var step_text = "[font_size=16][color=%s]%s[/color] [color=%s]%s[/color]" % [status_color, status_icon, action_color, action]
+        
+        # Add trigger info if available and step is not completed
+        if not trigger.is_empty() and status != "completed":
+            var short_trigger = _shorten_trigger_hud(trigger)
+            step_text += " [color=lightgray][font_size=14](%s)[/font_size][/color]" % short_trigger
+        
+        step_text += "[/font_size]"
+        
+        var step_label = RichTextLabel.new()
+        step_label.bbcode_enabled = true
+        step_label.text = step_text
+        step_label.fit_content = true
+        action_queue_list.add_child(step_label)
+
+func _add_simple_status_display(unit: Node) -> void:
+    """Add simple status display for units without full plan data"""
+    var plan_summary = "Idle"
+    if "plan_summary" in unit:
+        plan_summary = unit.plan_summary
+    
+    var status_text = "[font_size=16][color=lightblue]%s[/color][/font_size]" % plan_summary
+    
+    var status_label = RichTextLabel.new()
+    status_label.bbcode_enabled = true
+    status_label.text = status_text
+    status_label.fit_content = true
+    action_queue_list.add_child(status_label)
+
+func _get_action_color_hud(action: String) -> String:
+    """Get color for action type in HUD display"""
+    var action_lower = action.to_lower()
+    
+    if "move" in action_lower or "patrol" in action_lower:
+        return "cyan"
+    elif "attack" in action_lower or "charge" in action_lower:
+        return "red"
+    elif "heal" in action_lower:
+        return "green"
+    elif "construct" in action_lower or "repair" in action_lower:
+        return "yellow"
+    elif "retreat" in action_lower or "cover" in action_lower:
+        return "orange"
+    elif "stealth" in action_lower or "shield" in action_lower:
+        return "purple"
+    elif "follow" in action_lower:
+        return "lightblue"
+    else:
+        return "white"
+
+func _shorten_trigger_hud(trigger: String) -> String:
+    """Shorten trigger text for HUD display"""
+    # Replace common trigger phrases with shorter versions
+    var shortened = trigger
+    shortened = shortened.replace("enemy_in_range", "enemy near")
+    shortened = shortened.replace("health_pct", "HP")
+    shortened = shortened.replace("ammo_pct", "ammo")
+    shortened = shortened.replace("elapsed_ms", "time")
+    shortened = shortened.replace("under_fire", "taking dmg")
+    shortened = shortened.replace("target_dead", "target down")
+    shortened = shortened.replace("ally_health_low", "ally hurt")
+    shortened = shortened.replace("nearby_enemies", "enemies near")
+    shortened = shortened.replace("is_moving", "moving")
+    
+    # Limit length
+    if shortened.length() > 25:
+        shortened = shortened.substr(0, 22) + "..."
+    
+    return shortened
 
 func _find_selection_system_old():
     """Find the selection system using multiple approaches"""

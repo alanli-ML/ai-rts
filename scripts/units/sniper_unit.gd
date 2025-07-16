@@ -12,24 +12,24 @@ func _ready() -> void:
 
 func _physics_process(delta: float):
 	if current_state == GameEnums.UnitState.CHARGING_SHOT:
-		velocity = Vector3.ZERO # Cannot move
+		can_move = false
 		if not is_instance_valid(target_unit):
 			current_state = GameEnums.UnitState.IDLE
-			return
-		
-		look_at(target_unit.global_position, Vector3.UP)
-		
-		charge_timer -= delta
-		if charge_timer <= 0:
-			if weapon_attachment and weapon_attachment.has_method("fire"):
-				# Fire with bonus damage
-				var original_damage = weapon_attachment.damage
-				weapon_attachment.damage *= 2.5
-				weapon_attachment.fire()
-				weapon_attachment.damage = original_damage # Reset damage
-			current_state = GameEnums.UnitState.IDLE
+		else:
+			look_at(target_unit.global_position, Vector3.UP)
+			charge_timer -= delta
+			if charge_timer <= 0:
+				if weapon_attachment and weapon_attachment.has_method("fire"):
+					# Fire with bonus damage
+					var original_damage = weapon_attachment.damage
+					weapon_attachment.damage *= 2.5
+					weapon_attachment.fire()
+					weapon_attachment.damage = original_damage # Reset damage
+				current_state = GameEnums.UnitState.IDLE
 	else:
-		super._physics_process(delta)
+		can_move = true
+
+	super._physics_process(delta)
 
 # --- Action Placeholders ---
 

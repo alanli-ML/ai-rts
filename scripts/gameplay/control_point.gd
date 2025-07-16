@@ -37,15 +37,17 @@ signal capture_progress_changed(point_id: String, progress: float, team_id: int)
 
 func _ready() -> void:
     if control_point_id.is_empty():
-        control_point_id = "cp_" + str(randi())
+        push_error("ControlPoint ID must be set externally. Falling back to node name.")
+        control_point_id = name
     if control_point_name.is_empty():
-        control_point_name = "Control Point " + control_point_id
+        control_point_name = name
     
     _create_visual_components()
     _create_capture_area()
     
     add_to_group("control_points")
-    set_physics_process(true)
+    # Server is authoritative for capture logic
+    set_physics_process(multiplayer.is_server())
     print("ControlPoint %s (%s) initialized" % [control_point_id, control_point_name])
 
 func _physics_process(delta: float) -> void:
@@ -68,10 +70,13 @@ func _physics_process(delta: float) -> void:
              _check_for_state_change(old_capture_value)
              capture_progress_changed.emit(control_point_id, abs(capture_value), get_controlling_team())
     
-    # Visuals update based on state, which should be synced to clients
-    # For server logic, this is sufficient. Client-side would interpolate.
-    _update_visual_state()
-    _update_visual_effects(unit_advantage)
+    # On host, also update visuals directly to avoid relying on network loopback
+    if DisplayServer.get_name() != "headless":
+        var data_for_host = {
+            "team_id": get_controlling_team(),
+            "capture_value": capture_value
+        }
+        update_client_visuals(data_for_host)
 
 func _check_for_state_change(old_value: float):
     var old_team = _get_team_from_value(old_value)
@@ -99,13 +104,33 @@ func _create_visual_components():
     base_mesh.mesh = CylinderMesh.new()
     base_mesh.mesh.top_radius = GameConstants.CONTROL_POINT_RADIUS * 0.8
     base_mesh.mesh.bottom_radius = GameConstants.CONTROL_POINT_RADIUS * 0.8
-    base_mesh.mesh.height = 0.5
+    base_mesh.mesh.height = 1.0 # Make it taller
+    base_mesh.position.y = 0.5 # Lift it so its bottom is at y=0 relative to the control point
     var base_material = StandardMaterial3D.new()
     base_material.albedo_color = team_colors[0]
     base_material.metallic = 0.3
     base_material.roughness = 0.7
     base_mesh.material_override = base_material
     add_child(base_mesh)
+
+    # Add progress ring for capture visualization
+    progress_ring = MeshInstance3D.new()
+    progress_ring.name = "ProgressRing"
+    var ring_mesh = TorusMesh.new()
+    ring_mesh.inner_radius = GameConstants.CONTROL_POINT_RADIUS - 0.5 # Make it thicker
+    ring_mesh.outer_radius = GameConstants.CONTROL_POINT_RADIUS
+    progress_ring.mesh = ring_mesh
+    progress_ring.rotation_degrees.x = 90
+    progress_ring.position.y = 1.01 # Place it on top of the taller base mesh
+    var ring_material = StandardMaterial3D.new()
+    ring_material.albedo_color = Color.YELLOW
+    ring_material.emission_enabled = true
+    ring_material.emission = Color.YELLOW
+    ring_material.emission_energy_multiplier = 2.0
+    ring_material.cull_mode = BaseMaterial3D.CULL_DISABLED # To make it visible from both sides
+    progress_ring.material_override = ring_material
+    progress_ring.visible = false
+    add_child(progress_ring)
 
 func _create_capture_area():
     capture_area = Area3D.new()
@@ -146,17 +171,39 @@ func _cleanup_invalid_units():
         if units_in_range[team_id].is_empty():
             units_in_range.erase(team_id)
 
-func _update_visual_state():
-    if not base_mesh: return
-    var team = get_controlling_team()
-    var color = team_colors[team]
-    if base_mesh.material_override:
-        base_mesh.material_override.albedo_color = color
+func update_client_visuals(data: Dictionary):
+    var team_id = data.get("team_id", 0)
+    var new_capture_value = data.get("capture_value", 0.0)
 
-func _update_visual_effects(_unit_advantage: int):
-    # This is primarily for client-side feedback.
-    # The server logic is complete without this.
-    pass
+    # Update base color
+    if base_mesh and base_mesh.material_override:
+        var target_color = team_colors.get(team_id, team_colors[0])
+        # Set color directly for immediate feedback
+        base_mesh.material_override.albedo_color = target_color
+
+    # Update progress ring
+    if progress_ring and progress_ring.material_override:
+        var is_contested = (abs(new_capture_value) < 1.0 and new_capture_value != 0.0)
+        progress_ring.visible = is_contested
+
+        if is_contested:
+            var progress = abs(new_capture_value)
+            
+            # Determine which team is capturing to set the color
+            var capturing_team_id
+            if new_capture_value > 0: # Team 1 is capturing/losing
+                capturing_team_id = 1
+            else: # Team 2 is capturing/losing
+                capturing_team_id = 2
+            
+            var ring_color = team_colors.get(capturing_team_id, Color.YELLOW)
+            progress_ring.material_override.albedo_color = ring_color
+            progress_ring.material_override.emission = ring_color
+            
+            # Animate progress by scaling.
+            # This makes the ring grow from the center as a point is captured.
+            # Scale on X and Y because the Torus is rotated to lie flat in the XY plane.
+            progress_ring.scale = Vector3(progress, progress, 1.0)
 
 func reset_control_point():
     capture_value = 0.0

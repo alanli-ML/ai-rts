@@ -56,4 +56,4 @@ With the AI systems now capable of autonomous action, the next phase will focus 
 *   **Engineer**: "You are a combat engineer. Your main role is to build and maintain our infrastructure. Use `construct` to build structures at captured nodes. Your secondary role is to use `repair` on damaged buildings or allied units. When not building or repairing, you can support your squad in combat or use `lay_mines` to create defensive minefields at strategic chokepoints or to protect our base."
 
 ### 3. Action Queue Management (Complete)
-*   The `unit_state` object in the AI context now contains an `action_queue`, which is the unit's current plan (max 3 steps). The AI's response replaces this queue, allowing for dynamic, state-aware replanning.
+*   The `unit_state` object in the AI context now contains an `action_queue`, which is the unit's current plan (exactly 3 steps with triggers). The AI's response replaces this queue, allowing for dynamic, state-aware replanning.

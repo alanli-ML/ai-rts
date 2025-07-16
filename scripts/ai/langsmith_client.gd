@@ -197,31 +197,36 @@ func setup_openai_client(client: OpenAIClient) -> void:
 	openai_client = client
 	print("LangSmith wrapper configured for OpenAI client")
 
-func traced_chat_completion(messages: Array, callback: Callable, error_callback: Callable = Callable(), metadata: Dictionary = {}) -> String:
+func traced_chat_completion(messages: Array, callback: Callable, error_callback: Callable = Callable(), metadata: Dictionary = {}, model: String = "") -> String:
 	"""
 	Send a traced chat completion request
 	
 	Args:
 		messages: Array of message dictionaries
 		callback: Original callback function
+		error_callback: Error callback function
 		metadata: Additional metadata for tracing
+		model: Optional model override (uses OpenAI client default if empty)
 		
 	Returns:
 		String: Trace ID for this request
 	"""
 	var trace_id = _generate_trace_id()
 	
+	# Determine which model to use
+	var model_to_use = model if not model.is_empty() else (openai_client.model if openai_client else "gpt-4o")
+	
 	if not enable_tracing or api_key.is_empty():
 		# Fallback to direct OpenAI call without tracing
 		if openai_client:
-			openai_client.send_chat_completion(messages, callback)
+			_send_with_model_override(messages, callback, model_to_use)
 		return trace_id
 	
 	# Create trace data
 	var trace = TraceData.new(trace_id, "chat_completion")
 	trace.inputs = {
 		"messages": messages,
-		"model": openai_client.model if openai_client else "unknown",
+		"model": model_to_use,
 		"temperature": openai_client.temperature if openai_client else 0.7,
 		"max_tokens": openai_client.max_tokens if openai_client else 500
 	}
@@ -257,7 +262,7 @@ func traced_chat_completion(messages: Array, callback: Callable, error_callback:
 		if not openai_client.request_failed.is_connected(wrapped_error_callback):
 			openai_client.request_failed.connect(wrapped_error_callback, CONNECT_ONE_SHOT)
 		
-		openai_client.send_chat_completion(messages, wrapped_callback)
+		_send_with_model_override(messages, wrapped_callback, model_to_use)
 	
 	trace_started.emit(trace_id)
 	return trace_id
@@ -487,6 +492,30 @@ func set_session_name(session: String) -> void:
 	"""Set the session name for grouping traces"""
 	session_name = session
 	print("LangSmith session set to: " + session)
+
+func _send_with_model_override(messages: Array, callback: Callable, model_override: String) -> void:
+	"""Send chat completion request with temporary model override"""
+	if not openai_client:
+		print("LangSmith: No OpenAI client available for model override")
+		return
+	
+	# Store original model
+	var original_model = openai_client.model
+	
+	# Set override model temporarily
+	openai_client.model = model_override
+	print("LangSmith: Using model override: %s (was: %s)" % [model_override, original_model])
+	
+	# Create a callback wrapper to restore original model
+	var restore_callback = func(response: Dictionary):
+		# Restore original model
+		openai_client.model = original_model
+		print("LangSmith: Restored original model: %s" % original_model)
+		# Call original callback
+		callback.call(response)
+	
+	# Send request with override model
+	openai_client.send_chat_completion(messages, restore_callback)
 
 func flush_traces() -> void:
 	"""Force completion of any pending traces (for cleanup)"""

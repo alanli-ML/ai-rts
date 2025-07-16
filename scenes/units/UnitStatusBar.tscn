@@ -1,0 +1,36 @@
+[gd_scene load_steps=3 format=3 uid="uid://bk7j8xnap2q1r"]
+
+[ext_resource type="Script" path="res://scripts/units/unit_status_bar.gd" id="1_status_bar"]
+
+[sub_resource type="QuadMesh" id="QuadMesh_1"]
+size = Vector2(4, 1.2)
+
+[node name="UnitStatusBar" type="Node3D"]
+script = ExtResource("1_status_bar")
+
+[node name="StatusQuad" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5, 0)
+mesh = SubResource("QuadMesh_1")
+
+[node name="SubViewport" type="SubViewport" parent="StatusQuad"]
+size = Vector2i(800, 240)
+render_target_update_mode = 4
+
+[node name="StatusPanel" type="Panel" parent="StatusQuad/SubViewport"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.7)
+
+[node name="StatusLabel" type="RichTextLabel" parent="StatusQuad/SubViewport/StatusPanel"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 8.0
+offset_right = -16.0
+offset_bottom = -8.0
+bbcode_enabled = true
+text = "[center][font_size=18][color=white]Idle[/color][/font_size][/center]"
+fit_content = true
+scroll_active = false 

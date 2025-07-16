@@ -20,6 +20,16 @@ func _physics_process(delta: float):
 		shield_cooldown_timer -= delta
 	super._physics_process(delta)
 
+	# If we are the host, manage our own visuals.
+	if multiplayer.is_server() and DisplayServer.get_name() != "headless":
+		if shield_active and not is_instance_valid(shield_node):
+			var shield_scene = preload("res://scenes/fx/ShieldEffect.tscn")
+			shield_node = shield_scene.instantiate()
+			add_child(shield_node)
+		elif not shield_active and is_instance_valid(shield_node):
+			shield_node.queue_free()
+			shield_node = null
+
 # --- Action Implementation ---
 
 func activate_shield(_params: Dictionary):

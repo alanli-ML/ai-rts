@@ -1,9 +1,17 @@
-[gd_scene load_steps=2 format=3 uid="uid://bxu7w8k9l2n5p"]
+[gd_scene load_steps=3 format=3 uid="uid://bxu7w8k9l2n5p"]
 
 [ext_resource type="Script" path="res://scripts/units/animated_unit.gd" id="1_animated_unit"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_1"]
+radius = 2.5
+height = 4.0
 
 [node name="AnimatedUnit" type="CharacterBody3D"]
 script = ExtResource("1_animated_unit") 
 
 [node name="ModelContainer" type="Node3D" parent="."]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 0)
+shape = SubResource("CapsuleShape3D_1")
 [connection signal="script_changed" from="." to="." method="_on_script_changed"]

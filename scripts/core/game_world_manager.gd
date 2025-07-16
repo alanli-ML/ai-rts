@@ -161,9 +161,8 @@ func initialize_game_world() -> void:
             static_world_initializer.initialize_static_world()
         else:
             logger.info("GameWorldManager", "Procedural generation successful, using procedural world")
-            # Spawn units even when using procedural world
-            logger.info("GameWorldManager", "Spawning units for procedural world")
-            static_world_initializer.initialize_units_3d()
+            # Unit spawning is now handled by SessionManager only - removed redundant call
+            logger.info("GameWorldManager", "Procedural world ready - units will be spawned by SessionManager")
     else:
         logger.info("GameWorldManager", "No map generator - using static world")
         # Fallback to static control points when no map generator

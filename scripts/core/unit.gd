@@ -85,101 +85,92 @@ func _load_archetype_stats() -> void:
 func _physics_process(delta: float) -> void:
     if is_dead: return
 
-    if current_state == GameEnums.UnitState.FOLLOWING:
-        if not is_instance_valid(follow_target) or follow_target.is_dead:
-            current_state = GameEnums.UnitState.IDLE
-            follow_target = null
-        else:
-            var distance_to_follow_target = global_position.distance_to(follow_target.global_position)
-            if distance_to_follow_target > FOLLOW_DISTANCE:
-                navigation_agent.target_position = follow_target.global_position
-            else:
-                # Stop moving if close enough
-                navigation_agent.target_position = global_position
+    # Always apply gravity regardless of state
+    if not is_on_floor():
+        velocity.y += get_gravity().y * delta
 
+    # State machine logic
     match current_state:
         GameEnums.UnitState.ATTACKING:
             if not is_instance_valid(target_unit) or target_unit.is_dead:
                 current_state = GameEnums.UnitState.IDLE
-                return
-            
-            var distance = global_position.distance_to(target_unit.global_position)
-            if distance > attack_range:
-                # Move towards target
-                move_to(target_unit.global_position)
             else:
-                # Stop moving and attack
-                velocity = Vector3.ZERO
-                
-                # Turn to face the target
-                look_at(target_unit.global_position, Vector3.UP)
-                
-                var current_time = Time.get_ticks_msec() / 1000.0
-                if current_time - last_attack_time >= attack_cooldown:
-                    if weapon_attachment and weapon_attachment.has_method("fire"):
-                        if weapon_attachment.can_fire():
-                            weapon_attachment.fire()
-                    else:
-                        # Fallback for units without weapon attachment
-                        target_unit.take_damage(attack_damage)
-                    last_attack_time = current_time
+                var distance = global_position.distance_to(target_unit.global_position)
+                if distance > attack_range:
+                    move_to(target_unit.global_position)
+                else:
+                    # Stop moving and attack
+                    velocity.x = 0
+                    velocity.z = 0
+                    look_at(target_unit.global_position, Vector3.UP)
+                    var current_time = Time.get_ticks_msec() / 1000.0
+                    if current_time - last_attack_time >= attack_cooldown:
+                        if weapon_attachment and weapon_attachment.has_method("fire"):
+                            if weapon_attachment.can_fire():
+                                weapon_attachment.fire()
+                        else:
+                            target_unit.take_damage(attack_damage)
+                        last_attack_time = current_time
         
         GameEnums.UnitState.HEALING:
             if not is_instance_valid(target_unit) or target_unit.is_dead or target_unit.get_health_percentage() >= 1.0:
                 current_state = GameEnums.UnitState.IDLE
-                return
-
-            var distance = global_position.distance_to(target_unit.global_position)
-            if distance > attack_range: # Use attack_range as heal_range for simplicity
-                move_to(target_unit.global_position)
             else:
-                velocity = Vector3.ZERO
-                if target_unit.has_method("receive_healing"):
-                    # Assumes medic unit has a 'heal_rate' property
-                    var heal_rate = self.heal_rate if "heal_rate" in self else 10.0
-                    target_unit.receive_healing(heal_rate * delta)
+                var distance = global_position.distance_to(target_unit.global_position)
+                if distance > attack_range: # Use attack_range as heal_range for simplicity
+                    move_to(target_unit.global_position)
+                else:
+                    velocity.x = 0
+                    velocity.z = 0
+                    if target_unit.has_method("receive_healing"):
+                        var heal_rate = self.heal_rate if "heal_rate" in self else 10.0
+                        target_unit.receive_healing(heal_rate * delta)
     
         GameEnums.UnitState.CONSTRUCTING, GameEnums.UnitState.REPAIRING:
             if not is_instance_valid(target_building):
                 current_state = GameEnums.UnitState.IDLE
-                return
-            
-            var distance = global_position.distance_to(target_building.global_position)
-            if distance > attack_range: # Use attack_range as build_range
-                move_to(target_building.global_position)
             else:
-                velocity = Vector3.ZERO
-                if target_building.has_method("add_construction_progress"):
-                    # Assumes engineer has a build_rate property
-                    var build_rate = self.build_rate if "build_rate" in self else 0.1
-                    target_building.add_construction_progress(build_rate * delta)
-                
-                # If construction is done, go back to idle
-                if target_building.is_operational:
-                    current_state = GameEnums.UnitState.IDLE
-                    target_building = null
+                var distance = global_position.distance_to(target_building.global_position)
+                if distance > attack_range: # Use attack_range as build_range
+                    move_to(target_building.global_position)
+                else:
+                    velocity.x = 0
+                    velocity.z = 0
+                    if target_building.has_method("add_construction_progress"):
+                        var build_rate = self.build_rate if "build_rate" in self else 0.1
+                        target_building.add_construction_progress(build_rate * delta)
+                    if target_building.is_operational:
+                        current_state = GameEnums.UnitState.IDLE
+                        target_building = null
         
         GameEnums.UnitState.LAYING_MINES:
-            velocity = Vector3.ZERO # Cannot move while laying mines
+            velocity.x = 0
+            velocity.z = 0
     
         _: # Default case for IDLE, MOVING, FOLLOWING etc.
-            # Apply gravity
-            if not is_on_floor():
-                velocity.y += get_gravity().y * delta
-            
+            if current_state == GameEnums.UnitState.FOLLOWING:
+                if not is_instance_valid(follow_target) or follow_target.is_dead:
+                    current_state = GameEnums.UnitState.IDLE
+                    follow_target = null
+                else:
+                    var distance_to_follow_target = global_position.distance_to(follow_target.global_position)
+                    if distance_to_follow_target > FOLLOW_DISTANCE:
+                        navigation_agent.target_position = follow_target.global_position
+                    else:
+                        navigation_agent.target_position = global_position # Stop
+
             if navigation_agent and not navigation_agent.is_navigation_finished():
                 var next_pos = navigation_agent.get_next_path_position()
                 var direction = global_position.direction_to(next_pos)
-                # Only modify X and Z for horizontal movement, preserve Y for gravity
-                velocity.x = direction.x * movement_speed
-                velocity.z = direction.z * movement_speed
+                var horizontal_direction = Vector3(direction.x, 0, direction.z).normalized()
+                velocity.x = horizontal_direction.x * movement_speed
+                velocity.z = horizontal_direction.z * movement_speed
             else:
-                # Stop horizontal movement but preserve gravity
                 velocity.x = 0
                 velocity.z = 0
-            
-            # Always call move_and_slide to apply physics
-            move_and_slide()
+
+    # Always call move_and_slide to apply physics
+    move_and_slide()
 
 func move_to(target_position: Vector3) -> void:
     current_state = GameEnums.UnitState.MOVING

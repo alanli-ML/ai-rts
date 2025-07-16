@@ -19,6 +19,8 @@ var team_resources: Dictionary = {}  # team_id -> ResourceData
 # System references (injected via dependency container)
 var ai_command_processor: Node
 var team_unit_spawner: Node
+var plan_executor: Node
+
 func _get_event_bus():
     if has_node("/root/EventBus"):
         return get_node("/root/EventBus")
@@ -74,6 +76,20 @@ func _gather_game_state() -> Dictionary:
     for unit_id in units:
         var unit = units[unit_id]
         if is_instance_valid(unit):
+            var plan_summary = "Idle"
+            if plan_executor and plan_executor.current_steps.has(unit_id):
+                var step = plan_executor.current_steps[unit_id]
+                if step and step is Dictionary:
+                    var action = step.get("action", "...")
+                    var params = step.get("params", {})
+                    plan_summary = "%s" % action.capitalize().replace("_", " ")
+                    if params.has("target_id"):
+                        var target_id = str(params.target_id)
+                        plan_summary += " %s" % target_id.right(4)
+                    elif params.has("position"):
+                        var p = params.position
+                        plan_summary += " (%d, %d)" % [p[0], p[2]]
+
             var unit_data = {
                 "id": unit.unit_id,
                 "archetype": unit.archetype,
@@ -83,7 +99,8 @@ func _gather_game_state() -> Dictionary:
                 "health": unit.current_health,
                 "is_stealthed": unit.is_stealthed if "is_stealthed" in unit else false,
                 "shield_active": false,
-                "shield_pct": 0.0
+                "shield_pct": 0.0,
+                "plan_summary": plan_summary
             }
             if unit.has_method("get") and "shield_active" in unit:
                 unit_data["shield_active"] = unit.shield_active
@@ -139,7 +156,7 @@ func _connect_system_signals() -> void:
         ai_command_processor.command_failed.connect(_on_ai_command_failed)
     
     # Connect PlanExecutor signals
-    var plan_executor = dependency_container.get_node_or_null("PlanExecutor")
+    plan_executor = dependency_container.get_node_or_null("PlanExecutor")
     if plan_executor:
         plan_executor.speech_triggered.connect(_on_speech_triggered)
 
@@ -499,7 +516,6 @@ func _on_ai_think_timer_timeout():
                 # Use a generic command for autonomous action.
                 # The AICommandProcessor will see this and generate a suitable prompt.
                 var unit_id_array: Array[String] = [unit_id]
-                ai_command_processor.process_command("autonomously decide next action", unit_id_array)
                 ai_command_processor.process_command("autonomously decide next action", unit_id_array)
 
 func set_match_state(new_state: String):

@@ -92,7 +92,19 @@ You MUST respond with a JSON object in the following format:
 You will be given a detailed context object. Use it to make tactical decisions.
 The context includes `visible_control_points`, which are strategic locations to capture. Capturing points is key to victory.
 When asked to act autonomously, you should decide the best course of action based on your personality and the game context. When given a direct command, you should follow it while adhering to your personality.
+
+IMPORTANT: You may ONLY use actions from the following list. Do not invent new actions.
 Available actions: %s
+
+Action Parameter Examples:
+- "move_to": {"position": [x: float, y: float, z: float]}
+- "attack": {"target_id": "string_unit_id"}
+- "follow": {"target_id": "string_unit_id"}
+- "heal_target": {"target_id": "string_unit_id"}
+- "repair": {"target_id": "string_building_or_unit_id"}
+- "construct": {"building_type": "string_building_name", "position": [x: float, y: float, z: float]}
+- For actions with no parameters like "activate_shield" or "lay_mines", use {}.
+
 Available triggers: health_pct, ammo_pct, morale, under_fire, target_dead, enemy_in_range, enemy_dist, ally_health_low, nearby_enemies, is_moving, elapsed_ms.
 
 UNIT PERSONALITY:

@@ -5,7 +5,7 @@ extends Control
 # UI References
 @onready var energy_label = $TopBar/HBoxContainer/EnergyLabel
 @onready var node_label = $TopBar/HBoxContainer/NodeLabel
-@onready var selection_info_label = $TopBar/HBoxContainer/SelectionInfoLabel
+@onready var selection_info_container = $TopBar/HBoxContainer/SelectionInfoContainer
 @onready var command_input = $BottomBar/HBoxContainer/CommandInput
 @onready var spawn_scout_button = $BottomBar/HBoxContainer/SpawnButtons/SpawnScout
 @onready var spawn_tank_button = $BottomBar/HBoxContainer/SpawnButtons/SpawnTank
@@ -215,7 +215,24 @@ func _update_node_display(count: int):
     node_label.text = "Nodes: %d/9" % count
 
 func _update_selection_display(selected_units: Array):
-    selection_info_label.text = "Selected: %d" % selected_units.size()
+    # Clear previous labels
+    for child in selection_info_container.get_children():
+        child.queue_free()
+
+    if selected_units.is_empty():
+        var label = Label.new()
+        label.text = "Selected: 0"
+        label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+        selection_info_container.add_child(label)
+    else:
+        for unit in selected_units:
+            if not is_instance_valid(unit): continue
+            var plan_summary = unit.get("plan_summary", "Idle")
+            var label_text = "%s (%s): %s" % [unit.archetype.capitalize(), unit.unit_id.right(4), plan_summary]
+            var label = Label.new()
+            label.text = label_text
+            label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+            selection_info_container.add_child(label)
 
 func _find_selection_system_old():
     """Find the selection system using multiple approaches"""

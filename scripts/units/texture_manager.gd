@@ -150,28 +150,37 @@ func apply_weapon_texture_with_team_color(weapon_model: Node3D, team_color: Colo
 
 func _apply_texture_to_mesh(mesh_instance: MeshInstance3D, texture: Texture2D) -> bool:
 	"""Apply texture to a specific mesh instance"""
-	if not mesh_instance or not texture:
+	if not mesh_instance or not texture or not mesh_instance.mesh:
 		return false
 	
-	# Create or modify the material
-	var material: StandardMaterial3D
+	# Get existing material or create from mesh surface material
+	var material = mesh_instance.get_surface_override_material(0)
 	
-	if mesh_instance.material_override and mesh_instance.material_override is StandardMaterial3D:
-		material = mesh_instance.material_override as StandardMaterial3D
-	else:
+	# If no override material, try to get the mesh's built-in material
+	if not material and mesh_instance.mesh.surface_get_material(0):
+		material = mesh_instance.mesh.surface_get_material(0)
+		
+	# Create new material if none exists
+	if not material:
 		material = StandardMaterial3D.new()
-		mesh_instance.material_override = material
 	
-	# Apply the texture
-	material.albedo_texture = texture
-	material.albedo_color = Color.WHITE  # Reset color to white so texture shows properly
+	# Always duplicate material to avoid affecting other instances
+	material = material.duplicate()
 	
-	# Set up material properties for better appearance
-	material.metallic = 0.0
-	material.roughness = 0.7
-	material.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	# Apply the texture and set up material properties
+	if material is StandardMaterial3D:
+		var std_material = material as StandardMaterial3D
+		std_material.albedo_texture = texture
+		std_material.albedo_color = Color.WHITE  # Reset color to white so texture shows properly
+		std_material.metallic = 0.0
+		std_material.roughness = 0.7
+		std_material.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+		
+		# Set the material to the mesh instance
+		mesh_instance.set_surface_override_material(0, std_material)
+		return true
 	
-	return true
+	return false
 
 func _get_mesh_instances_recursive(node: Node) -> Array[MeshInstance3D]:
 	"""Recursively collect all MeshInstance3D nodes"""

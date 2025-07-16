@@ -298,23 +298,38 @@ func _apply_team_colors(team_id: int) -> void:
 	var mesh_instances = _get_mesh_instances_recursive(weapon_model)
 	
 	for mesh_instance in mesh_instances:
-		if mesh_instance.material_override:
-			var material = mesh_instance.material_override as StandardMaterial3D
-			if material:
-				# Apply subtle team color accent
-				material.emission_enabled = true
-				material.emission = team_color * 0.1
-				material.metallic = 0.6
-				material.roughness = 0.4
-		else:
-			# Create new material with team color
-			var new_material = StandardMaterial3D.new()
-			new_material.albedo_color = Color(0.6, 0.6, 0.6)  # Base weapon color
-			new_material.emission_enabled = true
-			new_material.emission = team_color * 0.1
-			new_material.metallic = 0.6
-			new_material.roughness = 0.4
-			mesh_instance.material_override = new_material
+		if not is_instance_valid(mesh_instance) or not mesh_instance.mesh:
+			continue
+			
+		# Get existing material or create from mesh surface material
+		var material = mesh_instance.get_surface_override_material(0)
+		
+		# If no override material, try to get the mesh's built-in material
+		if not material and mesh_instance.mesh.surface_get_material(0):
+			material = mesh_instance.mesh.surface_get_material(0)
+		
+		# Create new material if none exists
+		if not material:
+			material = StandardMaterial3D.new()
+			# Set base weapon appearance
+			material.albedo_color = Color(0.6, 0.6, 0.6)  # Base weapon color
+			material.metallic = 0.6
+			material.roughness = 0.4
+			material.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+		
+		# Always duplicate material to avoid affecting other instances
+		if material:
+			material = material.duplicate()
+			
+			# Apply team color accent
+			if material is StandardMaterial3D:
+				var std_material = material as StandardMaterial3D
+				std_material.emission_enabled = true
+				std_material.emission = team_color * 0.1
+				std_material.metallic = 0.6
+				std_material.roughness = 0.4
+			
+			mesh_instance.set_surface_override_material(0, material)
 
 func _get_mesh_instances_recursive(node: Node) -> Array[MeshInstance3D]:
 	"""Recursively collect all MeshInstance3D nodes"""

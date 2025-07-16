@@ -159,30 +159,41 @@ func _set_model_transparency(model_container: Node3D, alpha_value: float) -> voi
 	for mesh_instance in mesh_instances:
 		if not is_instance_valid(mesh_instance):
 			continue
-			
-		# Get or create material
-		var material = mesh_instance.get_surface_override_material(0)
-		if not material:
-			material = mesh_instance.get_surface_override_material(0)
-			if not material:
-				# Create a new StandardMaterial3D if none exists
-				material = StandardMaterial3D.new()
-				mesh_instance.set_surface_override_material(0, material)
 		
-		# Clone material to avoid affecting other instances
-		if material and not material.resource_local_to_scene:
+		# Skip if no mesh or surfaces
+		if not mesh_instance.mesh or mesh_instance.get_surface_override_material_count() == 0:
+			continue
+			
+		# Get existing material or create from mesh surface material
+		var material = mesh_instance.get_surface_override_material(0)
+		
+		# If no override material, try to get the mesh's built-in material
+		if not material and mesh_instance.mesh.surface_get_material(0):
+			material = mesh_instance.mesh.surface_get_material(0)
+			
+		# If still no material, create a basic one with proper initialization
+		if not material:
+			material = StandardMaterial3D.new()
+			# Set basic material properties to avoid null parameter errors
+			material.albedo_color = Color.WHITE
+			material.metallic = 0.0
+			material.roughness = 0.7
+			material.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+		
+		# Always duplicate the material to avoid affecting other instances
+		if material:
 			material = material.duplicate()
 			mesh_instance.set_surface_override_material(0, material)
-		
-		# Set transparency properties
-		if material is StandardMaterial3D:
-			var std_material = material as StandardMaterial3D
-			if alpha_value < 1.0:
-				std_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-				std_material.albedo_color.a = alpha_value
-			else:
-				std_material.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
-				std_material.albedo_color.a = 1.0
+			
+			# Apply transparency settings
+			if material is StandardMaterial3D:
+				var std_material = material as StandardMaterial3D
+				if alpha_value < 1.0:
+					std_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+					std_material.albedo_color.a = alpha_value
+				else:
+					std_material.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED  
+					std_material.albedo_color.a = 1.0
 
 func _find_all_mesh_instances(node: Node) -> Array[MeshInstance3D]:
 	"""Recursively find all MeshInstance3D nodes"""

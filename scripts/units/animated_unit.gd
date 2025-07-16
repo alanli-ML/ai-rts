@@ -49,19 +49,48 @@ func _load_model() -> void:
 		print("ERROR: Could not load model for archetype %s at path %s" % [archetype, model_path])
 
 func play_animation(animation_name: String):
-	if animation_player and animation_player.has_animation(animation_name):
+	if not animation_player:
+		return
+		
+	# First try exact match
+	if animation_player.has_animation(animation_name):
 		animation_player.play(animation_name)
-	elif animation_player:
-		# Fallback for case differences (e.g., "walk" vs "Walk" or "Run")
-		for anim in animation_player.get_animation_list():
-			if anim.to_lower() == animation_name.to_lower():
-				animation_player.play(anim)
-				return
-		# Second fallback for common run/walk variations
-		if animation_name == "Run" and animation_player.has_animation("Walk"):
-			animation_player.play("Walk")
+		return
+	
+	# Get all available animations
+	var available_animations = animation_player.get_animation_list()
+	
+	# Try case-insensitive match
+	for anim in available_animations:
+		if anim.to_lower() == animation_name.to_lower():
+			animation_player.play(anim)
 			return
-		print("WARN: Animation '%s' not found." % animation_name)
+	
+	# Animation mappings for fallbacks based on actual Kenney animations
+	var animation_mappings = {
+		"Run": ["sprint", "walk"],  # No "Run" exists, use sprint or walk
+		"Walk": ["walk", "sprint"],
+		"Idle": ["idle", "static"],
+		"Attack": ["holding-both-shoot", "holding-left-shoot", "holding-right-shoot", "attack-melee-left", "attack-melee-right"],
+		"Die": ["die"],
+		"Death": ["die"],  # Map Death to die
+		"Sprint": ["sprint", "walk"],
+		"Shoot": ["holding-both-shoot", "holding-left-shoot", "holding-right-shoot"]
+	}
+	
+	# Try mapped fallbacks
+	if animation_name in animation_mappings:
+		for fallback in animation_mappings[animation_name]:
+			if animation_player.has_animation(fallback):
+				animation_player.play(fallback)
+				return
+	
+	# Final fallback - play the first available animation if nothing else works
+	if available_animations.size() > 0:
+		animation_player.play(available_animations[0])
+		print("INFO: Using fallback animation '%s' for requested '%s'" % [available_animations[0], animation_name])
+	else:
+		print("WARN: No animations available for '%s'" % animation_name)
 
 func update_client_visuals(server_velocity: Vector3, delta: float) -> void:
 	# Handle turning
@@ -112,12 +141,12 @@ func die_and_cleanup():
 	set_collision_layer_value(1, false) # No more selection/raycast hits
 	
 	_play_death_sound()
-	play_animation("Death")
+	play_animation("Die")
 	
 	# Wait for animation to finish before freeing
-	if animation_player and animation_player.has_animation("Death"):
+	if animation_player and animation_player.has_animation("die"):
 		# Get animation length to create a reliable timer
-		var death_anim = animation_player.get_animation("Death")
+		var death_anim = animation_player.get_animation("die")
 		if death_anim:
 			await get_tree().create_timer(death_anim.length).timeout
 		else:

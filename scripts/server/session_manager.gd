@@ -603,7 +603,8 @@ func _spawn_initial_units(session: Dictionary, map_node: Node) -> void:
         var archetypes = ["scout", "tank", "sniper", "medic", "engineer"]
         for i in range(archetypes.size()):
             var archetype = archetypes[i]
-            var unit_position = base_position + Vector3(i * 3, 0, 0) # Increased spacing
+            # Spacing increased from 3 to 6 to prevent collision shapes (radius 2.5) from overlapping at spawn.
+            var unit_position = base_position + Vector3(i * 6, 0, 0)
             var unit_id = await game_state.spawn_unit(archetype, team_id, unit_position, player_id)
             logger.info("SessionManager", "Spawned %s unit %s for player %s at %s" % [archetype, unit_id, player_id, unit_position])
     

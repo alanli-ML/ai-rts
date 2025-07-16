@@ -7,6 +7,7 @@ var logger: Node
 
 var active_plans: Dictionary = {}  # unit_id -> Array of steps (sequential plan)
 var active_triggered_actions: Dictionary = {} # unit_id -> Array of triggered actions
+var trigger_last_states: Dictionary = {} # unit_id -> { trigger_description -> bool }
 var current_steps: Dictionary = {} # unit_id -> current step
 var step_timers: Dictionary = {}   # unit_id -> float for step duration
 var trigger_contexts: Dictionary = {} # unit_id -> Dictionary from last trigger
@@ -54,6 +55,10 @@ func execute_plan(unit_id: String, plan_data: Dictionary) -> bool:
         logger.warning("PlanExecutor", "Unit not found in game state: %s" % unit_id)
         return false
 
+    # Reset trigger states for the new plan
+    if trigger_last_states.has(unit_id):
+        trigger_last_states.erase(unit_id)
+
     active_plans[unit_id] = plan_data.get("steps", [])
     active_triggered_actions[unit_id] = plan_data.get("triggered_actions", [])
     current_steps[unit_id] = null
@@ -74,6 +79,8 @@ func interrupt_plan(unit_id: String, reason: String) -> void:
         active_plans.erase(unit_id)
         if unit_id in active_triggered_actions:
             active_triggered_actions.erase(unit_id)
+        if trigger_last_states.has(unit_id):
+            trigger_last_states.erase(unit_id)
         current_steps.erase(unit_id)
         step_timers.erase(unit_id)
         plan_interrupted.emit(unit_id, reason)
@@ -155,7 +162,7 @@ func _evaluate_trigger(trigger_string: String, unit: Node, unit_context: Diction
     # Support both simple boolean triggers and comparison triggers
     var parts = trigger_string.split(" ", false, 2)
     
-    # Handle simple boolean triggers (e.g., "enemies_in_range", "under_fire")
+            # Handle simple triggers (now numeric: enemies_in_range, under_fire, nearby_enemies)
     if parts.size() == 1:
         var metric = parts[0].strip_edges()
         var metric_result = _get_metric_value(metric, unit, unit_context)
@@ -222,6 +229,9 @@ func _check_and_execute_triggered_action(unit_id: String, unit: Node) -> bool:
 
     var context = game_state.get_context_for_ai(unit)
     
+    if not trigger_last_states.has(unit_id):
+        trigger_last_states[unit_id] = {}
+    
     for triggered_action in active_triggered_actions[unit_id]:
         var trigger_result
         var trigger_description = ""
@@ -242,8 +252,15 @@ func _check_and_execute_triggered_action(unit_id: String, unit: Node) -> bool:
             trigger_result = _evaluate_trigger(trigger_string, unit, context)
         else:
             continue
+        
+        var current_trigger_state = trigger_result["result"]
+        var last_trigger_state = trigger_last_states[unit_id].get(trigger_description, false)
+        
+        # Update the last known state for this trigger
+        trigger_last_states[unit_id][trigger_description] = current_trigger_state
             
-        if trigger_result["result"]:
+        # A trigger only fires on a "rising edge" (when it becomes true after being false)
+        if current_trigger_state and not last_trigger_state:
             # Trigger fired! Execute this action.
             logger.info("PlanExecutor", "Unit %s: Trigger '%s' fired. Executing action '%s'." % [unit_id, trigger_description, triggered_action.get("action")])
             
@@ -269,11 +286,11 @@ func _evaluate_structured_trigger(source: String, comparison: String, value: Var
     # Handle special case metrics that return dictionaries with context
     if metric_result is Dictionary:
         if metric_result.has("result"):
-            # Boolean result with context (like enemies_in_range, ally_health_low)
+            # Boolean result with context (like ally_health_low, target_dead)
             current_value = metric_result.result
             metric_context = metric_result.get("context", {})
         elif metric_result.has("value"):
-            # Value result with context (like enemy_dist)
+            # Value result with context (like enemy_dist, enemies_in_range)
             current_value = metric_result.value
             metric_context = metric_result.get("context", {})
         else:
@@ -281,13 +298,8 @@ func _evaluate_structured_trigger(source: String, comparison: String, value: Var
     else:
         current_value = metric_result
     
-    # For boolean triggers like enemies_in_range, handle special cases
-    if source == "enemies_in_range":
-        # For boolean triggers, we might want to just check true/false
-        if comparison == "=" and (value == true or value == "true"):
-            return {"result": current_value, "context": metric_context}
-        elif comparison == "=" and (value == false or value == "false"):
-            return {"result": not current_value, "context": metric_context}
+    # Note: enemies_in_range, under_fire, and nearby_enemies now return counts (numbers)
+    # so they go through normal numeric comparison logic below
     
     # Convert value to appropriate type for comparison
     var comparison_value = value
@@ -338,15 +350,33 @@ func _get_metric_value(metric: String, unit: Node, unit_context: Dictionary) -> 
         "morale":
             return unit.morale
         "under_fire":
-            return unit_context.get("unit_state", {}).get("is_under_fire", false)
+            # Return count of enemies attacking this unit (0 if not under fire, 1+ if under fire)
+            var is_under_fire = unit_context.get("unit_state", {}).get("is_under_fire", false)
+            var attackers = unit_context.get("unit_state", {}).get("attackers", [])
+            if is_under_fire and attackers is Array:
+                return attackers.size()
+            elif is_under_fire:
+                return 1  # Fallback: if under fire but no attackers array, assume 1 attacker
+            else:
+                return 0
         "target_dead":
             return not is_instance_valid(unit.target_unit) or unit.target_unit.is_dead
         "enemies_in_range":
+            # Return count of enemies within attack range
             var enemies = unit_context.get("sensor_data", {}).get("visible_enemies", [])
+            var count = 0
+            var closest_enemy_id = ""
             for enemy in enemies:
-                if enemy.dist <= unit.attack_range:
-                    return {"result": true, "context": {"target_id": enemy.id}}
-            return {"result": false, "context": {}}
+                if enemy.get("dist", 9999.0) <= unit.attack_range:
+                    count += 1
+                    if closest_enemy_id.is_empty():
+                        closest_enemy_id = enemy.get("id", "")
+            
+            # Return count with context for the closest enemy (for targeting)
+            if count > 0:
+                return {"value": count, "context": {"target_id": closest_enemy_id}}
+            else:
+                return {"value": 0, "context": {}}
         "enemy_dist":
             var enemies = unit_context.get("sensor_data", {}).get("visible_enemies", [])
             if enemies.is_empty():

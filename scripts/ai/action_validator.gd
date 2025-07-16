@@ -55,6 +55,9 @@ func validate_plan(plan: Dictionary) -> Dictionary:
             return result
 
         var params = step.get("params", {})
+        # Handle null params (valid for some actions like activate_stealth, lay_mines, patrol)
+        if params == null:
+            params = {}
         if not _validate_parameters(action, params):
             result.valid = false
             result.error = "Invalid parameters for action '%s'." % action
@@ -94,6 +97,9 @@ func validate_plan(plan: Dictionary) -> Dictionary:
             return result
 
         var params = step.get("params", {})
+        # Handle null params (valid for some actions like activate_stealth, lay_mines, patrol)
+        if params == null:
+            params = {}
         if not _validate_parameters(action, params):
             result.valid = false
             result.error = "Invalid parameters for triggered action '%s'." % action
@@ -131,8 +137,8 @@ func _validate_parameters(action: String, params: Dictionary) -> bool:
             if not params.has("target_id") or not params.target_id is String:
                 return false
         "construct":
-            if not params.has("building_type") or not params.building_type is String:
-                return false
+            #if not params.has("building_type") or not params.building_type is String:
+            #    return false
             if not params.has("position") or not params.position is Array or params.position.size() != 3:
                 return false
         "repair":

@@ -97,6 +97,7 @@ func _gather_game_state() -> Dictionary:
                     var step = active_plan[i]
                     var action = step.get("action", "unknown")
                     var params = step.get("params", {})
+                    if params == null: params = {}
                     var action_display = action.capitalize().replace("_", " ")
                     if params.has("target_id"):
                         action_display += " " + str(params.target_id).right(4)
@@ -120,6 +121,7 @@ func _gather_game_state() -> Dictionary:
                 for step in triggered_actions:
                     var action = step.get("action", "unknown")
                     var params = step.get("params", {})
+                    if params == null: params = {}
                     var trigger = step.get("trigger", "")
                     var action_display = action.capitalize().replace("_", " ")
                     if params.has("target_id"):

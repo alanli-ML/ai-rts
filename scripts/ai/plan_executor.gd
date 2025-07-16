@@ -113,7 +113,9 @@ func _is_step_complete(unit_id: String, step: Dictionary, unit: Node) -> bool:
         return true # Failsafe if unit or agent is gone
     
     if action == "attack":
-        var target_id = step.get("params", {}).get("target_id", "")
+        var params = step.get("params", {})
+        if params == null: params = {}
+        var target_id = params.get("target_id", "")
         if target_id.is_empty(): return true # No target, action is void
         
         var target = game_state.units.get(target_id)
@@ -241,7 +243,7 @@ func _check_and_execute_triggered_action(unit_id: String, unit: Node) -> bool:
         else:
             continue
             
-        if trigger_result.result:
+        if trigger_result["result"]:
             # Trigger fired! Execute this action.
             logger.info("PlanExecutor", "Unit %s: Trigger '%s' fired. Executing action '%s'." % [unit_id, trigger_description, triggered_action.get("action")])
             
@@ -301,6 +303,14 @@ func _evaluate_structured_trigger(source: String, comparison: String, value: Var
     
     # Perform comparison
     var comparison_result = false
+    
+    # Type checking to prevent bool/number comparison errors
+    if comparison in ["<", "<=", ">", ">="]:
+        # Numeric comparisons - ensure both values are numbers
+        if not (current_value is float or current_value is int) or not (comparison_value is float or comparison_value is int):
+            logger.warning("PlanExecutor", "Numeric comparison '%s' requires number values for source '%s'. Got current: %s (%s), comparison: %s (%s)" % [comparison, source, current_value, typeof(current_value), comparison_value, typeof(comparison_value)])
+            return {"result": false, "context": {}}
+    
     match comparison:
         "=", "==": comparison_result = current_value == comparison_value
         "!=": comparison_result = current_value != comparison_value
@@ -342,7 +352,12 @@ func _get_metric_value(metric: String, unit: Node, unit_context: Dictionary) -> 
             if enemies.is_empty():
                 return {"value": 9999.0, "context": {}}
             var closest_enemy = enemies[0]
-            return {"value": closest_enemy.dist, "context": {"target_id": closest_enemy.id}}
+            # Ensure dist is a number
+            var dist_value = closest_enemy.get("dist", 9999.0)
+            if not (dist_value is float or dist_value is int):
+                logger.warning("PlanExecutor", "enemy_dist metric: expected numeric dist, got %s (%s)" % [dist_value, typeof(dist_value)])
+                dist_value = 9999.0
+            return {"value": float(dist_value), "context": {"target_id": closest_enemy.get("id", "")}}
         "ally_health_low":
             var allies = unit_context.get("sensor_data", {}).get("visible_allies", [])
             var lowest_health_ally = null
@@ -356,9 +371,12 @@ func _get_metric_value(metric: String, unit: Node, unit_context: Dictionary) -> 
                 return {"result": true, "context": {"target_id": lowest_health_ally.id}}
             return {"result": false, "context": {}}
         "nearby_enemies":
-            return unit_context.get("sensor_data", {}).get("visible_enemies", []).size()
+            var enemies = unit_context.get("sensor_data", {}).get("visible_enemies", [])
+            return enemies.size() if enemies is Array else 0
         "is_moving":
-            return unit.velocity.length_squared() > 0.1
+            if unit.has_method("get") and unit.has("velocity"):
+                return unit.velocity.length_squared() > 0.1
+            return false
         _:
             logger.warning("PlanExecutor", "Unknown metric in trigger: '%s'" % metric)
             return null
@@ -390,7 +408,9 @@ func _execute_step_action(unit_id: String, step: Dictionary) -> void:
     if not is_instance_valid(unit): return
 
     var action = step.get("action")
-    var params = step.get("params", {}).duplicate()
+    var params = step.get("params", {})
+    if params == null: params = {}
+    params = params.duplicate()
 
     # NEW: Check for and merge trigger context
     if trigger_contexts.has(unit_id):

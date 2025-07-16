@@ -26,29 +26,18 @@ static func get_params_schema() -> Dictionary:
 		"description": "Parameters for the action (null for actions that don't need parameters)",
 		"properties": {
 			"position": {
-				"type": "array",
+				"type": ["array", "null"],
 				"description": "3D coordinates [x, y, z] for movement or construction",
 				"items": {"type": "number"},
 				"minItems": 3,
 				"maxItems": 3
 			},
 			"target_id": {
-				"type": "string",
+				"type": ["string", "null"],
 				"description": "ID of target unit for attack/follow/heal/repair actions"
-			},
-			"formation": {
-				"type": "string", 
-				"description": "Formation type for unit positioning"
-			},
-			"stance": {
-				"type": "string",
-				"description": "Combat stance (aggressive, defensive, passive)"
-			},
-			"building_type": {
-				"type": "string", 
-				"description": "Type of building to construct"
 			}
 		},
+        "required": ["position", "target_id"],
 		"additionalProperties": false
 	}
 

@@ -20,7 +20,8 @@ func _physics_process(delta: float):
 # --- Action Implementation ---
 
 func construct(params: Dictionary):
-	var building_type = params.get("building_type", "power_spire")
+	# Construct always builds a power_spire (single building type)
+	var building_type = "power_spire"
 	var position_array = params.get("position")
 	if not position_array is Array or position_array.size() != 3:
 		print("Engineer %s: Invalid position for construct command." % unit_id)

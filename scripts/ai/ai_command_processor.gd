@@ -52,7 +52,7 @@ Action Parameter Examples:
 - "follow": {"target_id": "string_unit_id"}
 - "heal_target": {"target_id": "string_unit_id"}
 - "repair": {"target_id": "string_building_or_unit_id"}
-- "construct": {"building_type": "string_building_name", "position": [x: float, y: float, z: float]}
+- "construct": {"position": [x: float, y: float, z: float]} // Always builds power_spire
 - For actions with no parameters like "activate_shield" or "lay_mines", use {}.
 
 Your response will use structured triggers with three separate fields:
@@ -62,7 +62,7 @@ Your response will use structured triggers with three separate fields:
 
 Examples:
 - For "health below 50%": trigger_source="health_pct", trigger_comparison="<", trigger_value=50
-- For "enemy in range": trigger_source="enemies_in_range", trigger_comparison="=", trigger_value=true
+- For "enemy in range": trigger_source="enemies_in_range", trigger_comparison=">=", trigger_value=1
 - For "elapsed time over 2 seconds": trigger_source="elapsed_ms", trigger_comparison=">", trigger_value=2000
 
 TEAM-RELATIVE DATA EXPLANATION:

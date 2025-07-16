@@ -44,10 +44,8 @@ func _ready() -> void:
 func _start_server_mode() -> void:
     logger.info("UnifiedMain", "Starting server mode")
     dependency_container.create_server_dependencies()
-    # Server doesn't need to load scenes, it will just manage state.
-    # We can connect to a signal from SessionManager to know when a match starts.
-    var session_manager = dependency_container.get_node("SessionManager")
-    session_manager.match_started.connect(_on_match_start_requested)
+    # The SessionManager now handles loading the map on the server when a match starts.
+    # We no longer connect the match_started signal here to avoid double-loading the map.
 
 
 func _start_client_mode() -> void:
@@ -110,25 +108,29 @@ func submit_command_rpc(command_text: String, unit_ids: Array[String]):
 
 func _on_match_start_requested() -> void:
     logger.info("UnifiedMain", "Match start requested.")
-    
+
     # Hide lobby UI if it exists
     if is_instance_valid(lobby_instance):
         lobby_instance.queue_free()
         lobby_instance = null
 
-    # Instance and add the game map
-    var map_scene = load(TEST_MAP_SCENE)
-    map_instance = map_scene.instantiate()
-    add_child(map_instance)
+    # Instance and add the game map, but only if it doesn't exist yet.
+    # This prevents the listen-server from loading it twice.
+    map_instance = get_tree().get_root().find_child("TestMap", true, false)
+    if not is_instance_valid(map_instance):
+        var map_scene = load(TEST_MAP_SCENE)
+        map_instance = map_scene.instantiate()
+        add_child(map_instance)
 
     # Pass map reference to client display manager so it can find the 'Units' node
     if client_display_manager:
         client_display_manager.setup_map_references(map_instance)
-    
-    # Instance and add the game HUD
-    var hud_scene = load(GAME_HUD_SCENE)
-    hud_instance = hud_scene.instantiate()
-    add_child(hud_instance)
+
+    # Instance and add the game HUD, but only if it doesn't exist
+    if not get_tree().get_root().find_child("GameHUD", false):
+        var hud_scene = load(GAME_HUD_SCENE)
+        hud_instance = hud_scene.instantiate()
+        add_child(hud_instance)
 
     # Server-side initialization is now fully handled by the SessionManager
     # when it receives the match_started signal. This avoids duplicate logic.

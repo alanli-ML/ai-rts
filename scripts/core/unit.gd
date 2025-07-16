@@ -62,6 +62,7 @@ func _ready() -> void:
         shape.radius = 2.5 # Much larger radius for realistic character selection
         shape.height = 4.0 # Taller to match typical character height
         collision.shape = shape
+        collision.position = Vector3(0, shape.height / 2.0, 0) # Center capsule above the unit's origin
         add_child(collision)
         
         # Optional: Enable debug visualization in editor

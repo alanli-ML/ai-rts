@@ -592,21 +592,33 @@ func _spawn_initial_units(session: Dictionary, map_node: Node) -> void:
         2: map_node.get_node("SpawnPoints/Team2Spawn").global_position
     }
 
-    # Spawn some initial units for each team
+    # Spawn initial units for each team (not per player to avoid duplicates)
+    var teams_with_players = {}
+    
+    # First, identify which teams have players
     for player_id in session.players.keys():
         var player = session.players[player_id]
         var team_id = player.team_id
+        if not teams_with_players.has(team_id):
+            teams_with_players[team_id] = []
+        teams_with_players[team_id].append(player_id)
+    
+    # Then spawn units once per team, regardless of how many players are on that team
+    for team_id in teams_with_players.keys():
+        var team_players = teams_with_players[team_id]
+        var representative_player = team_players[0]  # Use first player as representative for ownership
         
         var base_position = team_spawns.get(team_id, Vector3.ZERO)
+        logger.info("SessionManager", "Spawning initial units for team %d with %d players" % [team_id, team_players.size()])
         
-        # Spawn a mixed squad for each team
+        # Spawn a mixed squad for this team
         var archetypes = ["scout", "tank", "sniper", "medic", "engineer"]
         for i in range(archetypes.size()):
             var archetype = archetypes[i]
             # Spacing increased from 3 to 6 to prevent collision shapes (radius 2.5) from overlapping at spawn.
-            var unit_position = base_position + Vector3(i * 6, 0, 0)
-            var unit_id = await game_state.spawn_unit(archetype, team_id, unit_position, player_id)
-            logger.info("SessionManager", "Spawned %s unit %s for player %s at %s" % [archetype, unit_id, player_id, unit_position])
+            var unit_position = base_position + Vector3(i * 6, 1, 0) # Spawn at Y=1 to be above ground
+            var unit_id = await game_state.spawn_unit(archetype, team_id, unit_position, representative_player)
+            logger.info("SessionManager", "Spawned %s unit %s for team %d at %s" % [archetype, unit_id, team_id, unit_position])
     
     logger.info("SessionManager", "Initial units spawned")
 

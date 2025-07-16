@@ -1,160 +1,222 @@
-# UnitDebugHelper.gd - Debugging utilities for unit instantiation issues
+# UnitDebugHelper.gd - Debug utility for inspecting unit assets
 class_name UnitDebugHelper
 extends Node
 
-static func debug_unit_type(unit: Node) -> Dictionary:
-	"""Comprehensive unit type debugging information"""
-	var debug_info = {
-		"node_type": unit.get_class(),
-		"script_path": "",
-		"is_unit_check": unit is Unit,
-		"is_character_body_check": unit is CharacterBody3D,
-		"has_unit_properties": false,
-		"has_unit_methods": false,
-		"property_list": [],
-		"method_list": [],
-		"inheritance_chain": []
-	}
-	
-	# Check script
-	if unit.get_script():
-		debug_info.script_path = unit.get_script().resource_path
-	
-	# Check properties (both script properties and set properties)
-	var unit_properties = ["team_id", "archetype", "unit_id", "max_health", "current_health"]
-	var found_properties = []
-	for prop in unit_properties:
-		if prop in unit:
-			found_properties.append(prop + "(script)")
-		elif unit.has_method("get") and unit.get(prop) != null:
-			found_properties.append(prop + "(set)")
-	debug_info.property_list = found_properties
-	debug_info.has_unit_properties = found_properties.size() >= 3
-	
-	# Check methods
-	var unit_methods = ["get_team_id", "get_unit_info", "move_to", "attack_target", "take_damage"]
-	var found_methods = []
-	for method in unit_methods:
-		if unit.has_method(method):
-			found_methods.append(method)
-	debug_info.method_list = found_methods
-	debug_info.has_unit_methods = found_methods.size() >= 3
-	
-	# Build inheritance chain
-	var current_script = unit.get_script()
-	while current_script:
-		debug_info.inheritance_chain.append(current_script.resource_path)
-		current_script = current_script.get_base_script()
-	
-	return debug_info
+# Character model paths
+const CHARACTER_BASE_PATH = "res://assets/kenney/kenney_blocky-characters_20/Models/GLB format/"
+const CHARACTER_MODELS = {
+	"scout": "character-a.glb",
+	"tank": "character-h.glb", 
+	"sniper": "character-d.glb",
+	"medic": "character-p.glb",
+	"engineer": "character-o.glb"
+}
 
-static func print_unit_debug(unit: Node, context: String = "") -> void:
-	"""Print comprehensive debug information about a unit"""
-	var debug_info = debug_unit_type(unit)
+func inspect_all_character_animations() -> Dictionary:
+	"""Inspect animations available in all character models"""
+	var results = {}
 	
-	var title = "\n=== UNIT DEBUG INFO"
-	if not context.is_empty():
-		title += " - " + context
-	title += " ==="
-	print(title)
-	print("Node Type: %s" % debug_info.node_type)
-	print("Script Path: %s" % debug_info.script_path)
-	print("is Unit Check: %s" % debug_info.is_unit_check)
-	print("is CharacterBody3D Check: %s" % debug_info.is_character_body_check)
-	print("Has Unit Properties: %s" % debug_info.has_unit_properties)
-	print("Has Unit Methods: %s" % debug_info.has_unit_methods)
-	print("Found Properties: %s" % debug_info.property_list)
-	print("Found Methods: %s" % debug_info.method_list)
-	print("Inheritance Chain: %s" % debug_info.inheritance_chain)
-	print("==============================\n")
-
-static func is_unit_compatible(unit: Node) -> bool:
-	"""Check if a node is Unit-compatible using multiple validation methods"""
-	# Direct type check
-	if unit is Unit:
-		return true
+	print("\n=== CHARACTER ANIMATION INSPECTION ===")
 	
-	# Script-based check
-	if unit.get_script():
-		var script_path = str(unit.get_script().resource_path)
-		if script_path.contains("unit") or script_path.contains("Unit"):
-			# Check for essential Unit properties (more flexible)
-			var has_team_id = "team_id" in unit or unit.get("team_id") != null
-			var has_archetype = "archetype" in unit or unit.get("archetype") != null
-			var has_unit_id = "unit_id" in unit or unit.get("unit_id") != null
-			
-			if has_team_id or has_archetype or has_unit_id:
-				return true
-			
-			# If script is unit-related but properties missing, still compatible
-			# (force initialization can handle this)
-			return true
-	
-	# Duck typing check
-	if unit.has_method("get_team_id") and unit.has_method("get_unit_info") and unit.has_method("take_damage"):
-		return true
-	
-	# CharacterBody3D with unit script is compatible
-	if unit is CharacterBody3D and unit.get_script():
-		var script_path = str(unit.get_script().resource_path)
-		if script_path.contains("unit") or script_path.contains("Unit"):
-			return true
-	
-	return false
-
-static func wait_for_unit_recognition(unit: Node, max_frames: int = 5) -> bool:
-	"""Wait for Godot to recognize unit class, return true if successful"""
-	for i in range(max_frames):
-		if unit is Unit:
-			return true
-		await unit.get_tree().process_frame
-	
-	return false
-
-static func validate_unit_scene(scene_path: String) -> Dictionary:
-	"""Validate that a unit scene is properly configured"""
-	var result = {
-		"valid": false,
-		"scene_loads": false,
-		"has_script": false,
-		"script_path": "",
-		"root_node_type": "",
-		"issues": []
-	}
-	
-	# Try to load the scene
-	var scene_resource = load(scene_path)
-	if not scene_resource:
-		result.issues.append("Scene file could not be loaded")
-		return result
-	
-	result.scene_loads = true
-	
-	# Instantiate to check structure
-	var instance = scene_resource.instantiate()
-	if not instance:
-		result.issues.append("Scene could not be instantiated")
-		return result
-	
-	result.root_node_type = instance.get_class()
-	
-	# Check script
-	if instance.get_script():
-		result.has_script = true
-		result.script_path = instance.get_script().resource_path
+	for archetype in CHARACTER_MODELS:
+		var model_name = CHARACTER_MODELS[archetype]
+		var model_path = CHARACTER_BASE_PATH + model_name
+		var animations = inspect_character_animations(archetype, model_path)
+		results[archetype] = animations
 		
-		# Check if script is unit-related
-		if not result.script_path.contains("unit"):
-			result.issues.append("Script path doesn't appear to be unit-related")
-	else:
-		result.issues.append("No script attached to root node")
+		print("\n%s (%s):" % [archetype.capitalize(), model_name])
+		if animations.size() > 0:
+			for anim in animations:
+				print("  - %s" % anim)
+		else:
+			print("  No animations found or model failed to load")
 	
-	# Check if it extends CharacterBody3D (required for units)
-	if not instance is CharacterBody3D:
-		result.issues.append("Root node is not CharacterBody3D or descendant")
+	print("\n=====================================")
+	return results
+
+func inspect_character_animations(archetype: String, model_path: String) -> Array:
+	"""Inspect animations available in a specific character model"""
+	var animations = []
+	
+	# Try to load the model
+	var model_scene = load(model_path)
+	if not model_scene:
+		print("ERROR: Failed to load model at %s" % model_path)
+		return animations
+	
+	# Instantiate the model
+	var model_instance = model_scene.instantiate()
+	if not model_instance:
+		print("ERROR: Failed to instantiate model from %s" % model_path)
+		return animations
+	
+	# Find the animation player
+	var animation_player = model_instance.find_child("AnimationPlayer", true, false)
+	if not animation_player:
+		print("WARNING: No AnimationPlayer found in %s" % model_path)
+		# Try alternative names
+		animation_player = model_instance.find_child("AnimationTree", true, false)
+		if not animation_player:
+			animation_player = model_instance.find_child("Animator", true, false)
+	
+	if animation_player and animation_player is AnimationPlayer:
+		var animation_list = animation_player.get_animation_list()
+		for anim_name in animation_list:
+			animations.append(anim_name)
+			var animation = animation_player.get_animation(anim_name)
+			if animation:
+				print("    %s: %.2fs, %d tracks" % [anim_name, animation.length, animation.get_track_count()])
+	else:
+		print("WARNING: No valid AnimationPlayer found in %s" % model_path)
 	
 	# Clean up
-	instance.queue_free()
+	model_instance.queue_free()
 	
-	result.valid = result.scene_loads and result.has_script and result.issues.is_empty()
-	return result 
+	return animations
+
+func inspect_character_materials(archetype: String, model_path: String) -> Dictionary:
+	"""Inspect materials used in a character model"""
+	var material_info = {"mesh_instances": [], "materials": []}
+	
+	# Try to load the model
+	var model_scene = load(model_path)
+	if not model_scene:
+		print("ERROR: Failed to load model at %s" % model_path)
+		return material_info
+	
+	# Instantiate the model  
+	var model_instance = model_scene.instantiate()
+	if not model_instance:
+		print("ERROR: Failed to instantiate model from %s" % model_path)
+		return material_info
+	
+	print("\n%s Materials (%s):" % [archetype.capitalize(), model_path])
+	
+	# Find all MeshInstance3D nodes
+	var mesh_instances = _find_all_mesh_instances(model_instance)
+	for mesh_instance in mesh_instances:
+		var mesh_info = {
+			"name": mesh_instance.name,
+			"mesh": null,
+			"materials": []
+		}
+		
+		if mesh_instance.mesh:
+			mesh_info.mesh = mesh_instance.mesh.resource_path
+			
+			# Check surface materials
+			for surface_idx in range(mesh_instance.mesh.get_surface_count()):
+				var material = mesh_instance.get_surface_override_material(surface_idx)
+				if not material:
+					material = mesh_instance.mesh.surface_get_material(surface_idx)
+				
+				if material:
+					mesh_info.materials.append({
+						"surface": surface_idx,
+						"material_type": material.get_class(),
+						"resource_path": material.resource_path if material.resource_path else "built-in"
+					})
+				else:
+					mesh_info.materials.append({
+						"surface": surface_idx,
+						"material_type": "None",
+						"resource_path": "missing"
+					})
+		
+		material_info.mesh_instances.append(mesh_info)
+		print("  MeshInstance: %s" % mesh_instance.name)
+		print("    Mesh: %s" % (mesh_info.mesh if mesh_info.mesh else "None"))
+		for mat_info in mesh_info.materials:
+			print("    Surface %d: %s (%s)" % [mat_info.surface, mat_info.material_type, mat_info.resource_path])
+	
+	# Clean up
+	model_instance.queue_free()
+	
+	return material_info
+
+func _find_all_mesh_instances(node: Node) -> Array:
+	"""Recursively find all MeshInstance3D nodes"""
+	var mesh_instances = []
+	
+	if node is MeshInstance3D:
+		mesh_instances.append(node)
+	
+	for child in node.get_children():
+		mesh_instances.append_array(_find_all_mesh_instances(child))
+	
+	return mesh_instances
+
+func get_suggested_animation_mapping() -> Dictionary:
+	"""Get suggested animation mappings based on common animation names"""
+	return {
+		"Idle": ["Idle", "idle", "T-Pose", "TPose", "Rest", "Stand", "Default"],
+		"Walk": ["Walk", "walk", "Walking", "walking", "Move", "move"],
+		"Run": ["Run", "run", "Running", "running", "Sprint", "sprint", "Fast", "fast"],
+		"Attack": ["Attack", "attack", "Fire", "fire", "Shoot", "shoot", "Action", "action"],
+		"Death": ["Death", "death", "Die", "die", "Dead", "dead", "Fall", "fall"]
+	}
+
+func test_animation_fallbacks(archetype: String) -> void:
+	"""Test animation fallback system for a specific archetype"""
+	var model_path = CHARACTER_BASE_PATH + CHARACTER_MODELS[archetype]
+	var available_animations = inspect_character_animations(archetype, model_path)
+	var suggested_mappings = get_suggested_animation_mapping()
+	
+	print("\n=== ANIMATION FALLBACK TEST for %s ===" % archetype.to_upper())
+	print("Available animations: %s" % str(available_animations))
+	
+	for desired_anim in suggested_mappings:
+		print("\nLooking for '%s' animation:" % desired_anim)
+		var found = false
+		
+		# Check exact match first
+		for available_anim in available_animations:
+			if available_anim == desired_anim:
+				print("  ✓ Exact match: %s" % available_anim)
+				found = true
+				break
+		
+		if not found:
+			# Check case-insensitive match
+			for available_anim in available_animations:
+				if available_anim.to_lower() == desired_anim.to_lower():
+					print("  ✓ Case-insensitive match: %s" % available_anim)
+					found = true
+					break
+		
+		if not found:
+			# Check suggested alternatives
+			var alternatives = suggested_mappings[desired_anim]
+			for alt in alternatives:
+				for available_anim in available_animations:
+					if available_anim.to_lower() == alt.to_lower():
+						print("  ✓ Alternative match: %s (for %s)" % [available_anim, alt])
+						found = true
+						break
+				if found:
+					break
+		
+		if not found:
+			print("  ✗ No suitable animation found for '%s'" % desired_anim)
+	
+	print("=======================================")
+
+# Console commands for debugging
+func debug_all_animations() -> void:
+	"""Debug command to inspect all character animations"""
+	inspect_all_character_animations()
+
+func debug_animation_fallbacks() -> void:
+	"""Debug command to test animation fallbacks for all archetypes"""
+	for archetype in CHARACTER_MODELS:
+		test_animation_fallbacks(archetype)
+
+func debug_materials() -> void:
+	"""Debug command to inspect materials for all character models"""
+	print("\n=== CHARACTER MATERIALS INSPECTION ===")
+	
+	for archetype in CHARACTER_MODELS:
+		var model_path = CHARACTER_BASE_PATH + CHARACTER_MODELS[archetype]
+		inspect_character_materials(archetype, model_path)
+	
+	print("\n======================================") 

@@ -13,6 +13,7 @@ var lobby_instance: Control
 var hud_instance: Control
 var map_instance: Node
 var client_display_manager: Node
+var client_team_id: int = -1
 
 func _ready() -> void:
     print("UnifiedMain starting...")
@@ -157,9 +158,11 @@ func _on_lobby_update(lobby_data: Dictionary) -> void:
         lobby_instance.update_lobby_display(lobby_data)
 
 @rpc("any_peer", "call_local", "reliable")
-func _on_game_started(_data: Dictionary) -> void:
+func _on_game_started(data: Dictionary) -> void:
     """Handle the game started signal from the server."""
     logger.info("UnifiedMain", "Game start signal received from server.")
+    client_team_id = data.get("player_team", -1)
+    _on_match_start_requested()
     _on_match_start_requested()
 
 @rpc("any_peer", "call_local") # Use unreliable for high-frequency state updates
@@ -201,6 +204,9 @@ func spawn_explosion_effect_rpc(position: Vector3):
         logger.info("UnifiedMain", "Spawned explosion effect at %s" % str(position))
     
 # =============================================================================
+
+func get_client_team_id() -> int:
+    return client_team_id
 
 func _exit_tree() -> void:
     if dependency_container:

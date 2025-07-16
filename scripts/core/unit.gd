@@ -163,13 +163,23 @@ func _physics_process(delta: float) -> void:
             velocity = Vector3.ZERO # Cannot move while laying mines
     
         _: # Default case for IDLE, MOVING, FOLLOWING etc.
+            # Apply gravity
+            if not is_on_floor():
+                velocity.y += get_gravity().y * delta
+            
             if navigation_agent and not navigation_agent.is_navigation_finished():
                 var next_pos = navigation_agent.get_next_path_position()
                 var direction = global_position.direction_to(next_pos)
-                velocity = direction * movement_speed
-                move_and_slide()
+                # Only modify X and Z for horizontal movement, preserve Y for gravity
+                velocity.x = direction.x * movement_speed
+                velocity.z = direction.z * movement_speed
             else:
-                velocity = Vector3.ZERO
+                # Stop horizontal movement but preserve gravity
+                velocity.x = 0
+                velocity.z = 0
+            
+            # Always call move_and_slide to apply physics
+            move_and_slide()
 
 func move_to(target_position: Vector3) -> void:
     current_state = GameEnums.UnitState.MOVING

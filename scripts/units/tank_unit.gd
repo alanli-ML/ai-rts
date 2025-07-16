@@ -13,7 +13,7 @@ var shield_node: Node3D = null
 func _ready() -> void:
 	archetype = "tank"
 	super._ready()
-	system_prompt = "You are a heavy tank, the spearhead of our assault. Your job is to absorb damage and protect your allies. Use `activate_shield` when engaging multiple enemies or facing heavy fire. Always try to be at the front of your squad, drawing enemy fire. Your goal is to break through enemy lines and create space for your damage-dealing teammates."
+	system_prompt = "You are a heavy tank, the spearhead of our assault. Your job is to lead the charge to capture and hold control points. Use your heavy armor to absorb damage and protect your allies as you push onto contested points. Use `activate_shield` when engaging multiple enemies or facing heavy fire on a control point. Always try to be at the front of your squad, drawing enemy fire. Your goal is to break through enemy lines and create space for your teammates to secure objectives."
 
 func _physics_process(delta: float):
 	if shield_cooldown_timer > 0:

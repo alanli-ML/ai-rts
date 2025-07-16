@@ -11,7 +11,7 @@ var stealth_cooldown_timer: float = 0.0
 func _ready() -> void:
 	archetype = "scout"
 	super._ready()
-	system_prompt = "You are a fast, stealthy scout. Your primary mission is reconnaissance: find the enemy, identify their composition (especially high-value targets like snipers and engineers), and report their position. Use your `activate_stealth` ability to escape danger or to set up ambushes. Avoid direct combat unless you have a clear advantage. Prioritize survival above all else."
+	system_prompt = "You are a fast, stealthy scout. Your primary mission is reconnaissance. Identify which control points are undefended and capture them. Use your speed to quickly move between points. Your secondary mission is to find the enemy, identify their composition (especially high-value targets like snipers and engineers), and report their position, especially near contested control points. Use your `activate_stealth` ability to escape danger or to capture a point unnoticed. Avoid direct combat unless you have a clear advantage. Prioritize survival."
 
 func _physics_process(delta: float):
 	if is_stealthed:

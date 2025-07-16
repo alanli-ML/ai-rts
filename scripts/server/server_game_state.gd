@@ -408,6 +408,7 @@ func get_context_for_ai(unit: Unit) -> Dictionary:
         "visible_allies": [],
         "visible_buildings": [],
         "visible_mines": [],
+        "visible_control_points": [],
         "nearby_cover": [] # Placeholder for cover system
     }
 
@@ -445,6 +446,24 @@ func get_context_for_ai(unit: Unit) -> Dictionary:
                 mine_info["dist"] = dist
                 sensor_data.visible_mines.append(mine_info)
 
+    # Add control point data
+    if node_capture_system and not node_capture_system.control_points.is_empty():
+        for cp in node_capture_system.control_points:
+            if is_instance_valid(cp):
+                var dist = unit.global_position.distance_to(cp.global_position)
+                var cp_data = {
+                    "id": cp.control_point_id,
+                    "name": cp.control_point_name,
+                    "position": [cp.global_position.x, cp.global_position.y, cp.global_position.z],
+                    "controlling_team": cp.get_controlling_team(),
+                    "capture_value": cp.capture_value, # -1 (team 2) to 1 (team 1)
+                    "dist": dist
+                }
+                sensor_data.visible_control_points.append(cp_data)
+        
+        # Sort by distance
+        sensor_data.visible_control_points.sort_custom(func(a, b): return a.dist < b.dist)
+
     # 4. Team Context (simplified)
     var team_context = {
         "teammates_status": sensor_data.visible_allies, # For now, teammates are just visible allies
@@ -479,7 +498,9 @@ func _on_ai_think_timer_timeout():
                 logger.info("ServerGameState", "Requesting autonomous plan for idle unit %s" % unit_id)
                 # Use a generic command for autonomous action.
                 # The AICommandProcessor will see this and generate a suitable prompt.
-                ai_command_processor.process_command("autonomously decide next action", [unit_id])
+                var unit_id_array: Array[String] = [unit_id]
+                ai_command_processor.process_command("autonomously decide next action", unit_id_array)
+                ai_command_processor.process_command("autonomously decide next action", unit_id_array)
 
 func set_match_state(new_state: String):
     match_state = new_state

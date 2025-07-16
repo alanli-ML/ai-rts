@@ -651,7 +651,7 @@ func _attach_weapon_static_fallback() -> bool:
 		get_parent().remove_child(self)
 	
 	# Add directly to the character model or unit
-	var attachment_parent = parent_unit.character_model if parent_unit.character_model else parent_unit
+	var attachment_parent = parent_unit.model_container if "model_container" in parent_unit and is_instance_valid(parent_unit.model_container) else parent_unit
 	attachment_parent.add_child(self)
 	
 	# Set static weapon positioning based on archetype and weapon type

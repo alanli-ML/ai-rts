@@ -39,29 +39,14 @@ func setup_capture_nodes() -> void:
 				create_capture_node(pos, "Node%d" % (node_index + 1))
 
 func create_capture_node(pos: Vector3, node_name: String) -> void:
-	var area = Area3D.new()
-	area.name = node_name
-	area.position = pos
+	var ControlPointScript = load("res://scripts/gameplay/control_point.gd")
+	var control_point = ControlPointScript.new()
 	
-	var collision = CollisionShape3D.new()
-	var shape = CylinderShape3D.new()
-	shape.radius = 5.0
-	shape.height = 0.5
-	collision.shape = shape
-	area.add_child(collision)
+	control_point.name = node_name
+	control_point.control_point_name = node_name
+	control_point.global_position = pos
 	
-	# Visual representation
-	var mesh_instance = MeshInstance3D.new()
-	var cylinder_mesh = CylinderMesh.new()
-	cylinder_mesh.radial_segments = 16
-	cylinder_mesh.rings = 1
-	cylinder_mesh.top_radius = 5.0
-	cylinder_mesh.bottom_radius = 5.0
-	cylinder_mesh.height = 0.5
-	mesh_instance.mesh = cylinder_mesh
-	area.add_child(mesh_instance)
-	
-	capture_nodes.add_child(area)
+	capture_nodes.add_child(control_point)
 
 func setup_spawn_points() -> void:
 	for child in spawn_points.get_children():

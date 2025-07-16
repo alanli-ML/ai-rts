@@ -90,18 +90,21 @@ func get_skeleton() -> Skeleton3D:
 	return null
 
 func _attach_weapon():
-	var WeaponAttachmentScene = preload("res://scenes/units/WeaponAttachment.tscn")
-	weapon_attachment = WeaponAttachmentScene.instantiate()
-	weapon_attachment.name = "WeaponAttachment"
-	add_child(weapon_attachment)
+	# Get weapon attachment from parent Unit class
+	if not weapon_attachment:
+		var WeaponAttachmentScene = preload("res://scenes/units/WeaponAttachment.tscn")
+		weapon_attachment = WeaponAttachmentScene.instantiate()
+		weapon_attachment.name = "WeaponAttachment"
+		add_child(weapon_attachment)
 
-	var weapon_type = weapon_db.get_weapon_for_archetype(archetype)
-	
-	var success = weapon_attachment.equip_weapon(self, weapon_type, team_id)
-	if not success:
-		print("Failed to attach weapon to %s" % unit_id)
-		weapon_attachment.queue_free()
-		weapon_attachment = null
+		var weapon_type = weapon_db.get_weapon_for_archetype(archetype)
+		
+		var success = weapon_attachment.equip_weapon(self, weapon_type, team_id)
+		if not success:
+			print("Failed to attach weapon to %s" % unit_id)
+			if weapon_attachment:
+				weapon_attachment.queue_free()
+				weapon_attachment = null
 
 func die_and_cleanup():
 	# Prevent further actions

@@ -59,14 +59,15 @@ func spawn_unit(team_id: int, position: Vector3, archetype: String = "scout") ->
 		unit.queue_free()
 		return null
 
-	# Set properties BEFORE adding to the scene tree.
-	# The script's _ready function will handle the rest.
+	# Set properties that don't depend on the scene tree
 	unit.team_id = team_id
 	unit.archetype = archetype
-	unit.global_position = position
 	
-	# Add to the Units node
+	# Add to the Units node FIRST
 	units_node.add_child(unit)
+	
+	# NOW set properties that require the node to be in the tree
+	unit.global_position = position
 	
 	# The engine will call _ready() automatically. We await a frame to ensure it runs.
 	await get_tree().process_frame

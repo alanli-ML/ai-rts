@@ -22,9 +22,6 @@ func _ready() -> void:
 	
 	_load_model()
 	call_deferred("_attach_weapon")
-	
-	# Debug: List available animations after model is loaded
-	call_deferred("debug_list_available_animations")
 
 func _load_archetype_stats() -> void:
 	# This is now handled by the base Unit class
@@ -79,16 +76,24 @@ func play_animation(animation_name: String):
 			animation_player.play(anim)
 			return
 	
-	# Animation mappings for fallbacks based on actual Kenney animations
+	# Animation mappings based on ACTUAL Kenney Blocky Characters animations
+	# Available: RESET, attack-kick-left, attack-kick-right, attack-melee-left, attack-melee-right, 
+	# die, drive, emote-no, emote-yes, holding-both, holding-both-shoot, holding-left, 
+	# holding-left-shoot, holding-right, holding-right-shoot, idle, interact-left, 
+	# interact-right, pick-up, sit, sprint, static, walk, wheelchair-*
 	var animation_mappings = {
-		"Run": ["sprint", "walk"],  # No "Run" exists, use sprint or walk
+		"Run": ["sprint", "walk"],
 		"Walk": ["walk", "sprint"],
 		"Idle": ["idle", "static"],
-		"Attack": ["holding-both-shoot", "holding-left-shoot", "holding-right-shoot", "attack-melee-left", "attack-melee-right"],
-		"Die": ["die", "death", "fall", "hurt", "static", "idle"],  # Extended fallbacks for death
-		"Death": ["die", "death", "fall", "hurt", "static", "idle"],  # Same fallbacks
+		"Attack": ["holding-both-shoot", "holding-left-shoot", "holding-right-shoot", "attack-melee-left", "attack-melee-right", "attack-kick-left"],
+		"Die": ["die", "static", "idle"],  # Die animation exists!
+		"Death": ["die", "static", "idle"],
 		"Sprint": ["sprint", "walk"],
-		"Shoot": ["holding-both-shoot", "holding-left-shoot", "holding-right-shoot"]
+		"Shoot": ["holding-both-shoot", "holding-left-shoot", "holding-right-shoot"],
+		"Kick": ["attack-kick-left", "attack-kick-right"],
+		"Melee": ["attack-melee-left", "attack-melee-right"],
+		"Interact": ["interact-left", "interact-right", "pick-up"],
+		"Emote": ["emote-yes", "emote-no"]
 	}
 	
 	# Try mapped fallbacks
@@ -196,25 +201,21 @@ func trigger_death_sequence():
 	
 	var death_animation_played = false
 	
-	# Play death animation with extensive fallback system
+	# Play death animation - Kenney models have a "die" animation!
 	if animation_player:
 		var available_anims = animation_player.get_animation_list()
 		print("DEBUG: Available animations for death: %s" % available_anims)
 		
-		# Try to find and play any death-related animation
-		var death_candidates = ["die", "death", "fall", "hurt"]
-		for candidate in death_candidates:
-			if animation_player.has_animation(candidate):
-				print("DEBUG: Playing death animation: '%s'" % candidate)
-				animation_player.play(candidate)
-				death_animation_played = true
-				break
-		
-		# If no death animation found, play a static pose and proceed with visual effects
-		if not death_animation_played:
-			print("DEBUG: No death animation found, using static pose")
-			play_animation("Idle")  # Use idle as final fallback
-			# Since there's no death animation, start fade sequence immediately
+		# The Kenney models have a "die" animation, so let's use it
+		if animation_player.has_animation("die"):
+			print("DEBUG: Playing Kenney 'die' animation (0.33s)")
+			animation_player.play("die")
+			death_animation_played = true
+		else:
+			# Fallback to our animation mapping system
+			print("DEBUG: 'die' animation not found, using fallback system")
+			play_animation("Die")  # This will try die, static, idle
+			# Start visual effects immediately since fallback might be static
 			call_deferred("_start_death_visual_effects")
 	else:
 		print("DEBUG: No animation player found for death sequence")
@@ -223,10 +224,13 @@ func trigger_death_sequence():
 
 func _on_death_animation_finished(animation_name: String):
 	"""Handle completion of death animation"""
-	# Check if this was a death-related animation
-	var death_animations = ["die", "death", "fall", "hurt"]
-	if animation_name.to_lower() in death_animations:
-		print("DEBUG: Death animation '%s' completed for unit %s" % [animation_name, unit_id])
+	# Check if this was the death animation (Kenney models use "die")
+	if animation_name == "die":
+		print("DEBUG: Kenney death animation 'die' completed for unit %s" % unit_id)
+		_start_death_visual_effects()
+	# Handle other potential death-related animations as fallback
+	elif animation_name.to_lower() in ["death", "fall", "hurt"]:
+		print("DEBUG: Fallback death animation '%s' completed for unit %s" % [animation_name, unit_id])
 		_start_death_visual_effects()
 
 func _start_death_visual_effects():

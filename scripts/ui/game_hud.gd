@@ -232,9 +232,13 @@ func _update_selection_display(selected_units: Array):
         label.text = "No units selected."
         action_queue_list.add_child(label)
     else:
+        print("GameHUD: Updating selection display for %d units (server: %s)" % [selected_units.size(), multiplayer.is_server()])
+        
         # Show detailed plan data for selected units
         for unit in selected_units:
             if not is_instance_valid(unit): continue
+            
+            print("GameHUD: Processing unit %s - strategic_goal: '%s'" % [unit.unit_id, unit.strategic_goal])
             
             var unit_short_id = unit.unit_id.right(4) if unit.unit_id.length() >= 4 else unit.unit_id
             var unit_header = "[font_size=20][b]%s (%s)[/b][/font_size]" % [unit.archetype.capitalize(), unit_short_id]
@@ -250,8 +254,10 @@ func _update_selection_display(selected_units: Array):
             var unit_goal = ""
             if "strategic_goal" in unit and not unit.strategic_goal.is_empty():
                 unit_goal = unit.strategic_goal
+                print("GameHUD: Unit %s has goal: '%s'" % [unit.unit_id, unit_goal])
             else:
                 unit_goal = "No specific goal assigned"
+                print("GameHUD: Unit %s has no goal set (strategic_goal: '%s')" % [unit.unit_id, unit.strategic_goal])
             
             var goal_label = RichTextLabel.new()
             goal_label.bbcode_enabled = true

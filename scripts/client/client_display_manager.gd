@@ -142,6 +142,19 @@ func _create_unit(unit_data: Dictionary) -> void:
 	unit_instance.team_id = unit_data.team_id
 	unit_instance.archetype = unit_data.archetype
 	
+	# Set initial goal data during creation to avoid timing issues
+	if unit_data.has("strategic_goal"):
+		unit_instance.strategic_goal = unit_data.strategic_goal
+	
+	if unit_data.has("plan_summary"):
+		unit_instance.plan_summary = unit_data.plan_summary
+	
+	if unit_data.has("full_plan"):
+		unit_instance.full_plan = unit_data.full_plan
+	
+	if unit_data.has("waiting_for_ai"):
+		unit_instance.waiting_for_ai = unit_data.waiting_for_ai
+	
 	# Add a placeholder for the shield node if it's a tank
 	if unit_data.archetype == "tank":
 		unit_instance.set("shield_node", null)
@@ -154,7 +167,7 @@ func _create_unit(unit_data: Dictionary) -> void:
 	unit_instance.global_position = Vector3(pos_arr.x, pos_arr.y, pos_arr.z)
 	
 	displayed_units[unit_id] = unit_instance
-	print("ClientDisplayManager: Created unit %s" % unit_id)
+	print("ClientDisplayManager: Created unit %s with goal: %s" % [unit_id, unit_instance.strategic_goal])
 
 func _create_mine(mine_data: Dictionary) -> void:
 	var mine_id = mine_data.id

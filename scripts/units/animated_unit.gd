@@ -22,6 +22,9 @@ func _ready() -> void:
 	
 	_load_model()
 	call_deferred("_attach_weapon")
+	
+	# Debug: List available animations after model is loaded
+	call_deferred("debug_list_available_animations")
 
 func _load_archetype_stats() -> void:
 	# This is now handled by the base Unit class
@@ -82,8 +85,8 @@ func play_animation(animation_name: String):
 		"Walk": ["walk", "sprint"],
 		"Idle": ["idle", "static"],
 		"Attack": ["holding-both-shoot", "holding-left-shoot", "holding-right-shoot", "attack-melee-left", "attack-melee-right"],
-		"Die": ["die"],
-		"Death": ["die"],  # Map Death to die
+		"Die": ["die", "death", "fall", "hurt", "static", "idle"],  # Extended fallbacks for death
+		"Death": ["die", "death", "fall", "hurt", "static", "idle"],  # Same fallbacks
 		"Sprint": ["sprint", "walk"],
 		"Shoot": ["holding-both-shoot", "holding-left-shoot", "holding-right-shoot"]
 	}
@@ -191,35 +194,70 @@ func trigger_death_sequence():
 	if animation_player and not animation_player.is_connected("animation_finished", _on_death_animation_finished):
 		animation_player.animation_finished.connect(_on_death_animation_finished)
 	
-	# Play death animation with debug feedback
+	var death_animation_played = false
+	
+	# Play death animation with extensive fallback system
 	if animation_player:
 		var available_anims = animation_player.get_animation_list()
 		print("DEBUG: Available animations for death: %s" % available_anims)
-		if animation_player.has_animation("die"):
-			print("DEBUG: Playing 'die' animation directly")
-			animation_player.play("die")
-		else:
-			print("DEBUG: Using fallback animation system for 'Die'")
-			play_animation("Die")
+		
+		# Try to find and play any death-related animation
+		var death_candidates = ["die", "death", "fall", "hurt"]
+		for candidate in death_candidates:
+			if animation_player.has_animation(candidate):
+				print("DEBUG: Playing death animation: '%s'" % candidate)
+				animation_player.play(candidate)
+				death_animation_played = true
+				break
+		
+		# If no death animation found, play a static pose and proceed with visual effects
+		if not death_animation_played:
+			print("DEBUG: No death animation found, using static pose")
+			play_animation("Idle")  # Use idle as final fallback
+			# Since there's no death animation, start fade sequence immediately
+			call_deferred("_start_death_visual_effects")
 	else:
 		print("DEBUG: No animation player found for death sequence")
-	
-	# Don't stop physics process immediately - let death animation play
-	# We'll handle cleanup in _on_death_animation_finished()
+		# No animation player, go straight to visual effects
+		call_deferred("_start_death_visual_effects")
 
 func _on_death_animation_finished(animation_name: String):
 	"""Handle completion of death animation"""
-	if animation_name == "die":
-		print("DEBUG: Death animation completed for unit %s" % unit_id)
-		
-		# Now stop physics processing and disable further updates
-		set_physics_process(false)
-		
-		# Optional: Add a slight delay before fading or removing
-		await get_tree().create_timer(1.0).timeout
-		
-		# Fade out the unit gradually
-		_fade_out_unit()
+	# Check if this was a death-related animation
+	var death_animations = ["die", "death", "fall", "hurt"]
+	if animation_name.to_lower() in death_animations:
+		print("DEBUG: Death animation '%s' completed for unit %s" % [animation_name, unit_id])
+		_start_death_visual_effects()
+
+func _start_death_visual_effects():
+	"""Start the visual death effects sequence"""
+	print("DEBUG: Starting death visual effects for unit %s" % unit_id)
+	
+	# Stop physics processing
+	set_physics_process(false)
+	
+	# Add death effects (rotation, scale, etc.)
+	_apply_death_effects()
+	
+	# Wait a moment, then fade out
+	await get_tree().create_timer(0.5).timeout
+	_fade_out_unit()
+
+func _apply_death_effects():
+	"""Apply visual death effects like rotation and scaling"""
+	if not model_container:
+		return
+	
+	# Create a death effect tween
+	var death_tween = create_tween()
+	death_tween.set_parallel(true)
+	
+	# Slight rotation and scale down effect
+	death_tween.tween_property(model_container, "rotation_degrees:z", 90.0, 1.0)
+	death_tween.tween_property(model_container, "scale", Vector3(0.8, 0.8, 0.8), 1.0)
+	
+	# Optional: Change color to darker/grayer
+	death_tween.tween_property(self, "modulate", Color.GRAY, 0.8)
 
 func _fade_out_unit():
 	"""Gradually fade out the unit after death animation"""
@@ -239,3 +277,24 @@ func _play_death_sound():
 	if audio_manager:
 		# In the future, this could be archetype-specific from the database
 		audio_manager.play_sound_3d("res://assets/audio/sfx/unit_death_01.wav", global_position)
+
+func debug_list_available_animations() -> void:
+	"""Debug method to list all available animations for this unit"""
+	if not animation_player:
+		print("DEBUG: No animation player available for unit %s" % unit_id)
+		return
+	
+	var available_anims = animation_player.get_animation_list()
+	print("DEBUG: Unit %s (%s) available animations: %s" % [unit_id, archetype, available_anims])
+	
+	# Also check for death-related animations specifically
+	var death_candidates = ["die", "death", "fall", "hurt", "damage", "knockout"]
+	var found_death_anims = []
+	for candidate in death_candidates:
+		if animation_player.has_animation(candidate):
+			found_death_anims.append(candidate)
+	
+	if found_death_anims.size() > 0:
+		print("DEBUG: Found death-related animations: %s" % found_death_anims)
+	else:
+		print("DEBUG: No death-related animations found - will use visual effects only")

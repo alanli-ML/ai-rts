@@ -27,10 +27,35 @@ func setup(logger_ref, game_state_ref):
     logger = logger_ref
     game_state = game_state_ref
     
-    logger.info("SessionManager", "Setting up session manager")
+    _log_info("Setting up session manager")
+    if game_state:
+        _log_info("Game state reference set successfully")
+    else:
+        _log_warning("Game state reference is null during setup!")
     
     # Initialize session management
     _initialize_session_manager()
+
+func _log_info(message: String) -> void:
+    """Safe logging function that handles null logger"""
+    if logger:
+        logger.info("SessionManager", message)
+    else:
+        print("SessionManager: %s" % message)
+
+func _log_warning(message: String) -> void:
+    """Safe logging function that handles null logger"""
+    if logger:
+        logger.warning("SessionManager", message)
+    else:
+        print("SessionManager WARNING: %s" % message)
+
+func _log_error(message: String) -> void:
+    """Safe logging function that handles null logger"""
+    if logger:
+        logger.error("SessionManager", message)
+    else:
+        print("SessionManager ERROR: %s" % message)
 
 func _initialize_session_manager():
     """Initialize session management"""
@@ -41,7 +66,7 @@ func _initialize_session_manager():
     add_child(cleanup_timer)
     cleanup_timer.start()
     
-    logger.info("SessionManager", "Session manager initialized")
+    _log_info("Session manager initialized")
 
 # Session management
 func create_session(host_player_id: String = "") -> String:
@@ -64,7 +89,7 @@ func create_session(host_player_id: String = "") -> String:
     sessions[session_id] = session
     session_created.emit(session_id)
     
-    logger.info("SessionManager", "Created session %s" % session_id)
+    _log_info("Created session %s" % session_id)
     return session_id
 
 func destroy_session(session_id: String) -> void:
@@ -80,7 +105,7 @@ func destroy_session(session_id: String) -> void:
         sessions.erase(session_id)
         session_destroyed.emit(session_id)
         
-        logger.info("SessionManager", "Destroyed session %s" % session_id)
+        _log_info("Destroyed session %s" % session_id)
 
 func join_session(peer_id: int, player_id: String, preferred_session_id: String = "") -> String:
     """Join a player to a session"""
@@ -147,11 +172,11 @@ func get_all_peer_ids_in_session(session_id: String) -> Array[int]:
 # Client event handlers
 func on_client_connected(peer_id: int) -> void:
     """Handle client connection"""
-    logger.info("SessionManager", "Client connected: %d" % peer_id)
+    _log_info("Client connected: %d" % peer_id)
 
 func on_client_disconnected(peer_id: int, _client_data: Dictionary) -> void:
     """Handle client disconnection"""
-    logger.info("SessionManager", "Client disconnected: %d" % peer_id)
+    _log_info("Client disconnected: %d" % peer_id)
     
     # Remove from session if in one
     if peer_id in client_sessions:
@@ -189,7 +214,7 @@ func handle_player_ready(peer_id: int, ready_state: bool) -> void:
     var session_id = get_player_session(peer_id)
     
     if session_id == "":
-        logger.warning("SessionManager", "Player %d not in any session" % peer_id)
+        _log_warning("Player %d not in any session" % peer_id)
         return
     
     var session = sessions.get(session_id)
@@ -205,7 +230,7 @@ func handle_player_ready(peer_id: int, ready_state: bool) -> void:
             
     if not player_id_to_update.is_empty():
         session.players[player_id_to_update]["ready"] = ready_state
-        logger.info("SessionManager", "Player %s (Peer %d) ready state: %s" % [player_id_to_update, peer_id, ready_state])
+        _log_info("Player %s (Peer %d) ready state: %s" % [player_id_to_update, peer_id, ready_state])
         
         # Broadcast lobby update
         _broadcast_lobby_update(session_id)
@@ -213,34 +238,34 @@ func handle_player_ready(peer_id: int, ready_state: bool) -> void:
         # Check if game can start automatically (e.g. if all players are ready)
         call_deferred("_check_start_game", session_id)
     else:
-        logger.warning("SessionManager", "Could not find player for peer_id %d in session %s" % [peer_id, session_id])
+                    _log_warning("Could not find player for peer_id %d in session %s" % [peer_id, session_id])
 
 func handle_force_start_game(peer_id: int) -> void:
     """Handle force start game request from a client (host)."""
     var session_id = get_player_session(peer_id)
     
-    logger.info("SessionManager", "Start game request from peer %d" % peer_id)
+    _log_info("Start game request from peer %d" % peer_id)
     
     if session_id == "":
-        logger.warning("SessionManager", "Player %d not in any session" % peer_id)
+        _log_warning("Player %d not in any session" % peer_id)
         return
     
     var session = sessions.get(session_id)
     if not session:
-        logger.warning("SessionManager", "Session %s not found" % session_id)
+        _log_warning("Session %s not found" % session_id)
         return
     
     # TODO: Check if peer_id is the host
     
     if session.state != "waiting":
-        logger.warning("SessionManager", "Session %s is not in waiting state (current: %s)" % [session_id, session.state])
+        _log_warning("Session %s is not in waiting state (current: %s)" % [session_id, session.state])
         return
 
     if _can_start_game(session_id):
-        logger.info("SessionManager", "Starting game for session %s with %d players" % [session_id, session.players.size()])
+        _log_info("Starting game for session %s with %d players" % [session_id, session.players.size()])
         await _start_game(session_id)
     else:
-        logger.warning("SessionManager", "Start game request denied. Not all players are ready.")
+        _log_warning("Start game request denied. Not all players are ready.")
         # Optionally, send a message back to the host.
 
 func handle_leave_session(peer_id: int) -> void:
@@ -300,7 +325,7 @@ func _add_player_to_session(peer_id: int, player_id: String, session_id: String)
         # Notify observers
         player_joined_session.emit(session_id, player_id)
         
-        logger.info("SessionManager", "Player %s joined session %s" % [player_id, session_id])
+        _log_info("Player %s joined session %s" % [player_id, session_id])
         
         # Broadcast lobby update to all players in session
         _broadcast_lobby_update(session_id)
@@ -327,7 +352,7 @@ func _remove_player_from_session_internal(player_id: String, session_id: String)
             # Notify observers
             player_left_session.emit(session_id, player_id)
             
-            logger.info("SessionManager", "Player %s left session %s" % [player_id, session_id])
+            _log_info("Player %s left session %s" % [player_id, session_id])
             
             # Broadcast lobby update to remaining players
             if session.players.size() > 0:
@@ -390,15 +415,15 @@ func _start_game(session_id: String) -> void:
     var session = sessions.get(session_id)
     
     if not session:
-        logger.warning("SessionManager", "Cannot start game - session %s not found" % session_id)
+        _log_warning("Cannot start game - session %s not found" % session_id)
         return
     
     # CRITICAL: Prevent duplicate game starts for the same session
     if session.state == "active":
-        logger.warning("SessionManager", "Game already started for session %s - ignoring duplicate start request" % session_id)
+        _log_warning("Game already started for session %s - ignoring duplicate start request" % session_id)
         return
     
-    logger.info("SessionManager", "Starting game for session %s" % session_id)
+    _log_info("Starting game for session %s" % session_id)
     
     session.state = "active"
     session.last_activity = Time.get_ticks_msec()
@@ -416,7 +441,7 @@ func _start_game(session_id: String) -> void:
     var root_node = get_tree().get_root().get_node("UnifiedMain")
     
     if not root_node:
-        logger.error("SessionManager", "Cannot find UnifiedMain root node for RPC calls")
+        _log_error("Cannot find UnifiedMain root node for RPC calls")
         return
     
     # Notify all players in session
@@ -424,7 +449,7 @@ func _start_game(session_id: String) -> void:
         var player = session.players[player_id]
         var peer_id = player.peer_id
         
-        logger.info("SessionManager", "Notifying player %s (peer %d) that game started" % [player_id, peer_id])
+        _log_info("Notifying player %s (peer %d) that game started" % [player_id, peer_id])
         
         root_node.rpc_id(peer_id, "_on_game_started", {
             "session_id": session_id,
@@ -433,16 +458,16 @@ func _start_game(session_id: String) -> void:
             "game_mode": session.game_mode
         })
     
-    logger.info("SessionManager", "Game started for session %s" % session_id)
+    _log_info("Game started for session %s" % session_id)
 
 func _load_server_map() -> void:
     """Load the map on the server side for unit spawning"""
-    logger.info("SessionManager", "Loading map on server side for unit spawning")
+    _log_info("Loading map on server side for unit spawning")
     
     # Check if map is already loaded
     var map_node = get_tree().get_root().find_child("TestMap", true, false)
     if map_node:
-        logger.info("SessionManager", "Map already loaded on server")
+        _log_info("Map already loaded on server")
         return
     
     # Load the test map scene
@@ -456,24 +481,40 @@ func _load_server_map() -> void:
         var unified_main = get_tree().get_root().get_node("UnifiedMain")
         if unified_main:
             unified_main.add_child(map_instance)
-            logger.info("SessionManager", "Map loaded successfully on server")
+            _log_info("Map loaded successfully on server")
         else:
-            logger.error("SessionManager", "Could not find UnifiedMain to attach map")
+            _log_error("Could not find UnifiedMain to attach map")
     else:
-        logger.error("SessionManager", "Could not load map scene")
+        _log_error("Could not load map scene")
 
 func _initialize_game_content(session: Dictionary) -> void:
     """Initialize game content when a game starts"""
     var session_id = session.id
-    logger.info("SessionManager", "Initializing game content for session %s" % session_id)
+    _log_info("Initializing game content for session %s" % session_id)
     
     var map_node = get_tree().get_root().find_child("TestMap", true, false)
     if not map_node:
-        logger.error("SessionManager", "Could not find map node 'TestMap' in the scene tree.")
+        _log_error("Could not find map node 'TestMap' in the scene tree.")
         return
 
     # Get the game state to add players and spawn units
+    _log_info("Checking game state availability...")
+    
+    # Try to get game state from dependency container if our reference is null
+    if not game_state:
+        _log_warning("Game state reference is null, trying to get from dependency container...")
+        var dependency_container = get_node_or_null("/root/DependencyContainer")
+        if dependency_container:
+            game_state = dependency_container.get_game_state()
+            if game_state:
+                _log_info("Successfully retrieved game state from dependency container")
+            else:
+                _log_error("Game state not available in dependency container either")
+        else:
+            _log_error("Could not find dependency container")
+    
     if game_state:
+        _log_info("Game state is available")
         # Initialize all game systems
         _initialize_game_systems(session)
         
@@ -484,7 +525,7 @@ func _initialize_game_content(session: Dictionary) -> void:
             var team_id = player.team_id
             
             game_state.add_player(player_id, peer_id, player_id, team_id)
-            logger.info("SessionManager", "Added player %s to game state (team %d)" % [player_id, team_id])
+            _log_info("Added player %s to game state (team %d)" % [player_id, team_id])
         
         # Initialize teams for all systems
         _initialize_team_systems(session)
@@ -503,18 +544,18 @@ func _initialize_game_content(session: Dictionary) -> void:
         
         # Set game state to active
         game_state.set_match_state("active")
-        logger.info("SessionManager", "Game content initialized successfully")
+        _log_info("Game content initialized successfully")
     else:
-        logger.warning("SessionManager", "No game state available to initialize content")
+        _log_warning("No game state available to initialize content")
 
 func _initialize_game_systems(_session: Dictionary) -> void:
     """Initialize all game systems for the session"""
-    logger.info("SessionManager", "Initializing game systems")
+    _log_info("Initializing game systems")
     
     # Get system references from dependency container
     var dependency_container = get_node("/root/DependencyContainer")
     if not dependency_container:
-        logger.error("SessionManager", "Cannot find DependencyContainer")
+        _log_error("Cannot find DependencyContainer")
         return
     
     var resource_manager = dependency_container.get_resource_manager()
@@ -523,19 +564,19 @@ func _initialize_game_systems(_session: Dictionary) -> void:
     
     # Initialize systems
     if resource_manager:
-        logger.info("SessionManager", "Resource manager available")
+        _log_info("Resource manager available")
     
     if node_capture_system:
-        logger.info("SessionManager", "Node capture system available")
+        _log_info("Node capture system available")
     
     if ai_command_processor:
-        logger.info("SessionManager", "AI command processor available")
+        _log_info("AI command processor available")
     
-    logger.info("SessionManager", "Game systems initialized")
+    _log_info("Game systems initialized")
 
 func _initialize_team_systems(session: Dictionary) -> void:
     """Initialize team-based systems"""
-    logger.info("SessionManager", "Initializing team systems")
+    _log_info("Initializing team systems")
     
     # Get unique team IDs from session
     var team_ids = []
@@ -545,7 +586,7 @@ func _initialize_team_systems(session: Dictionary) -> void:
         if team_id not in team_ids:
             team_ids.append(team_id)
     
-    logger.info("SessionManager", "Teams in session: %s" % str(team_ids))
+    _log_info("Teams in session: %s" % str(team_ids))
     
     # Initialize resource manager for teams
     var dependency_container = get_node("/root/DependencyContainer")
@@ -553,22 +594,22 @@ func _initialize_team_systems(session: Dictionary) -> void:
         var resource_manager = dependency_container.get_resource_manager()
         if resource_manager:
             # ResourceManager handles team initialization internally in _ready()
-            logger.info("SessionManager", "Resource manager initialized for teams: %s" % str(team_ids))
+            _log_info("Resource manager initialized for teams: %s" % str(team_ids))
 
 func _initialize_control_points(_session: Dictionary, map_node: Node) -> void:
     """Initialize control points for the session"""
-    logger.info("SessionManager", "Initializing control points")
+    _log_info("Initializing control points")
     
     var dependency_container = get_node("/root/DependencyContainer")
     if dependency_container:
         var node_capture_system = dependency_container.get_node_capture_system()
         if node_capture_system:
             node_capture_system.initialize_control_points(map_node)
-            logger.info("SessionManager", "Control points initialized")
+            _log_info("Control points initialized")
 
 func _initialize_resource_management(_session: Dictionary) -> void:
     """Initialize resource management for the session"""
-    logger.info("SessionManager", "Initializing resource management")
+    _log_info("Initializing resource management")
     
     var dependency_container = get_node("/root/DependencyContainer")
     if dependency_container:
@@ -576,22 +617,22 @@ func _initialize_resource_management(_session: Dictionary) -> void:
         if resource_manager:
             # Start resource generation for all teams
             resource_manager.start_match()
-            logger.info("SessionManager", "Resource generation started")
+            _log_info("Resource generation started")
 
 func _initialize_ai_systems(_session: Dictionary) -> void:
     """Initialize AI systems for the session"""
-    logger.info("SessionManager", "Initializing AI systems")
+    _log_info("Initializing AI systems")
     
     var dependency_container = get_node("/root/DependencyContainer")
     if dependency_container:
         var ai_command_processor = dependency_container.get_ai_command_processor()
         if ai_command_processor:
             # AI system is ready for command processing
-            logger.info("SessionManager", "AI command processor initialized")
+            _log_info("AI command processor initialized")
 
 func _spawn_initial_units(session: Dictionary, map_node: Node) -> void:
     """Spawn initial units for each team"""
-    logger.info("SessionManager", "Spawning initial units for session %s" % session.id)
+    _log_info("Spawning initial units for session %s" % session.id)
     
     var team_spawns = {
         1: map_node.get_node("SpawnPoints/Team1Spawn").global_position,
@@ -615,7 +656,7 @@ func _spawn_initial_units(session: Dictionary, map_node: Node) -> void:
         var representative_player = team_players[0]  # Use first player as representative for ownership
         
         var base_position = team_spawns.get(team_id, Vector3.ZERO)
-        logger.info("SessionManager", "Spawning initial units for team %d with %d players" % [team_id, team_players.size()])
+        _log_info("Spawning initial units for team %d with %d players" % [team_id, team_players.size()])
         
         # Spawn a mixed squad for this team
         var archetypes = ["scout", "tank", "sniper", "medic", "engineer"]
@@ -625,9 +666,9 @@ func _spawn_initial_units(session: Dictionary, map_node: Node) -> void:
             var unit_position = base_position + Vector3(i * 6, 1, 0) # Spawn at Y=1 to be above ground
             
             var unit_id = await game_state.spawn_unit(archetype, team_id, unit_position, representative_player)
-            logger.info("SessionManager", "Spawned %s unit %s for team %d at %s" % [archetype, unit_id, team_id, unit_position])
+            _log_info("Spawned %s unit %s for team %d at %s" % [archetype, unit_id, team_id, unit_position])
     
-    logger.info("SessionManager", "Initial units spawned")
+    _log_info("Initial units spawned")
 
 func _broadcast_lobby_update(session_id: String) -> void:
     """Broadcast lobby update to all players in session"""
@@ -685,7 +726,7 @@ func _cleanup_sessions() -> void:
     # Remove expired sessions
     for session_id in sessions_to_remove:
         destroy_session(session_id)
-        logger.info("SessionManager", "Cleaned up expired session %s" % session_id)
+        _log_info("Cleaned up expired session %s" % session_id)
 
 func cleanup() -> void:
     """Cleanup resources"""
@@ -696,7 +737,7 @@ func cleanup() -> void:
     sessions.clear()
     client_sessions.clear()
     
-    logger.info("SessionManager", "Session manager cleaned up")
+    _log_info("Session manager cleaned up")
 
 # Note: RPC methods are now handled by UnifiedMain root node 
 

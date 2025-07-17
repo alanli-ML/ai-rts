@@ -48,8 +48,28 @@ const NETWORK_TICK_RATE = 2 # ~30 times per second if physics is 60fps
 
 # Autonomous command rate limiting
 var units_waiting_for_ai: Dictionary = {}  # unit_id -> timestamp when request was sent
+
+# Safe logging functions that handle null logger
+func _log_info(component: String, message: String):
+    if logger and logger.has_method("info"):
+        logger.info(component, message)
+    else:
+        print("[INFO] %s: %s" % [component, message])
+
+func _log_warning(component: String, message: String):
+    if logger and logger.has_method("warning"):
+        logger.warning(component, message)
+    else:
+        print("[WARNING] %s: %s" % [component, message])
+
+func _log_error(component: String, message: String):
+    if logger and logger.has_method("error"):
+        logger.error(component, message)
+    else:
+        print("[ERROR] %s: %s" % [component, message])
 var per_unit_autonomous_cooldown: float = 10.0 # Each unit can only request a plan every 10s
 var unit_autonomous_cooldowns: Dictionary = {} # unit_id -> timestamp
+var initial_group_command_given: bool = false
 
 func _ready() -> void:
     # Systems will be initialized via dependency injection
@@ -99,10 +119,10 @@ func _gather_game_state() -> Dictionary:
                     var params = step.get("params", {})
                     if params == null: params = {}
                     var action_display = action.capitalize().replace("_", " ")
-                    if params.has("target_id"):
+                    if params.has("target_id") and params.target_id != null:
                         action_display += " " + str(params.target_id).right(4)
-                    elif params.has("position"):
-                        action_display += " (%d, %d)" % [params.position[0], params.position[2]]
+                    elif params.has("position") and params.position != null and params.position is Array and params.position.size() >= 3:
+                        action_display += " (%d, %d)" % [int(params.position[0]), int(params.position[2])]
 
                     var step_status = "pending"
                     if i < current_step_index:
@@ -122,9 +142,22 @@ func _gather_game_state() -> Dictionary:
                     var action = step.get("action", "unknown")
                     var params = step.get("params", {})
                     if params == null: params = {}
-                    var trigger = step.get("trigger", "")
+                    
+                    # Handle both new structured triggers and legacy trigger format
+                    var trigger = ""
+                    if step.has("trigger_source") and step.has("trigger_comparison") and step.has("trigger_value"):
+                        # New structured trigger format
+                        var source = step.get("trigger_source")
+                        var comparison = step.get("trigger_comparison")
+                        var value = step.get("trigger_value")
+                        if source != null and comparison != null and value != null:
+                            trigger = "%s %s %s" % [source, comparison, str(value)]
+                    elif step.has("trigger") and step.trigger != null and not step.trigger.is_empty():
+                        # Legacy trigger format
+                        trigger = step.trigger
+                    
                     var action_display = action.capitalize().replace("_", " ")
-                    if params.has("target_id"):
+                    if params.has("target_id") and params.target_id != null:
                         action_display += " " + str(params.target_id).right(4)
                     
                     full_plan_data.append({"action": action_display, "status": "triggered", "trigger": trigger})
@@ -185,17 +218,35 @@ func setup(logger_ref: Node, game_constants_ref, network_messages_ref) -> void:
     # Get system references from dependency container
     var dependency_container = get_node("/root/DependencyContainer")
     if dependency_container:
+        _log_info("ServerGameState", "Dependency container found, getting system references...")
+        
         ai_command_processor = dependency_container.get_ai_command_processor()
         resource_manager = dependency_container.get_resource_manager()
         node_capture_system = dependency_container.get_node_capture_system()
         team_unit_spawner = dependency_container.get_team_unit_spawner()
         
+        # Debug the team_unit_spawner specifically
+        if team_unit_spawner:
+            _log_info("ServerGameState", "TeamUnitSpawner successfully obtained: %s" % team_unit_spawner.name)
+        else:
+            _log_error("ServerGameState", "TeamUnitSpawner is null! Available children in DependencyContainer:")
+            for child in dependency_container.get_children():
+                _log_info("ServerGameState", "  - %s" % child.name)
+            
+            # Try to find it manually
+            var manual_spawner = dependency_container.get_node_or_null("TeamUnitSpawner")
+            if manual_spawner:
+                _log_info("ServerGameState", "Found TeamUnitSpawner manually: %s" % manual_spawner.name)
+                team_unit_spawner = manual_spawner
+            else:
+                _log_error("ServerGameState", "TeamUnitSpawner not found even manually")
+        
         # Connect system signals
         _connect_system_signals()
         
-        logger.info("ServerGameState", "Setup complete with all systems")
+        _log_info("ServerGameState", "Setup complete with all systems")
     else:
-        logger.error("ServerGameState", "Cannot find DependencyContainer")
+        _log_error("ServerGameState", "Cannot find DependencyContainer")
 
 func _connect_system_signals() -> void:
     """Connect signals from all integrated systems"""
@@ -221,23 +272,23 @@ func _connect_system_signals() -> void:
         if not node_capture_system.victory_achieved.is_connected(_on_victory_achieved):
             node_capture_system.victory_achieved.connect(_on_victory_achieved)
     
-    logger.info("ServerGameState", "System signals connected")
+    _log_info("ServerGameState", "System signals connected")
 
 # AI System Integration
 func _on_ai_plan_processed(plans: Array, message: String) -> void:
     """Handle successful AI plan processing"""
-    logger.info("ServerGameState", "AI plan processed successfully: %s" % message)
+    _log_info("ServerGameState", "AI plan processed successfully: %s" % message)
     
     # Clear waiting status for units that got plans
     for plan_data in plans:
         var unit_id = plan_data.get("unit_id", "")
         if not unit_id.is_empty() and unit_id in units_waiting_for_ai:
             units_waiting_for_ai.erase(unit_id)
-            logger.info("ServerGameState", "Cleared waiting status for unit %s" % unit_id)
+            _log_info("ServerGameState", "Cleared waiting status for unit %s" % unit_id)
 
 func _on_ai_command_failed(error: String, p_unit_ids: Array) -> void:
     """Handle failed AI command processing"""
-    logger.warning("ServerGameState", "AI command failed for units %s: %s" % [str(p_unit_ids), error])
+    _log_warning("ServerGameState", "AI command failed for units %s: %s" % [str(p_unit_ids), error])
     
     var units_to_clear = p_unit_ids
     if units_to_clear.is_empty():
@@ -247,13 +298,13 @@ func _on_ai_command_failed(error: String, p_unit_ids: Array) -> void:
     for unit_id in units_to_clear:
         if unit_id in units_waiting_for_ai:
             units_waiting_for_ai.erase(unit_id)
-            logger.info("ServerGameState", "Cleared waiting status for unit %s due to AI command failure" % unit_id)
+            _log_info("ServerGameState", "Cleared waiting status for unit %s due to AI command failure" % unit_id)
 
 # Resource System Integration
 func _on_resource_changed(team_id: int, resource_type: int, current_amount: int) -> void:
     """Handle resource changes"""
     var resource_type_str = "energy" # Assuming only energy for now (enum 0)
-    logger.info("ServerGameState", "Resource changed: Team %d, %s: %d" % [team_id, resource_type_str, current_amount])
+    _log_info("ServerGameState", "Resource changed: Team %d, %s: %d" % [team_id, resource_type_str, current_amount])
     
     # Update cached resource data
     if team_id not in resource_data:
@@ -275,7 +326,7 @@ func _on_resource_generated(_team_id: int, _resource_type: String, _amount: int)
 # Control Point System Integration
 func _on_control_point_captured(control_point_id: int, team_id: int, capture_progress: float) -> void:
     """Handle control point capture"""
-    logger.info("ServerGameState", "Control point captured: Point %d by Team %d" % [control_point_id, team_id])
+    _log_info("ServerGameState", "Control point captured: Point %d by Team %d" % [control_point_id, team_id])
     
     # Update cached control point data
     control_points_data[control_point_id] = {
@@ -292,7 +343,7 @@ func _on_control_point_captured(control_point_id: int, team_id: int, capture_pro
 
 func _on_control_point_contested(control_point_id: int, attacking_team: int, defending_team: int, progress: float) -> void:
     """Handle control point contested state"""
-    logger.info("ServerGameState", "Control point contested: Point %d - Team %d vs Team %d (%.1f%%)" % [control_point_id, attacking_team, defending_team, progress * 100])
+    _log_info("ServerGameState", "Control point contested: Point %d - Team %d vs Team %d (%.1f%%)" % [control_point_id, attacking_team, defending_team, progress * 100])
     
     # Update cached control point data
     control_points_data[control_point_id] = {
@@ -307,7 +358,7 @@ func _on_control_point_contested(control_point_id: int, attacking_team: int, def
 
 func _on_victory_achieved(team_id: int, victory_type: String) -> void:
     """Handle victory conditions"""
-    logger.info("ServerGameState", "Victory achieved: Team %d via %s" % [team_id, victory_type])
+    _log_info("ServerGameState", "Victory achieved: Team %d via %s" % [team_id, victory_type])
     
     # Set match state
     match_state = "ended"
@@ -323,6 +374,10 @@ func _on_unit_became_idle(unit_id: String):
     _request_autonomous_plan_for_unit(unit_id)
 
 func _request_autonomous_plan_for_unit(unit_id: String):
+    # Do not allow autonomous actions until the player has issued their first group command.
+    if not initial_group_command_given:
+        return
+
     if not units.has(unit_id): return
     if unit_id in units_waiting_for_ai: return
     
@@ -333,7 +388,7 @@ func _request_autonomous_plan_for_unit(unit_id: String):
     if current_time - last_unit_request_time < per_unit_autonomous_cooldown:
         return # Unit is on its own cooldown.
     
-    logger.info("ServerGameState", "Requesting autonomous individual plan for unit %s" % unit_id)
+    _log_info("ServerGameState", "Requesting autonomous individual plan for unit %s" % unit_id)
     
     # Update cooldown timestamps
     unit_autonomous_cooldowns[unit_id] = current_time
@@ -432,7 +487,7 @@ func _trigger_unit_speech(unit_id: String, message: String) -> void:
 
 func add_player(player_id: String, peer_id: int, player_name: String, team_id: int) -> void:
     if player_id in players:
-        logger.warning("ServerGameState", "Player %s already exists." % player_id)
+        _log_warning("ServerGameState", "Player %s already exists." % player_id)
         return
     
     players[player_id] = {
@@ -443,12 +498,30 @@ func add_player(player_id: String, peer_id: int, player_name: String, team_id: i
         "buildings": []
     }
     
-    logger.info("ServerGameState", "Added player %s (Peer: %d, Team: %d)" % [player_name, peer_id, team_id])
+    _log_info("ServerGameState", "Added player %s (Peer: %d, Team: %d)" % [player_name, peer_id, team_id])
 
 func spawn_unit(archetype: String, team_id: int, position: Vector3, owner_id: String) -> String:
+    _log_info("ServerGameState", "spawn_unit called: archetype=%s, team_id=%d, position=%s, owner_id=%s" % [archetype, team_id, position, owner_id])
+    
     if not team_unit_spawner:
-        logger.error("ServerGameState", "TeamUnitSpawner not available.")
-        return ""
+        _log_error("ServerGameState", "TeamUnitSpawner not available.")
+        
+        # Try to get it again from dependency container as a fallback
+        var dependency_container = get_node("/root/DependencyContainer")
+        if dependency_container:
+            _log_info("ServerGameState", "Attempting to retrieve TeamUnitSpawner again from dependency container...")
+            team_unit_spawner = dependency_container.get_team_unit_spawner()
+            
+            if team_unit_spawner:
+                _log_info("ServerGameState", "Successfully retrieved TeamUnitSpawner on retry: %s" % team_unit_spawner.name)
+            else:
+                _log_error("ServerGameState", "TeamUnitSpawner still null after retry attempt")
+                return ""
+        else:
+            _log_error("ServerGameState", "Cannot find DependencyContainer for fallback retrieval")
+            return ""
+    
+    _log_info("ServerGameState", "About to spawn unit with TeamUnitSpawner: %s" % team_unit_spawner.name)
     
     var unit = await team_unit_spawner.spawn_unit(team_id, position, archetype)
     if unit and is_instance_valid(unit):
@@ -470,30 +543,43 @@ func spawn_unit(archetype: String, team_id: int, position: Vector3, owner_id: St
                 unit.unit_died.connect(_on_unit_died)
             
             unit_spawned.emit(unit_id)
-            logger.info("ServerGameState", "Added unit %s (%s) to game state for team %d" % [unit_id, archetype, team_id])
+            _log_info("ServerGameState", "Added unit %s (%s) to game state for team %d" % [unit_id, archetype, team_id])
             return unit_id
     
-    logger.error("ServerGameState", "Failed to spawn unit or unit initialization failed for archetype %s." % archetype)
+    _log_error("ServerGameState", "Failed to spawn unit or unit initialization failed for archetype %s." % archetype)
     return ""
 
 func _on_unit_died(unit_id: String):
     if units.has(unit_id):
-        units.erase(unit_id)
-        logger.info("ServerGameState", "Unit %s died and was removed from game state." % unit_id)
-        
-        # Broadcast removal to clients
-        var session_manager = get_node("/root/DependencyContainer").get_node("SessionManager")
-        if not session_manager or session_manager.get_session_count() == 0: return
-
-        var session_id = session_manager.sessions.keys()[0]
-        var peer_ids = session_manager.get_all_peer_ids_in_session(session_id)
-        
-        var root_node = get_tree().get_root().get_node("UnifiedMain")
-        if root_node:
-            for peer_id in peer_ids:
-                root_node.rpc_id(peer_id, "remove_unit_rpc", unit_id)
-        
+        _log_info("ServerGameState", "Unit %s died and will remain in scene." % unit_id)
+        # The unit's 'is_dead' flag is now true and will be broadcast in the next state update.
+        # No need to remove it from the 'units' dictionary.
         unit_destroyed.emit(unit_id)
+
+func _get_team_transform(team_id: int) -> Transform3D:
+    var home_base_manager = get_tree().get_first_node_in_group("home_base_managers")
+    if not home_base_manager:
+        _log_error("ServerGameState", "HomeBaseManager not found!")
+        return Transform3D.IDENTITY
+
+    var my_base_pos = home_base_manager.get_home_base_position(team_id)
+    var enemy_team_id = 2 if team_id == 1 else 1
+    var enemy_base_pos = home_base_manager.get_home_base_position(enemy_team_id)
+
+    if my_base_pos == Vector3.ZERO or enemy_base_pos == Vector3.ZERO:
+        _log_error("ServerGameState", "Home base positions not set up correctly.")
+        return Transform3D.IDENTITY
+        
+    var forward_vec = (enemy_base_pos - my_base_pos).normalized()
+    var right_vec = forward_vec.cross(Vector3.UP).normalized()
+    var up_vec = right_vec.cross(forward_vec).normalized()
+
+    return Transform3D(right_vec, up_vec, forward_vec, my_base_pos)
+
+func _transform_pos_to_relative_array(world_pos: Vector3, transform: Transform3D) -> Array:
+    var relative_pos = transform.affine_inverse() * world_pos
+    # Round to keep the context clean for the LLM
+    return [round(relative_pos.x), round(relative_pos.y), round(relative_pos.z)]
 
 func _convert_to_team_relative_data(data: Dictionary, requesting_team_id: int) -> Dictionary:
     """Convert team IDs to relative values and round numeric values to 2 decimal places"""
@@ -531,20 +617,24 @@ func get_group_context_for_ai(p_units: Array) -> Dictionary:
     if p_units.is_empty():
         return {}
 
+    var requesting_team = p_units[0].team_id if not p_units.is_empty() else 1
+    var team_transform = _get_team_transform(requesting_team)
+
     # 1. Global State (get once)
     var global_state = {
         "game_time_sec": round(game_time * 100.0) / 100.0,
-        "team_resources": team_resources.get(p_units[0].team_id, {}),
+        "team_resources": team_resources.get(requesting_team, {}),
         "controlled_nodes": node_capture_system.team_control_counts if node_capture_system else {}
     }
 
     # 2. Allied Units' States (converted to team-relative)
-    var requesting_team = p_units[0].team_id if not p_units.is_empty() else 1
     var group_allies = []
     for unit in p_units:
         if is_instance_valid(unit):
-            var unit_info = _convert_to_team_relative_data(unit.get_unit_info(), requesting_team)
-            group_allies.append(unit_info)
+            var unit_info = unit.get_unit_info()
+            unit_info["position"] = _transform_pos_to_relative_array(unit.global_position, team_transform)
+            var converted_unit_info = _convert_to_team_relative_data(unit_info, requesting_team)
+            group_allies.append(converted_unit_info)
 
     # 3. Consolidated Sensor Data
     var group_enemies = {} # Use dict to avoid duplicates by ID
@@ -559,22 +649,24 @@ func get_group_context_for_ai(p_units: Array) -> Dictionary:
             
             var dist = unit.global_position.distance_to(other_unit.global_position)
             if dist < unit.vision_range:
-                var other_info = _convert_to_team_relative_data(other_unit.get_unit_info(), requesting_team)
-                other_info["dist"] = round(dist * 100.0) / 100.0  # Round distance to 2 decimal places
+                var other_info = other_unit.get_unit_info()
+                other_info["position"] = _transform_pos_to_relative_array(other_unit.global_position, team_transform)
+                var converted_other_info = _convert_to_team_relative_data(other_info, requesting_team)
+
+                converted_other_info["dist"] = round(dist * 100.0) / 100.0
                 
                 if other_unit.team_id != unit.team_id:
-                    if not other_info.get("is_stealthed", false):
+                    if not converted_other_info.get("is_stealthed", false):
                         if not group_enemies.has(other_unit_id):
-                            group_enemies[other_unit_id] = other_info
+                            group_enemies[other_unit_id] = converted_other_info
                 else:
-                    # It's an ally, but is it part of the commanded group?
                     var is_in_group = false
                     for group_unit in p_units:
                         if group_unit.unit_id == other_unit_id:
                             is_in_group = true
                             break
                     if not is_in_group and not group_allies_sensed.has(other_unit_id):
-                        group_allies_sensed[other_unit_id] = other_info
+                        group_allies_sensed[other_unit_id] = converted_other_info
 
     var sorted_enemies = group_enemies.values()
     if not sorted_enemies.is_empty():
@@ -592,21 +684,18 @@ func get_group_context_for_ai(p_units: Array) -> Dictionary:
                 var absolute_controlling_team = cp.get_controlling_team()
                 var absolute_capture_value = cp.capture_value
                 
-                # Convert to relative values (+1 = our team, -1 = enemy team, 0 = neutral)
                 var relative_controlling_team = 0
                 if absolute_controlling_team == requesting_team:
                     relative_controlling_team = 1
                 elif absolute_controlling_team != 0:
                     relative_controlling_team = -1
                 
-                # Adjust capture value relative to team and round to 2 decimal places
                 var relative_capture_value = 0.0
                 if absolute_controlling_team == requesting_team:
                     relative_capture_value = abs(absolute_capture_value)
                 elif absolute_controlling_team != 0:
                     relative_capture_value = -abs(absolute_capture_value)
                 else:
-                    # Neutral point - show progress toward whichever team is capturing
                     if absolute_capture_value > 0 and requesting_team == 1:
                         relative_capture_value = absolute_capture_value
                     elif absolute_capture_value < 0 and requesting_team == 2:
@@ -616,12 +705,11 @@ func get_group_context_for_ai(p_units: Array) -> Dictionary:
                     elif absolute_capture_value < 0 and requesting_team == 1:
                         relative_capture_value = absolute_capture_value
                 
-                # Round to 2 decimal places
                 relative_capture_value = round(relative_capture_value * 100.0) / 100.0
                 
                 group_control_points.append({
                     "id": cp.control_point_id,
-                    "position": [round(cp.global_position.x * 100.0) / 100.0, round(cp.global_position.y * 100.0) / 100.0, round(cp.global_position.z * 100.0) / 100.0],
+                    "position": _transform_pos_to_relative_array(cp.global_position, team_transform),
                     "controlling_team": relative_controlling_team,
                     "capture_value": relative_capture_value
                 })
@@ -643,6 +731,8 @@ func get_context_for_ai(unit: Unit) -> Dictionary:
     if not is_instance_valid(unit):
         return {}
 
+    var team_transform = _get_team_transform(unit.team_id)
+
     # 1. Global State
     var global_state = {
         "game_time_sec": round(game_time * 100.0) / 100.0,
@@ -651,7 +741,9 @@ func get_context_for_ai(unit: Unit) -> Dictionary:
     }
 
     # 2. Unit's Own State (including current plan, converted to team-relative)
-    var unit_state = _convert_to_team_relative_data(unit.get_unit_info(), unit.team_id)
+    var unit_info = unit.get_unit_info()
+    unit_info["position"] = _transform_pos_to_relative_array(unit.global_position, team_transform)
+    var unit_state = _convert_to_team_relative_data(unit_info, unit.team_id)
     if plan_executor:
         unit_state["action_queue"] = _get_plan_info_for_unit(unit.unit_id)
 
@@ -670,29 +762,27 @@ func get_context_for_ai(unit: Unit) -> Dictionary:
         if not is_instance_valid(other_unit) or other_unit == unit:
             continue
 
-        # Simple distance-based "vision" check
         var dist = unit.global_position.distance_to(other_unit.global_position)
         if dist < unit.vision_range:
-            var other_info = _convert_to_team_relative_data(other_unit.get_unit_info(), unit.team_id)
+            var other_info = other_unit.get_unit_info()
+            other_info["position"] = _transform_pos_to_relative_array(other_unit.global_position, team_transform)
+            var converted_other_info = _convert_to_team_relative_data(other_info, unit.team_id)
             
-            # Skip stealthed enemies
-            if other_unit.team_id != unit.team_id and other_info.get("is_stealthed", false):
+            if other_unit.team_id != unit.team_id and converted_other_info.get("is_stealthed", false):
                 continue
 
-            other_info["dist"] = round(dist * 100.0) / 100.0  # Round distance to 2 decimal places
+            converted_other_info["dist"] = round(dist * 100.0) / 100.0
             
-            # Add plan information for visible units
             if plan_executor:
                 var other_plan_info = _get_plan_info_for_unit(other_unit.unit_id)
                 if not other_plan_info.is_empty():
-                    other_info["current_plan"] = other_plan_info
+                    converted_other_info["current_plan"] = other_plan_info
             
             if other_unit.team_id != unit.team_id:
-                sensor_data.visible_enemies.append(other_info)
+                sensor_data.visible_enemies.append(converted_other_info)
             else:
-                sensor_data.visible_allies.append(other_info)
+                sensor_data.visible_allies.append(converted_other_info)
     
-    # Sort by distance
     sensor_data.visible_enemies.sort_custom(func(a, b): return a.dist < b.dist)
     sensor_data.visible_allies.sort_custom(func(a, b): return a.dist < b.dist)
 
@@ -702,34 +792,31 @@ func get_context_for_ai(unit: Unit) -> Dictionary:
         for mine_data in all_mines:
             var mine_pos = Vector3(mine_data.position.x, mine_data.position.y, mine_data.position.z)
             var dist = unit.global_position.distance_to(mine_pos)
-            if dist < 40.0: # Vision range
-                var mine_info = _convert_to_team_relative_data(mine_data.duplicate(), unit.team_id)
-                mine_info["dist"] = round(dist * 100.0) / 100.0  # Round distance to 2 decimal places
-                sensor_data.visible_mines.append(mine_info)
+            if dist < 40.0:
+                var mine_info = mine_data.duplicate()
+                mine_info["position"] = _transform_pos_to_relative_array(mine_pos, team_transform)
+                var converted_mine_info = _convert_to_team_relative_data(mine_info, unit.team_id)
+                converted_mine_info["dist"] = round(dist * 100.0) / 100.0
+                sensor_data.visible_mines.append(converted_mine_info)
 
-    # Add control point data (adjusted relative to unit's team)
     if node_capture_system and not node_capture_system.control_points.is_empty():
         for cp in node_capture_system.control_points:
             if is_instance_valid(cp):
-                var dist = unit.global_position.distance_to(cp.global_position)
                 var absolute_controlling_team = cp.get_controlling_team()
                 var absolute_capture_value = cp.capture_value
                 
-                # Convert to relative values (+1 = our team, -1 = enemy team, 0 = neutral)
                 var relative_controlling_team = 0
                 if absolute_controlling_team == unit.team_id:
                     relative_controlling_team = 1
                 elif absolute_controlling_team != 0:
                     relative_controlling_team = -1
                 
-                # Adjust capture value relative to team and round to 2 significant digits
                 var relative_capture_value = 0.0
                 if absolute_controlling_team == unit.team_id:
                     relative_capture_value = abs(absolute_capture_value)
                 elif absolute_controlling_team != 0:
                     relative_capture_value = -abs(absolute_capture_value)
                 else:
-                    # Neutral point - show progress toward whichever team is capturing
                     if absolute_capture_value > 0 and unit.team_id == 1:
                         relative_capture_value = absolute_capture_value
                     elif absolute_capture_value < 0 and unit.team_id == 2:
@@ -739,20 +826,15 @@ func get_context_for_ai(unit: Unit) -> Dictionary:
                     elif absolute_capture_value < 0 and unit.team_id == 1:
                         relative_capture_value = absolute_capture_value
                 
-                # Round to 2 significant digits
                 relative_capture_value = round(relative_capture_value * 100.0) / 100.0
                 
                 var cp_data = {
                     "id": cp.control_point_id,
-                    "position": [round(cp.global_position.x * 100.0) / 100.0, round(cp.global_position.y * 100.0) / 100.0, round(cp.global_position.z * 100.0) / 100.0],
+                    "position": _transform_pos_to_relative_array(cp.global_position, team_transform),
                     "controlling_team": relative_controlling_team,
                     "capture_value": relative_capture_value
-                    #"dist": dist
                 }
                 sensor_data.visible_control_points.append(cp_data)
-        
-        # Sort by distance
-        #sensor_data.visible_control_points.sort_custom(func(a, b): return a.dist < b.dist)
 
     # 4. Team Context (simplified)
     var team_context = {
@@ -810,11 +892,16 @@ func _on_ai_think_timer_timeout():
 
 func set_match_state(new_state: String):
     match_state = new_state
-    logger.info("ServerGameState", "Match state changed to: %s" % new_state)
+    _log_info("ServerGameState", "Match state changed to: %s" % new_state)
     
     if new_state == "active":
         if ai_think_timer: ai_think_timer.start()
     else:
         if ai_think_timer: ai_think_timer.stop()
+
+func set_initial_group_command_given():
+    if not initial_group_command_given:
+        initial_group_command_given = true
+        _log_info("ServerGameState", "Initial group command received. Autonomous unit prompts are now enabled.")
 
 # Existing methods continue...

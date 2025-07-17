@@ -1,7 +1,8 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/core/map.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/core/rts_camera.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/core/home_base_manager.gd" id="3_hbm"]
 
 [sub_resource type="NavigationMesh" id="NavigationMesh_1"]
 vertices = PackedVector3Array(-50, 0.5, -50, -50, 0.5, 50, 50, 0.5, 50, 50, 0.5, -50)
@@ -42,12 +43,13 @@ size = Vector3(100, 1, 100)
 [node name="SpawnPoints" type="Node3D" parent="."]
 
 [node name="Team1Spawn" type="Marker3D" parent="SpawnPoints"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0, -40)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25, 0.5, 40)
 
 [node name="Team2Spawn" type="Marker3D" parent="SpawnPoints"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0, 40)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -25, 0.5, -40)
 
 [node name="HomeBases" type="Node3D" parent="."]
+script = ExtResource("3_hbm")
 
 [node name="Team1Base" type="CSGBox3D" parent="HomeBases"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0, -40)

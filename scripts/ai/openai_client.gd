@@ -76,9 +76,9 @@ func send_chat_completion(messages: Array, callback: Callable, response_format: 
 	
 	var request_data = {
 		"model": model,
-		"messages": messages,
-		"max_tokens": max_tokens,
-		"temperature": temperature
+		"messages": messages
+		#"max_tokens": max_tokens,
+		#"temperature": temperature
 	}
 	
 	# Add structured outputs support
@@ -127,7 +127,21 @@ func _send_request(request_info: Dictionary) -> void:
 	var error = http_request.request(request_info.url, headers, HTTPClient.METHOD_POST, json_data)
 	if error != OK:
 		active_requests -= 1
+		
+		# Call the callback with error response to prevent timeout
+		var callback = request_info.callback as Callable
+		if callback.is_valid():
+			var error_response = {
+				"error": {
+					"type": "network_error", 
+					"message": "Failed to send HTTP request (error code: %d)" % error,
+					"code": error
+				}
+			}
+			callback.call(error_response)
+		
 		request_failed.emit(APIError.NETWORK_ERROR, "Failed to send request")
+		_process_queue()
 
 func _on_request_completed(result: int, response_code: int, headers: PackedStringArray, body: PackedByteArray) -> void:
 	print("=== OpenAI HTTP Response ===")
@@ -146,7 +160,19 @@ func _on_request_completed(result: int, response_code: int, headers: PackedStrin
 	if result != HTTPRequest.RESULT_SUCCESS:
 		print("ERROR: HTTP request failed with result: %d" % result)
 		var error_type = APIError.NETWORK_ERROR
-		var error_message = "HTTP request failed: " + str(result)
+		var error_message = _get_error_message_from_result(result)
+		
+		# Call the callback with error response to prevent timeout
+		if callback.is_valid():
+			var error_response = {
+				"error": {
+					"type": "network_error",
+					"message": error_message,
+					"code": result
+				}
+			}
+			callback.call(error_response)
+		
 		request_failed.emit(error_type, error_message)
 		_process_queue()
 		return
@@ -204,3 +230,37 @@ func _get_error_type_from_code(code: int) -> APIError:
 		429: return APIError.RATE_LIMITED  
 		403: return APIError.QUOTA_EXCEEDED
 		_: return APIError.UNKNOWN_ERROR
+
+func _get_error_message_from_result(result_code: int) -> String:
+	"""Convert HTTP result codes to user-friendly error messages"""
+	match result_code:
+		HTTPRequest.RESULT_CHUNKED_BODY_SIZE_MISMATCH:
+			return "Network error: Data transfer incomplete"
+		HTTPRequest.RESULT_CANT_CONNECT:
+			return "Network error: Cannot connect to OpenAI API (check internet connection)"
+		HTTPRequest.RESULT_CANT_RESOLVE:
+			return "Network error: Cannot resolve api.openai.com (DNS issue)"
+		HTTPRequest.RESULT_CONNECTION_ERROR:
+			return "Network error: Connection failed"
+		HTTPRequest.RESULT_TLS_HANDSHAKE_ERROR:
+			return "Network error: SSL/TLS handshake failed"
+		HTTPRequest.RESULT_NO_RESPONSE:
+			return "Network error: No response from OpenAI API"
+		HTTPRequest.RESULT_BODY_SIZE_LIMIT_EXCEEDED:
+			return "Network error: Response too large"
+		HTTPRequest.RESULT_BODY_DECOMPRESS_FAILED:
+			return "Network error: Failed to decompress response"
+		HTTPRequest.RESULT_REQUEST_FAILED:
+			return "Network error: Request failed"
+		HTTPRequest.RESULT_DOWNLOAD_FILE_CANT_OPEN:
+			return "Network error: Cannot open download file"
+		HTTPRequest.RESULT_DOWNLOAD_FILE_WRITE_ERROR:
+			return "Network error: Cannot write download file"
+		HTTPRequest.RESULT_REDIRECT_LIMIT_REACHED:
+			return "Network error: Too many redirects"
+		HTTPRequest.RESULT_TIMEOUT:
+			return "Network error: Request timeout (API may be overloaded)"
+		13: # ERR_UNAVAILABLE
+			return "Network error: OpenAI API temporarily unavailable (check service status at status.openai.com)"
+		_:
+			return "Network error: HTTP request failed with code %d" % result_code

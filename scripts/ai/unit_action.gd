@@ -40,7 +40,7 @@ func execute(unit: Node) -> void:
         elif "unit_id" in unit:
             unit_id = unit.unit_id
             
-        if not unit_id.is_empty() and has_node("/root/EventBus"):
-            get_node("/root/EventBus").emit_unit_command(unit_id, command_string)
+        if not unit_id.is_empty() and unit.has_node("/root/EventBus"):
+            unit.get_node("/root/EventBus").emit_unit_command(unit_id, command_string)
         else:
             printerr("UnitAction: Unit has no get_unit_id() method or unit_id property, or EventBus is not available. Cannot emit command.")

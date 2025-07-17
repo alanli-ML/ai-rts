@@ -91,7 +91,7 @@ func handle_start_game_rpc():
             session_manager.call_deferred("handle_force_start_game", peer_id)
 
 @rpc("any_peer", "call_local")
-func submit_command_rpc(command_text: String, unit_ids: Array[String]):
+func submit_command_rpc(command_text: String, unit_ids: Array):
     if not dependency_container.is_server_mode():
         return
     

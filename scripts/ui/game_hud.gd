@@ -187,17 +187,16 @@ func _on_command_submitted(text: String):
         return
     
     var selected_units = selection_system.get_selected_units()
+    var unit_ids: Array[String] = []
+    
     if selected_units.is_empty():
-        print("GameHUD: No units selected to command")
-        command_input.clear()
-        command_input.grab_focus()
-        return
-
-    var unit_ids = []
-    for unit in selected_units:
-        unit_ids.append(unit.unit_id)
-
-    print("GameHUD: Submitting command '%s' to %d units" % [text, unit_ids.size()])
+        # No units selected - send as group command for entire team
+        print("GameHUD: Submitting group command '%s' for entire team" % text)
+    else:
+        # Specific units selected
+        for unit in selected_units:
+            unit_ids.append(unit.unit_id)
+        print("GameHUD: Submitting command '%s' to %d selected units" % [text, unit_ids.size()])
     
     if audio_manager:
         audio_manager.play_sound_2d("res://assets/audio/ui/command_submit_01.wav")
@@ -311,6 +310,8 @@ func _add_detailed_plan_display(full_plan: Array) -> void:
         var action = step.get("action", "Unknown")
         var status = step.get("status", "pending")
         var trigger = step.get("trigger", "")
+        if trigger == null:
+            trigger = ""
         
         # Status indicator
         var status_icon = ""
@@ -385,17 +386,20 @@ func _get_action_color_hud(action: String) -> String:
 
 func _shorten_trigger_hud(trigger: String) -> String:
     """Shorten trigger text for HUD display"""
+    if trigger.is_empty():
+        return ""
+    
     # Replace common trigger phrases with shorter versions
     var shortened = trigger
     shortened = shortened.replace("enemies_in_range", "enemy near")
     shortened = shortened.replace("health_pct", "HP")
     shortened = shortened.replace("ammo_pct", "ammo")
     shortened = shortened.replace("elapsed_ms", "time")
-    shortened = shortened.replace("under_fire", "taking dmg")
-    shortened = shortened.replace("target_dead", "target down")
-    shortened = shortened.replace("ally_health_low", "ally hurt")
+    shortened = shortened.replace("incoming_fire_count", "taking dmg")
+    shortened = shortened.replace("target_health_pct", "target HP")
+    shortened = shortened.replace("ally_health_pct", "ally HP")
     shortened = shortened.replace("nearby_enemies", "enemies near")
-    shortened = shortened.replace("is_moving", "moving")
+    shortened = shortened.replace("move_speed", "moving")
     
     # Limit length
     if shortened.length() > 25:

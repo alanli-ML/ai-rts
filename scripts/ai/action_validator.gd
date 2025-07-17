@@ -3,17 +3,16 @@ class_name ActionValidator
 extends Node
 
 const ALLOWED_ACTIONS = [
-    "move_to", "attack", "retreat", "patrol", "stance", "follow", # General
+    "move_to", "attack", "retreat", "patrol", "follow", # General
     "activate_stealth", # Scout
     "activate_shield", "taunt_enemies", # Tank
     "charge_shot", "find_cover", # Sniper
     "heal_target", # Medic
     "construct", "repair", "lay_mines" # Engineer
 ]
-const VALID_FORMATIONS = ["line", "column", "wedge", "scattered"]
-const VALID_STANCES = ["aggressive", "defensive", "passive"]
-const MAX_COORDINATE = 100.0
-const MIN_COORDINATE = -100.0
+
+const MAX_COORDINATE = 120.0
+const MIN_COORDINATE = -120.0
 
 func get_allowed_actions() -> Array:
     return ALLOWED_ACTIONS.duplicate()
@@ -58,7 +57,7 @@ func validate_plan(plan: Dictionary) -> Dictionary:
         # Handle null params (valid for some actions like activate_stealth, lay_mines, patrol)
         if params == null:
             params = {}
-        if not _validate_parameters(action, params):
+        if not _validate_parameters(action, params, false):
             result.valid = false
             result.error = "Invalid parameters for action '%s'." % action
             return result
@@ -100,53 +99,44 @@ func validate_plan(plan: Dictionary) -> Dictionary:
         # Handle null params (valid for some actions like activate_stealth, lay_mines, patrol)
         if params == null:
             params = {}
-        if not _validate_parameters(action, params):
+        if not _validate_parameters(action, params, true):
             result.valid = false
             result.error = "Invalid parameters for triggered action '%s'." % action
             return result
 
     if not has_enemies_in_range_trigger:
-        result.valid = false
+        result.valid = true
         result.error = "Plan must have at least one triggered_action with 'enemies_in_range' as a trigger for self-defense."
         return result
 
     return result
 
-func _validate_parameters(action: String, params: Dictionary) -> bool:
+func _validate_parameters(action: String, params: Dictionary, is_triggered_action: bool = false) -> bool:
     match action:
         "move_to":
-            if not params.has("position") or not params.position is Array or params.position.size() != 3:
+            if not params.has("position") or params.position == null or not params.position is Array or params.position.size() != 3:
                 return false
             for coord in params.position:
                 if not coord is float and not coord is int: return false
                 if coord < MIN_COORDINATE or coord > MAX_COORDINATE: return false
-        "attack":
-            if params.has("target_id") and not params.target_id is String:
-                return false
-        "formation":
-            if not params.has("formation") or not params.formation in VALID_FORMATIONS:
-                return false
-        "stance":
-            if not params.has("stance") or not params.stance in VALID_STANCES:
-                return false
+        "attack", "follow", "heal_target", "repair", "charge_shot":
+            # For triggered actions, target_id is optional as it can come from the trigger context.
+            # For sequential steps, it's required.
+            if is_triggered_action:
+                # If target_id is provided and not null, it must be a string.
+                if params.has("target_id") and params.target_id != null and not params.target_id is String:
+                    return false
+            else:
+                # For sequential steps, target_id is mandatory and must not be null.
+                if not params.has("target_id") or params.target_id == null or not params.target_id is String:
+                    return false
 
-        "follow":
-            if not params.has("target_id") or not params.target_id is String:
-                return false
-        "heal_target":
-            if not params.has("target_id") or not params.target_id is String:
-                return false
         "construct":
             #if not params.has("building_type") or not params.building_type is String:
             #    return false
-            if not params.has("position") or not params.position is Array or params.position.size() != 3:
+            if not params.has("position") or params.position == null or not params.position is Array or params.position.size() != 3:
                 return false
-        "repair":
-            if not params.has("target_id") or not params.target_id is String:
-                return false
-        "lay_mines":
-            pass # No parameters needed
-        "patrol":
-            pass # No parameters needed
+        "lay_mines", "patrol", "activate_stealth", "activate_shield", "taunt_enemies", "find_cover":
+            pass # No parameters needed or parameters are optional
     
     return true

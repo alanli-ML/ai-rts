@@ -21,7 +21,7 @@ var max_request_timeout: float = 30.0  # 30 second timeout
 # o1-mini: Best for complex reasoning, group coordination, strategic planning (slower but smarter)
 # gpt-4o: Fast and capable for individual commands and real-time responses
 # gpt-4o-mini: Fastest option for simple autonomous decisions (if speed is critical)
-var group_command_model: String = "o4-mini"  # Slower but more capable for complex group coordination
+var group_command_model: String = "gpt-4.1-nano"  # Slower but more capable for complex group coordination
 var individual_command_model: String = "gpt-4.1-nano"  # Faster for simple individual commands  
 var autonomous_command_model: String = "gpt-4.1-nano"  # Fast for autonomous decision making
 
@@ -41,6 +41,7 @@ CRITICAL STRUCTURE REQUIREMENTS:
 - You MUST provide at least one action in the "steps" array.
 - You MUST provide at least one action in "triggered_actions" with 'enemies_in_range' as the trigger for self-defense.
 - You can add other triggered actions, like retreating on low health.
+- Limit to a maximum of 3 triggered actions per unit.
 - Keep "speech" text brief (under 50 characters each).
 
 IMPORTANT: You may ONLY use actions from the following list. Do not invent new actions.
@@ -56,13 +57,13 @@ Action Parameter Examples:
 - For actions with no parameters like "activate_shield" or "lay_mines", use {}.
 
 Your response will use structured triggers with three separate fields:
-- trigger_source: The metric to check (health_pct, ammo_pct, morale, under_fire, target_dead, enemies_in_range, enemy_dist, ally_health_low, nearby_enemies, is_moving, elapsed_ms)
-- trigger_comparison: The comparison operator (<, <=, =, >=, >, !=)
-- trigger_value: The value to compare against (number or boolean)
+- trigger_source: The metric to check (health_pct, ammo_pct, morale, incoming_fire_count, target_health_pct, enemies_in_range, enemy_dist, ally_health_pct, nearby_enemies, move_speed, elapsed_ms)
+- trigger_comparison: The comparison operator (<, =, >, !=)
+- trigger_value: The value to compare against (number)
 
 Examples:
 - For "health below 50%": trigger_source="health_pct", trigger_comparison="<", trigger_value=50
-- For "enemy in range": trigger_source="enemies_in_range", trigger_comparison=">=", trigger_value=1
+- For "enemy in range": trigger_source="enemies_in_range", trigger_comparison=">", trigger_value=0
 - For "elapsed time over 2 seconds": trigger_source="elapsed_ms", trigger_comparison=">", trigger_value=2000
 
 TEAM-RELATIVE DATA EXPLANATION:
@@ -73,14 +74,22 @@ All data in your context uses team-relative values from YOUR team's perspective:
   Values between 0 and ±1 indicate capture progress (e.g., 0.5 = 50 percent captured by your team)
   All numeric values are rounded to 2 decimal places and relative to YOUR team perspective.
 
-EXAMPLE PLAN STRUCTURE{example_suffix}:
-- unit_id: Unique identifier for the unit
-- goal: High-level objective like "Secure the northern sector and provide overwatch"
-- steps: Sequential actions like move_to, patrol, attack
-- triggered_actions: Conditional responses like "attack when enemies_in_range" or "retreat when health_pct < 25"
+COORDINATE SYSTEM:
+All `position` fields in the context have been transformed into a team-relative coordinate system.
+- Your team's home base is ALWAYS at the origin `[0, 0, 0]`.
+- The enemy team's home base is ALWAYS in the positive Z direction.
+- The X-axis is to the right of the Z-axis.
+When you provide a `position` for an action, you MUST use this same relative coordinate system.
+
 
 {additional_content}
 """
+
+#EXAMPLE PLAN STRUCTURE{example_suffix}:
+#- unit_id: Unique identifier for the unit
+#- goal: High-level objective like "Secure the northern sector and provide overwatch"
+#- steps: Sequential actions like move_to, patrol, attack
+#- triggered_actions: Conditional responses like "attack when enemies_in_range" or "retreat when health_pct < 25"
 
 # Signals
 signal plan_processed(plans: Array, message: String)
@@ -236,7 +245,7 @@ When generating a new plan, you MUST also output a new `goal` field. If you are 
     
     return template
 
-func process_command(command_text: String, unit_ids: Array[String] = [], peer_id: int = -1) -> void:
+func process_command(command_text: String, unit_ids: Array = [], peer_id: int = -1) -> void:
     if active_requests.size() >= max_concurrent_requests:
         logger.warning("AICommandProcessor", "Max concurrent requests reached (%d). Dropping new command for units %s." % [max_concurrent_requests, str(unit_ids)])
         command_failed.emit("AI service is busy. Please try again.", unit_ids)
@@ -310,6 +319,10 @@ func _process_group_command(command_text: String, units: Array, server_game_stat
     var group_system_prompt = _build_group_prompt()
     var game_context = server_game_state.get_group_context_for_ai(units)
    
+    # Notify game state that the first group command has been issued.
+    #if server_game_state and server_game_state.has_method("set_initial_group_command_given"):
+    #    server_game_state.set_initial_group_command_given()
+        
     var unit_count = game_context.allied_units.size()
     var unit_list = []
     for unit_state in game_context.allied_units:
@@ -407,6 +420,17 @@ func _on_openai_response(response: Dictionary, request_id: String) -> void:
     
     var context = active_requests[request_id].context
     active_requests.erase(request_id)
+    
+    # Check for network/API errors from OpenAI client
+    if response.has("error"):
+        var error_info = response.error
+        var error_message = error_info.get("message", "Unknown API error")
+        logger.error("AICommandProcessor", "OpenAI API error: %s" % error_message)
+        var unit_ids = context.get("expected_unit_ids", [])
+        command_failed.emit(error_message, unit_ids)
+        if active_requests.is_empty():
+            processing_finished.emit()
+        return
     
     var content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
     

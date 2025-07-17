@@ -11,46 +11,57 @@ const SUDDEN_DEATH_TIME = 300.0
 # Unit Constants
 const UNIT_ARCHETYPES = {
     "scout": {
-        "speed": 15.0,
-        "health": 60.0,
-        "vision_range": 40.0,
-        "vision_angle": 120.0,
-        "attack_range": 15.0,
-        "attack_damage": 20.0
-    },
-    "tank": {
-        "speed": 5.0,
-        "health": 200.0,
+        "speed": 6.0,
+        "health": 80.0,
         "vision_range": 20.0,
         "vision_angle": 120.0,
+        "attack_range": 6.0,
+        "attack_damage": 20.0,
+        "cost": 50.0,
+        "build_time": 5.0
+    },
+    "tank": {
+        "speed": 2.0,
+        "health": 300.0,
+        "vision_range": 24.0,
+        "vision_angle": 120.0,
         "attack_range": 10.0,
-        "attack_damage": 40.0
+        "attack_damage": 80.0,
+        "cost": 200.0,
+        "build_time": 20.0
     },
     "sniper": {
-        "speed": 8.0,
-        "health": 80.0,
-        "vision_range": 50.0,
+        "speed": 4.0,
+        "health": 120.0,
+        "vision_range": 32.0,
         "vision_angle": 60.0,
-        "attack_range": 40.0,
-        "attack_damage": 60.0
+        "attack_range": 3.0,
+        "attack_damage": 35.0,
+        "cost": 75.0,
+        "build_time": 8.0
     },
     "medic": {
-        "speed": 10.0,
+        "speed": 4.5,
         "health": 100.0,
-        "vision_range": 30.0,
+        "vision_range": 16.0,
         "vision_angle": 120.0,
-        "attack_range": 0.0,
-        "heal_range": 15.0,
-        "heal_rate": 10.0
+        "attack_range": 4.0,
+        "attack_damage": 10.0,
+        "heal_range": 30.0,
+        "heal_rate": 10.0,
+        "cost": 100.0,
+        "build_time": 12.0
     },
     "engineer": {
-        "speed": 8.0,
-        "health": 120.0,
-        "vision_range": 30.0,
+        "speed": 4.0,
+        "health": 90.0,
+        "vision_range": 12.0,
         "vision_angle": 120.0,
-        "attack_range": 12.0,
-        "attack_damage": 25.0,
-        "build_speed": 2.0
+        "attack_range": 4.0,
+        "attack_damage": 15.0,
+        "build_speed": 2.0,
+        "cost": 80.0,
+        "build_time": 10.0
     }
 }
 

@@ -63,13 +63,13 @@ func attack_target(target: Unit):
 
 # --- Visual Effect Helpers (for host) ---
 
-func _set_model_transparency(model_container: Node3D, alpha_value: float) -> void:
+func _set_model_transparency(container: Node3D, alpha_value: float) -> void:
 	"""Set transparency for all MeshInstance3D nodes in the model container"""
-	if not is_instance_valid(model_container):
+	if not is_instance_valid(container):
 		return
 	
 	# Find all MeshInstance3D nodes recursively
-	var mesh_instances = _find_all_mesh_instances(model_container)
+	var mesh_instances = _find_all_mesh_instances(container)
 	
 	for mesh_instance in mesh_instances:
 		if not is_instance_valid(mesh_instance):

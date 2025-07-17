@@ -232,7 +232,7 @@ func _shorten_trigger(trigger: String) -> String:
 	"""Shorten trigger text for display"""
 	# Replace common trigger phrases with shorter versions
 	var shortened = trigger
-	shortened = shortened.replace("enemies_in_range", "enemy near")
+	shortened = shortened.replace("enemies_in_range", "enemies in range")
 	shortened = shortened.replace("health_pct", "HP")
 	shortened = shortened.replace("ammo_pct", "ammo")
 	shortened = shortened.replace("elapsed_ms", "time")

@@ -192,8 +192,11 @@ func traced_chat_completion(messages: Array, callback: Callable, error_callback:
 	# Determine which model to use
 	var model_to_use = model if not model.is_empty() else (openai_client.model if openai_client else "gpt-4o")
 	
-	if not enable_tracing or api_key.is_empty():
+	# Check if HTTP request is busy or tracing is disabled
+	if not enable_tracing or api_key.is_empty() or (http_request and http_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED):
 		# Fallback to direct OpenAI call without tracing
+		if http_request and http_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+			print("LangSmith: HTTP request busy, bypassing tracing for this request")
 		if openai_client:
 			_send_with_model_override(messages, callback, model_to_use, response_format)
 		return trace_id
@@ -345,6 +348,11 @@ func _update_trace_completion(trace: TraceData) -> void:
 func _send_to_langsmith(endpoint: String, data: Dictionary, method: String = "POST") -> void:
 	"""Send data to LangSmith API"""
 	if not enable_tracing or api_key.is_empty():
+		return
+	
+	# Check if HTTP request is already busy
+	if http_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+		print("LangSmith: HTTP request is busy, skipping trace upload")
 		return
 	
 	# Prepare headers

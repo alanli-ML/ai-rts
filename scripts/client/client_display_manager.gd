@@ -42,8 +42,10 @@ func setup_map_references(map_node: Node) -> void:
 		print("ClientDisplayManager: ERROR - Could not find 'CaptureNodes' container.")
 
 func _physics_process(delta: float) -> void:
+	# On the host/server, only update plan data for UI, not visual rendering
 	if multiplayer.is_server():
-		return # Do not run display logic on the server/host
+		_update_host_plan_data()
+		return
 
 	if not latest_state or not latest_state.has("units"):
 		return
@@ -106,9 +108,32 @@ func _physics_process(delta: float) -> void:
 				cp_node_data.team_id = new_team_id
 
 func update_state(state: Dictionary) -> void:
-	if multiplayer.is_server():
-		return # Do not run display logic on the server/host
+	# Always store latest state, even on server for UI plan data
 	latest_state = state
+
+func _update_host_plan_data() -> void:
+	"""Update plan data on host units for UI display without visual rendering"""
+	if not latest_state or not latest_state.has("units"):
+		return
+	
+	# Get the server game state to access actual unit instances
+	var server_game_state = get_node_or_null("/root/DependencyContainer/GameState")
+	if not server_game_state:
+		return
+	
+	# Update plan data on server unit instances for UI access
+	for unit_data in latest_state.units:
+		var unit_id = unit_data.id
+		if server_game_state.units.has(unit_id):
+			var unit_instance = server_game_state.units[unit_id]
+			if is_instance_valid(unit_instance):
+				# Update plan data that the UI needs
+				if unit_data.has("full_plan"):
+					unit_instance.full_plan = unit_data.full_plan
+				if unit_data.has("strategic_goal"):
+					unit_instance.strategic_goal = unit_data.strategic_goal
+				if unit_data.has("plan_summary"):
+					unit_instance.plan_summary = unit_data.plan_summary
 
 func _create_unit(unit_data: Dictionary) -> void:
 	var unit_id = unit_data.id
@@ -156,6 +181,17 @@ func remove_mine(mine_id: String) -> void:
 func _update_unit(unit_data: Dictionary, delta: float) -> void:
 	var unit_id = unit_data.id
 	var unit_instance = displayed_units[unit_id]
+	
+	# Check for death state first
+	if unit_data.get("is_dead", false):
+		if not unit_instance.is_dead:
+			if unit_instance.has_method("trigger_death_sequence"):
+				unit_instance.trigger_death_sequence()
+			else:
+				# Fallback for non-animated units
+				unit_instance.is_dead = true
+				unit_instance.visible = false # Or some other visual change
+		return # Don't process other updates for dead units
 	
 	var target_pos = Vector3(unit_data.position.x, unit_data.position.y, unit_data.position.z)
 	
@@ -285,8 +321,8 @@ func remove_unit(unit_id: String) -> void:
 		
 		if is_instance_valid(unit_instance):
 			# The unit will handle its own death animation and queue_free
-			if unit_instance.has_method("die_and_cleanup"):
-				unit_instance.die_and_cleanup()
+			if unit_instance.has_method("trigger_death_sequence"):
+				unit_instance.trigger_death_sequence()
 			else:
 				# Fallback for non-animated units
 				unit_instance.queue_free()

@@ -20,6 +20,26 @@ signal speech_triggered(unit_id: String, speech: String)
 signal trigger_evaluated(unit_id: String, trigger: String, result: bool) # For PlanProgressManager
 signal unit_became_idle(unit_id: String)
 
+func _get_team_transform(team_id: int) -> Transform3D:
+    var home_base_manager = get_tree().get_first_node_in_group("home_base_managers")
+    if not home_base_manager:
+        logger.error("PlanExecutor", "HomeBaseManager not found!")
+        return Transform3D.IDENTITY
+
+    var my_base_pos = home_base_manager.get_home_base_position(team_id)
+    var enemy_team_id = 2 if team_id == 1 else 1
+    var enemy_base_pos = home_base_manager.get_home_base_position(enemy_team_id)
+
+    if my_base_pos == Vector3.ZERO or enemy_base_pos == Vector3.ZERO:
+        logger.error("PlanExecutor", "Home base positions not set up correctly.")
+        return Transform3D.IDENTITY
+        
+    var forward_vec = (enemy_base_pos - my_base_pos).normalized()
+    var right_vec = forward_vec.cross(Vector3.UP).normalized()
+    var up_vec = right_vec.cross(forward_vec).normalized()
+
+    return Transform3D(right_vec, up_vec, forward_vec, my_base_pos)
+
 func setup(p_logger, p_game_state):
     logger = p_logger
     game_state = p_game_state
@@ -286,11 +306,11 @@ func _evaluate_structured_trigger(source: String, comparison: String, value: Var
     # Handle special case metrics that return dictionaries with context
     if metric_result is Dictionary:
         if metric_result.has("result"):
-            # Boolean result with context (like ally_health_low, target_dead)
+            # Boolean result with context
             current_value = metric_result.result
             metric_context = metric_result.get("context", {})
         elif metric_result.has("value"):
-            # Value result with context (like enemy_dist, enemies_in_range)
+            # Value result with context (like enemy_dist, enemies_in_range, ally_health_pct)
             current_value = metric_result.value
             metric_context = metric_result.get("context", {})
         else:
@@ -298,7 +318,7 @@ func _evaluate_structured_trigger(source: String, comparison: String, value: Var
     else:
         current_value = metric_result
     
-    # Note: enemies_in_range, under_fire, and nearby_enemies now return counts (numbers)
+    # Note: enemies_in_range, incoming_fire_count, and nearby_enemies now return counts (numbers)
     # so they go through normal numeric comparison logic below
     
     # Convert value to appropriate type for comparison
@@ -349,18 +369,20 @@ func _get_metric_value(metric: String, unit: Node, unit_context: Dictionary) -> 
             return (float(unit.ammo) / unit.max_ammo) * 100.0 if unit.max_ammo > 0 else 0.0
         "morale":
             return unit.morale
-        "under_fire":
-            # Return count of enemies attacking this unit (0 if not under fire, 1+ if under fire)
+        "incoming_fire_count":
+            # Return count of enemies attacking this unit
             var is_under_fire = unit_context.get("unit_state", {}).get("is_under_fire", false)
             var attackers = unit_context.get("unit_state", {}).get("attackers", [])
             if is_under_fire and attackers is Array:
                 return attackers.size()
             elif is_under_fire:
-                return 1  # Fallback: if under fire but no attackers array, assume 1 attacker
+                return 1  # Fallback if under fire but no attackers array
             else:
                 return 0
-        "target_dead":
-            return not is_instance_valid(unit.target_unit) or unit.target_unit.is_dead
+        "target_health_pct":
+            if is_instance_valid(unit.target_unit):
+                return unit.target_unit.get_health_percentage() * 100.0
+            return 0.0 # No target or dead target, health is 0%
         "enemies_in_range":
             # Return count of enemies within attack range
             var enemies = unit_context.get("sensor_data", {}).get("visible_enemies", [])
@@ -388,25 +410,25 @@ func _get_metric_value(metric: String, unit: Node, unit_context: Dictionary) -> 
                 logger.warning("PlanExecutor", "enemy_dist metric: expected numeric dist, got %s (%s)" % [dist_value, typeof(dist_value)])
                 dist_value = 9999.0
             return {"value": float(dist_value), "context": {"target_id": closest_enemy.get("id", "")}}
-        "ally_health_low":
+        "ally_health_pct":
             var allies = unit_context.get("sensor_data", {}).get("visible_allies", [])
             var lowest_health_ally = null
-            var lowest_health_pct = 50.0 # Only consider allies below 50%
+            var lowest_health_pct = 100.0
             for ally in allies:
                 if ally.health_pct < lowest_health_pct:
                     lowest_health_ally = ally
                     lowest_health_pct = ally.health_pct
             
             if lowest_health_ally:
-                return {"result": true, "context": {"target_id": lowest_health_ally.id}}
-            return {"result": false, "context": {}}
+                return {"value": lowest_health_pct, "context": {"target_id": lowest_health_ally.id}}
+            return {"value": 100.0, "context": {}} # No allies, or all full health
         "nearby_enemies":
             var enemies = unit_context.get("sensor_data", {}).get("visible_enemies", [])
             return enemies.size() if enemies is Array else 0
-        "is_moving":
+        "move_speed":
             if unit.has_method("get") and unit.has("velocity"):
-                return unit.velocity.length_squared() > 0.1
-            return false
+                return unit.velocity.length()
+            return 0.0
         _:
             logger.warning("PlanExecutor", "Unknown metric in trigger: '%s'" % metric)
             return null
@@ -450,17 +472,19 @@ func _execute_step_action(unit_id: String, step: Dictionary) -> void:
                 params[key] = trigger_context[key]
         trigger_contexts.erase(unit_id) # Consume context
 
-    if step.has("speech") and not step.speech.is_empty():
+    if step.has("speech") and step.speech != null and not step.speech.is_empty():
         speech_triggered.emit(unit_id, step.speech)
 
     match action:
         "move_to":
-            if params.has("position"):
+            if params.has("position") and params.position != null:
                 var pos_arr = params.position
-                var target_pos = Vector3(pos_arr[0], pos_arr[1], pos_arr[2])
-                if unit.has_method("move_to"): unit.move_to(target_pos)
+                var relative_pos = Vector3(pos_arr[0], pos_arr[1], pos_arr[2])
+                var team_transform = _get_team_transform(unit.team_id)
+                var world_pos = team_transform * relative_pos
+                if unit.has_method("move_to"): unit.move_to(world_pos)
         "attack":
-            if params.has("target_id"):
+            if params.has("target_id") and params.target_id != null:
                 var target = game_state.units.get(params.target_id)
                 if is_instance_valid(target) and unit.has_method("attack_target"):
                     unit.attack_target(target)
@@ -489,14 +513,9 @@ func _execute_step_action(unit_id: String, step: Dictionary) -> void:
             if unit.has_method("move_to"):
                 unit.move_to(target_waypoint)
 
-        "formation":
-            if unit.has_method("set_formation") and params.has("formation"):
-                unit.set_formation(params.formation)
-        "stance":
-            if unit.has_method("set_stance") and params.has("stance"):
-                unit.set_stance(params.stance)
+
         "follow":
-            if params.has("target_id"):
+            if params.has("target_id") and params.target_id != null:
                 var target = game_state.units.get(params.target_id)
                 if is_instance_valid(target) and unit.has_method("follow"):
                     unit.follow(target)
@@ -507,15 +526,35 @@ func _execute_step_action(unit_id: String, step: Dictionary) -> void:
         "taunt_enemies":
             if unit.has_method("taunt_enemies"): unit.taunt_enemies(params)
         "charge_shot":
-            if unit.has_method("charge_shot"): unit.charge_shot(params)
+            if params.has("target_id") and params.target_id != null and unit.has_method("charge_shot"):
+                var target = game_state.units.get(params.target_id)
+                if is_instance_valid(target):
+                    unit.charge_shot(target)
+            elif not params.has("target_id") and unit.has_method("charge_shot"):
+                # Charge shot without specific target
+                unit.charge_shot(params)
         "find_cover":
             if unit.has_method("find_cover"): unit.find_cover(params)
         "heal_target":
-            if unit.has_method("heal_target"): unit.heal_target(params)
+            if params.has("target_id") and params.target_id != null and unit.has_method("heal_target"):
+                var target = game_state.units.get(params.target_id)
+                if is_instance_valid(target):
+                    unit.heal_target(target)
         "construct":
-            if unit.has_method("construct"): unit.construct(params)
+            if params.has("position") and params.position != null and unit.has_method("construct"):
+                var pos_arr = params.position
+                var relative_pos = Vector3(pos_arr[0], pos_arr[1], pos_arr[2])
+                var team_transform = _get_team_transform(unit.team_id)
+                var world_pos = team_transform * relative_pos
+                
+                var world_params = params.duplicate()
+                world_params["position"] = [world_pos.x, world_pos.y, world_pos.z]
+                unit.construct(world_params)
         "repair":
-            if unit.has_method("repair"): unit.repair(params)
+            if params.has("target_id") and params.target_id != null and unit.has_method("repair"):
+                var target = game_state.units.get(params.target_id)
+                if is_instance_valid(target):
+                    unit.repair(target)
         "lay_mines":
             if unit.has_method("lay_mines"): unit.lay_mines(params)
 

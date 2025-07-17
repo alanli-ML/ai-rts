@@ -121,7 +121,7 @@ func _physics_process(delta: float):
 		if current_state == GameEnums.UnitState.ATTACKING:
 			play_animation("Attack")
 		elif current_state == GameEnums.UnitState.DEAD:
-			# Animation handled by die_and_cleanup()
+			# Animation handled by trigger_death_sequence()
 			pass
 		else:
 			# Handle movement/idle animations
@@ -166,7 +166,9 @@ func _attach_weapon():
 	else:
 		print("DEBUG: AnimatedUnit._attach_weapon() - weapon attachment already exists")
 
-func die_and_cleanup():
+func trigger_death_sequence():
+	if is_dead: return # Already dead
+
 	# Prevent further actions
 	is_dead = true
 	set_collision_layer_value(1, false) # No more selection/raycast hits
@@ -174,21 +176,8 @@ func die_and_cleanup():
 	_play_death_sound()
 	play_animation("Die")
 	
-	# Wait for animation to finish before freeing
-	if animation_player and animation_player.has_animation("die"):
-		# Get animation length to create a reliable timer
-		var death_anim = animation_player.get_animation("die")
-		if death_anim:
-			await get_tree().create_timer(death_anim.length).timeout
-		else:
-			# Fallback if animation length can't be found
-			await get_tree().create_timer(2.0).timeout
-	else:
-		# If no death animation, wait a bit before disappearing
-		await get_tree().create_timer(1.0).timeout
-	
-	if is_instance_valid(self):
-		queue_free()
+	# Stop further processing
+	set_physics_process(false)
 
 func _play_death_sound():
 	var audio_manager = get_node_or_null("/root/DependencyContainer/AudioManager")

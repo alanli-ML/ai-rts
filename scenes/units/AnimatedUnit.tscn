@@ -14,4 +14,5 @@ script = ExtResource("1_animated_unit")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 0)
 shape = SubResource("CapsuleShape3D_1")
+
 [connection signal="script_changed" from="." to="." method="_on_script_changed"]

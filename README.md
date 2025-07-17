@@ -118,7 +118,7 @@ var schema = AIResponseSchemas.get_schema_for_command(is_group, ["scout", "engin
 }
 ```
 
-**Trigger Sources:** `health_pct`, `ammo_pct`, `morale`, `under_fire`, `target_dead`, `enemies_in_range`, `enemy_dist`, `ally_health_low`, `nearby_enemies`, `is_moving`, `elapsed_ms`
+**Trigger Sources:** `health_pct`, `ammo_pct`, `morale`, `incoming_fire_count`, `target_health_pct`, `enemies_in_range`, `enemy_dist`, `ally_health_pct`, `nearby_enemies`, `move_speed`, `elapsed_ms`
 
 **Action Enums by Archetype:**
 - **General**: `move_to`, `attack`, `retreat`, `patrol`, `stance`, `follow`

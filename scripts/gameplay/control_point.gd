@@ -132,6 +132,22 @@ func _create_visual_components():
     progress_ring.visible = false
     add_child(progress_ring)
 
+    # Add a label for the node number
+    var number_label = Label3D.new()
+    number_label.name = "NumberLabel"
+    
+    # Extract number from ID (e.g., "Node1" -> "1")
+    var node_number_str = control_point_id.trim_prefix("Node")
+    number_label.text = node_number_str
+    
+    number_label.font_size = 128
+    number_label.set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER)
+    number_label.set_vertical_alignment(VERTICAL_ALIGNMENT_CENTER)
+    number_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+    number_label.position = Vector3(0, 2.5, 0) # Position it above the cylinder
+    number_label.modulate = Color(1, 1, 1, 0.8) # White, slightly transparent
+    add_child(number_label)
+
 func _create_capture_area():
     capture_area = Area3D.new()
     capture_area.name = "CaptureArea"

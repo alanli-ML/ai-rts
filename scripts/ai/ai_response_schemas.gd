@@ -6,18 +6,18 @@ extends RefCounted
 # These schemas define the exact structure expected from AI responses
 
 # Action enums by archetype
-const GENERAL_ACTIONS = ["move_to", "attack", "retreat", "patrol", "stance", "follow"]
-const SCOUT_ACTIONS = ["move_to", "attack", "retreat", "patrol", "stance", "follow", "activate_stealth"]
-const TANK_ACTIONS = ["move_to", "attack", "retreat", "patrol", "stance", "follow", "activate_shield", "taunt_enemies"]
-const SNIPER_ACTIONS = ["move_to", "attack", "retreat", "patrol", "stance", "follow", "charge_shot", "find_cover"]
-const MEDIC_ACTIONS = ["move_to", "attack", "retreat", "patrol", "stance", "follow", "heal_target"]
-const ENGINEER_ACTIONS = ["move_to", "attack", "retreat", "patrol", "stance", "follow", "construct", "repair", "lay_mines"]
+const GENERAL_ACTIONS = ["move_to", "attack", "retreat", "patrol", "follow"]
+const SCOUT_ACTIONS = ["move_to", "attack", "retreat", "patrol", "follow", "activate_stealth"]
+const TANK_ACTIONS = ["move_to", "attack", "retreat", "patrol", "follow", "activate_shield", "taunt_enemies"]
+const SNIPER_ACTIONS = ["move_to", "attack", "retreat", "patrol", "follow", "charge_shot", "find_cover"]
+const MEDIC_ACTIONS = ["move_to", "attack", "retreat", "patrol", "follow", "heal_target"]
+const ENGINEER_ACTIONS = ["move_to", "attack", "retreat", "patrol", "follow", "construct", "repair", "lay_mines"]
 
 # Trigger source enums
-const TRIGGER_SOURCES = ["health_pct", "ammo_pct", "morale", "under_fire", "target_dead", "enemies_in_range", "enemy_dist", "ally_health_low", "nearby_enemies", "is_moving", "elapsed_ms"]
+const TRIGGER_SOURCES = ["health_pct", "ammo_pct", "morale", "incoming_fire_count", "target_health_pct", "enemies_in_range", "enemy_dist", "ally_health_pct", "nearby_enemies", "move_speed", "elapsed_ms"]
 
 # Comparison operators
-const COMPARISON_OPERATORS = ["<", "<=", "=", ">=", ">", "!="]
+const COMPARISON_OPERATORS = ["<", "=", ">", "!="]
 
 # Helper function to get the params schema (shared between all schemas)
 static func get_params_schema() -> Dictionary:
@@ -66,15 +66,15 @@ static func get_triggered_actions_schema(allowed_actions: Array) -> Dictionary:
 					"description": "The comparison operator (e.g., <, >=, =)"
 				},
 				"trigger_value": {
-					"type": ["number", "boolean"],
-					"description": "The value to compare against (e.g., 50, true)"
-				},
-				"speech": {
-					"type": ["string", "null"],
-					"description": "Optional dialogue for the unit"
+					"type": "number",
+					"description": "The value to compare against (e.g., 50, 1)"
 				}
+				#"speech": {
+				#	"type": ["string", "null"],
+				#	"description": "Optional dialogue for the unit"
+				#}
 			},
-			"required": ["action", "params", "trigger_source", "trigger_comparison", "trigger_value", "speech"],
+			"required": ["action", "params", "trigger_source", "trigger_comparison", "trigger_value"],# "speech"],
 			"additionalProperties": false
 		}
 	}
@@ -153,13 +153,13 @@ static func get_unit_specific_schema(unit_archetypes: Array, is_group_command: b
 												"enum": allowed_actions,
 												"description": "Name of the action to perform"
 											},
-											"params": get_params_schema(),
-											"speech": {
-												"type": ["string", "null"],
-												"description": "Optional dialogue for the unit"
-											}
+											"params": get_params_schema()
+											#"speech": {
+											#	"type": ["string", "null"],
+											#	"description": "Optional dialogue for the unit"
+											#}
 										},
-										"required": ["action", "params", "speech"],
+										"required": ["action", "params"],# "speech"],
 										"additionalProperties": false
 									}
 								},
@@ -225,13 +225,13 @@ static func get_multi_step_plan_schema() -> Dictionary:
 												"enum": GENERAL_ACTIONS,
 												"description": "Name of the action to perform"
 											},
-											"params": get_params_schema(),
-											"speech": {
-												"type": ["string", "null"],
-												"description": "Optional dialogue for the unit"
-											}
+											"params": get_params_schema()
+											#"speech": {
+											#	"type": ["string", "null"],
+											#	"description": "Optional dialogue for the unit"
+											#}
 										},
-										"required": ["action", "params", "speech"],
+										"required": ["action", "params"],# "speech"],
 										"additionalProperties": false
 									}
 								},

@@ -77,16 +77,32 @@ func _ready() -> void:
     _create_range_visualization()
     
     _load_archetype_stats()
+    
+    # Configure NavigationAgent3D after movement_speed is set
+    if navigation_agent:
+        navigation_agent.radius = 2.5 # Matches unit's collision shape radius
+        navigation_agent.max_speed = movement_speed
+        navigation_agent.avoidance_enabled = true # Ensure avoidance is enabled
+        # Path postprocessing will use default settings
+        # Units are on layer 1 for selection, use this layer for dynamic avoidance
+        navigation_agent.set_navigation_layers(1) # Units avoid other units on the same layer
+
+        navigation_agent.velocity_computed.connect(Callable(self, "_on_navigation_velocity_computed"))
+    
     health_changed.connect(func(new_health, _max_health): if new_health <= 0: die())
 
-    # Defer enabling physics process to prevent falling through floor on spawn
-    set_physics_process(false)
-    call_deferred("_enable_physics")
+    # Simplified physics initialization - ensure proper ground positioning
+    if global_position.y < 1.0:
+        global_position.y = 1.0  # Ensure minimum spawn height
+    set_physics_process(true)
 
 func _enable_physics():
+    # This function is no longer needed with simplified approach
     set_physics_process(true)
 
 func _load_archetype_stats() -> void:
+    # Load from game constants instead of ConfigManager
+    var GameConstants = preload("res://scripts/shared/constants/game_constants.gd")
     var config = GameConstants.get_unit_config(archetype)
     if not config.is_empty():
         max_health = config.get("health", 100.0)
@@ -96,6 +112,10 @@ func _load_archetype_stats() -> void:
         attack_range = config.get("range", 15.0)
         vision_range = config.get("vision", 30.0)
         
+        # Handle medic-specific heal_range, as it uses attack_range for distance checking
+        if archetype == "medic":
+            attack_range = config.get("heal_range", 15.0)
+
         # Refresh range visualization with new stats
         call_deferred("refresh_range_visualization")
 
@@ -196,28 +216,40 @@ func _physics_process(delta: float) -> void:
                     else:
                         navigation_agent.target_position = global_position # Stop
 
-    # Calculate horizontal velocity from navigation agent if the unit can move
-    if can_move:
-        if navigation_agent and not navigation_agent.is_navigation_finished():
-            var next_pos = navigation_agent.get_next_path_position()
-            var direction = global_position.direction_to(next_pos)
-            var horizontal_direction = Vector3(direction.x, 0, direction.z).normalized()
-            velocity.x = horizontal_direction.x * movement_speed
-            velocity.z = horizontal_direction.z * movement_speed
+    # Calculate desired velocity for NavigationAgent3D for path following and local avoidance
+    if can_move and navigation_agent:
+        if not navigation_agent.is_navigation_finished():
+            var next_global_path_point = navigation_agent.get_next_path_position()
+            var desired_velocity = (next_global_path_point - global_position).normalized() * movement_speed
+            navigation_agent.set_velocity(desired_velocity)
         else:
+            # If navigation is finished, stop horizontal movement
             velocity.x = 0
             velocity.z = 0
+            if current_state == GameEnums.UnitState.MOVING: # Only if explicitly moving to a point
+                current_state = GameEnums.UnitState.IDLE # Return to idle once path is finished
     else:
+        # If can_move is false or no navigation agent, ensure no horizontal movement from pathfinding
         velocity.x = 0
         velocity.z = 0
 
     # Always call move_and_slide to apply physics and update velocity
     move_and_slide()
 
+# New function to receive velocity computed by NavigationAgent3D (including RVO avoidance)
+func _on_navigation_velocity_computed(safe_velocity: Vector3) -> void:
+    # This is the velocity adjusted by NavigationAgent3D for local avoidance.
+    # Apply it to the unit's horizontal velocity component.
+    velocity.x = safe_velocity.x
+    velocity.z = safe_velocity.z
+
 func move_to(target_position: Vector3) -> void:
     current_state = GameEnums.UnitState.MOVING
     if navigation_agent:
         navigation_agent.target_position = target_position
+        # Provide an initial desired velocity to the agent when setting a new target
+        var desired_initial_velocity = (target_position - global_position).normalized() * movement_speed
+        navigation_agent.set_velocity(desired_initial_velocity)
 
 func attack_target(target: Unit) -> void:
     if not is_instance_valid(target): 
@@ -227,6 +259,9 @@ func attack_target(target: Unit) -> void:
     target_unit = target
     follow_target = null
     current_state = GameEnums.UnitState.ATTACKING
+    # When attacking, clear NavigationAgent's target unless the attack requires movement
+    if navigation_agent:
+        navigation_agent.target_position = global_position # Stop pathfinding if currently moving to a general point
 
 func follow(target: Unit) -> void:
     if not is_instance_valid(target) or target == self:
@@ -234,6 +269,8 @@ func follow(target: Unit) -> void:
     current_state = GameEnums.UnitState.FOLLOWING
     follow_target = target
     target_unit = null # Clear attack target
+    # NavigationAgent's target will be updated continuously in _physics_process
+    # if it's following (currently, it updates target_position in _physics_process for FOLLOWING state).
 
 func take_damage(damage: float) -> void:
     if is_dead: return
@@ -262,11 +299,8 @@ func die() -> void:
     is_dead = true
     current_state = GameEnums.UnitState.DEAD
     unit_died.emit(unit_id)
-    # The server game state will handle queue_free() after broadcasting the death.
-    # On the client, the display manager will handle freeing the visual node.
-    # On server, this is acceptable for now.
-    if multiplayer.is_server():
-        call_deferred("queue_free")
+    # The unit now persists after death. Its 'is_dead' state is broadcast
+    # to clients, and it will be ignored by most game logic.
 
 func get_health_percentage() -> float:
     return current_health / max_health if max_health > 0 else 0.0
@@ -304,11 +338,27 @@ func get_unit_info() -> Dictionary:
     return info
 
 # Placeholder methods for plan executor
-func retreat(): pass
-func start_patrol(_waypoints): pass
+func retreat():
+    # Implement unit retreat logic here
+    if navigation_agent:
+        # For a simple retreat, move to a safe, pre-defined position or away from enemies
+        var safe_pos = global_position + (global_position - target_unit.global_position).normalized() * 30.0 if is_instance_valid(target_unit) else global_position + Vector3(randf_range(-1,1),0,randf_range(-1,1)) * 30.0
+        move_to(safe_pos)
+    current_state = GameEnums.UnitState.IDLE # Or GameEnums.UnitState.RETREATING if defined
+    print("%s is retreating." % unit_id)
 
-func set_formation(_formation): pass
-func set_stance(_stance): pass
+func start_patrol(_waypoints):
+    # Implement unit patrol logic here
+    current_state = GameEnums.UnitState.IDLE # Or GameEnums.UnitState.PATROLING
+    print("%s is starting patrol." % unit_id)
+
+func set_formation(_formation):
+    # Implement formation logic here
+    print("%s is setting formation." % unit_id)
+
+func set_stance(_stance):
+    # Implement stance logic here
+    print("%s is setting stance." % unit_id)
 
 # Selection system methods
 var is_selected: bool = false

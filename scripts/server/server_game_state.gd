@@ -2,6 +2,9 @@
 # Server-authoritative game state manager
 extends Node
 
+# Load shared enums
+const GameEnums = preload("res://scripts/shared/types/game_enums.gd")
+
 # Game state
 var current_tick: int = 0
 var game_time: float = 0.0
@@ -167,8 +170,16 @@ func _gather_game_state() -> Dictionary:
                 "plan_summary": plan_summary,
                 "full_plan": full_plan_data,
                 "strategic_goal": unit.strategic_goal,
-                "waiting_for_ai": unit.unit_id in units_waiting_for_ai
+                "waiting_for_ai": unit.unit_id in units_waiting_for_ai,
+                "active_triggers": unit.get_current_active_triggers() if unit.has_method("get_current_active_triggers") else [],
+                "all_triggers": unit.get_all_trigger_info() if unit.has_method("get_all_trigger_info") else {}
             }
+            
+            # Add charge shot data for sniper units
+            if unit.archetype == "sniper" and unit.current_state == GameEnums.UnitState.CHARGING_SHOT:
+                if "charge_timer" in unit and "charge_time" in unit:
+                    unit_data["charge_timer"] = unit.charge_timer
+                    unit_data["charge_time"] = unit.charge_time
             if unit.has_method("get") and "shield_active" in unit:
                 unit_data["shield_active"] = unit.shield_active
                 if unit.max_shield_health > 0:
@@ -400,8 +411,8 @@ func _on_unit_became_idle(unit_id: String):
 
 func _request_autonomous_plan_for_unit(unit_id: String):
     # Do not allow autonomous actions until the player has issued their first group command.
-    #if not initial_group_command_given:
-    return
+    if not initial_group_command_given:
+        return
 
     if not units.has(unit_id): return
     if unit_id in units_waiting_for_ai: return
@@ -568,6 +579,9 @@ func spawn_unit(archetype: String, team_id: int, position: Vector3, owner_id: St
             if unit.has_signal("unit_died"):
                 unit.unit_died.connect(_on_unit_died)
             
+            if unit.has_signal("unit_respawned"):
+                unit.unit_respawned.connect(_on_unit_respawned)
+            
             unit_spawned.emit(unit_id)
             _log_info("ServerGameState", "Added unit %s (%s) to game state for team %d" % [unit_id, archetype, team_id])
             return unit_id
@@ -581,6 +595,12 @@ func _on_unit_died(unit_id: String):
         # The unit's 'is_dead' flag is now true and will be broadcast in the next state update.
         # No need to remove it from the 'units' dictionary.
         unit_destroyed.emit(unit_id)
+
+func _on_unit_respawned(unit_id: String):
+    if units.has(unit_id):
+        _log_info("ServerGameState", "Unit %s has respawned and is back in action." % unit_id)
+        # The unit's 'is_dead' flag is now false and will be broadcast in the next state update.
+        # Unit remains in the 'units' dictionary and is fully functional again.
 
 func _get_team_transform(team_id: int) -> Transform3D:
     var home_base_manager = get_tree().get_first_node_in_group("home_base_managers")

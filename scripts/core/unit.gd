@@ -9,6 +9,15 @@ const UnitStatusBarScene = preload("res://scenes/units/UnitStatusBar.tscn")
 const UnitHealthBarScene = preload("res://scenes/units/UnitHealthBar.tscn")
 const UnitRangeVisualizationScene = preload("res://scenes/units/UnitRangeVisualization.tscn")
 
+const TRIGGER_PRIORITIES = {
+    "on_health_critical": 5,
+    "on_under_attack": 4,
+    "on_enemy_in_range": 3,
+    "on_enemy_sighted": 2,
+    "on_health_low": 1,
+    "on_ally_health_low": 1
+}
+
 # Unit identification
 @export var unit_id: String = ""
 @export var archetype: String = "scout"
@@ -46,6 +55,13 @@ var status_bar: Node3D = null
 var health_bar: Node3D = null
 var range_visualization: Node3D = null
 
+# Respawn system
+var is_respawning: bool = false
+var respawn_timer: float = 0.0
+var original_spawn_position: Vector3 = Vector3.ZERO
+var invulnerable: bool = false
+var invulnerability_timer: float = 0.0
+
 # New action state variables
 var current_action: Dictionary = {}
 var action_complete: bool = true
@@ -53,12 +69,15 @@ var _old_action_complete: bool = true # To detect changes
 var triggered_actions: Dictionary = {}
 var trigger_last_states: Dictionary = {}
 var step_timer: float = 0.0
+var current_action_trigger: String = "" # The trigger that caused the current action
+var current_active_triggers: Array = [] # Currently active triggers for UI display
 
 # Movement
 var navigation_agent: NavigationAgent3D
 
 signal health_changed(new_health: float, max_health: float)
 signal unit_died(unit_id: String)
+signal unit_respawned(unit_id: String)
 
 # Static counters for meaningful unit IDs
 static var unit_counters: Dictionary = {}
@@ -95,6 +114,9 @@ func _ready() -> void:
     
     _load_archetype_stats()
     
+    # Set default triggered actions from game constants
+    _set_default_triggered_actions()
+    
     # Configure NavigationAgent3D after movement_speed is set
     if navigation_agent:
         navigation_agent.radius = 1.0 # Matches unit's collision shape radius
@@ -111,6 +133,10 @@ func _ready() -> void:
     # Simplified physics initialization - ensure proper ground positioning
     if global_position.y < 1.0:
         global_position.y = 1.0  # Ensure minimum spawn height
+    
+    # Store original spawn position for respawning
+    original_spawn_position = global_position
+    
     set_physics_process(true)
 
 func _generate_meaningful_unit_id() -> String:
@@ -155,12 +181,43 @@ func _load_archetype_stats() -> void:
         # Refresh range visualization with new stats
         call_deferred("refresh_range_visualization")
 
-func _physics_process(delta: float) -> void:
-    if is_dead: return
+func _set_default_triggered_actions() -> void:
+    """Set default triggered actions from game constants based on unit archetype"""
+    var default_actions = GameConstants.get_default_triggered_actions(archetype)
+    if not default_actions.is_empty():
+        triggered_actions = default_actions.duplicate()
+        print("Unit %s (%s): Set default triggered actions: %s" % [unit_id, archetype, str(triggered_actions.keys())])
+    else:
+        print("Unit %s (%s): No default triggered actions found for archetype" % [unit_id, archetype])
 
-    # NEW: First, check for trigger interruptions. They have the highest priority.
-    if _check_triggers():
-        return # A trigger fired and set a new action. The new action will be processed next frame.
+func _physics_process(delta: float) -> void:
+    # Handle respawn timer
+    if is_dead and is_respawning:
+        respawn_timer -= delta
+        
+        # Debug respawn countdown every 5 seconds
+        var seconds_remaining = int(respawn_timer)
+        if seconds_remaining > 0 and seconds_remaining % 5 == 0 and respawn_timer - delta > seconds_remaining - 1:
+            print("DEBUG: Unit %s respawn countdown: %d seconds remaining" % [unit_id, seconds_remaining])
+        
+        if respawn_timer <= 0.0:
+            print("DEBUG: Unit %s respawn timer expired, calling _handle_respawn()" % unit_id)
+            _handle_respawn()
+        return
+    
+    # Skip processing if dead but not respawning yet
+    if is_dead: 
+        # Debug why respawn isn't starting
+        if not is_respawning:
+            print("DEBUG: Unit %s is dead but not respawning (is_respawning=false)" % unit_id)
+        return
+    
+    # Handle invulnerability after respawn
+    if invulnerable:
+        invulnerability_timer -= delta
+        if invulnerability_timer <= 0.0:
+            invulnerable = false
+            print("DEBUG: Unit %s is no longer invulnerable" % unit_id)
 
     # If an action is running, increment its timer
     if not action_complete:
@@ -299,6 +356,10 @@ func _physics_process(delta: float) -> void:
         var new_transform = transform.looking_at(global_position + horizontal_velocity, Vector3.UP)
         transform.basis = transform.basis.slerp(new_transform.basis, delta * 10.0)
 
+    # NEW: Check for trigger interruptions AFTER state machine has potentially updated the state to IDLE.
+    if _check_triggers():
+        return # A trigger fired and set a new action. The new action will be processed next frame.
+
     # Always call move_and_slide to apply physics and update velocity
     move_and_slide()
 
@@ -353,6 +414,11 @@ func follow(target: Unit) -> void:
 
 func take_damage(damage: float) -> void:
     if is_dead: return
+    
+    # Check for invulnerability after respawn
+    if invulnerable:
+        print("DEBUG: Unit %s is invulnerable, no damage taken" % unit_id)
+        return
 
     _last_damage_time = Time.get_ticks_msec() / 1000.0
     var old_health = current_health
@@ -389,6 +455,10 @@ func die() -> void:
     else:
         print("DEBUG: Unit %s does not have trigger_death_sequence() method" % unit_id)
     
+    # Start respawn timer (only on server)
+    if multiplayer.is_server():
+        _start_respawn_timer()
+    
     # The unit now persists after death. Its 'is_dead' state is broadcast
     # to clients, and it will be ignored by most game logic.
 
@@ -397,6 +467,27 @@ func get_health_percentage() -> float:
 
 func get_team_id() -> int:
     return team_id
+
+func get_current_active_triggers() -> Array:
+    """Get the currently active triggers for UI display"""
+    return current_active_triggers
+
+func get_all_trigger_info() -> Dictionary:
+    """Get complete trigger information: all triggers with their status and assigned actions"""
+    var trigger_info = {}
+    
+    # Get all possible triggers from the triggered_actions dictionary
+    for trigger_name in triggered_actions.keys():
+        var is_active = trigger_name in current_active_triggers
+        var assigned_action = triggered_actions[trigger_name]
+        
+        trigger_info[trigger_name] = {
+            "active": is_active,
+            "action": assigned_action,
+            "priority": TRIGGER_PRIORITIES.get(trigger_name, 0)
+        }
+    
+    return trigger_info
 
 func get_unit_info() -> Dictionary:
     # This provides the detailed "unit_state" portion of the AI context.
@@ -686,10 +777,18 @@ func get_attack_capability_debug() -> String:
 
 # --- New Action & Trigger System ---
 
-func set_current_action(action: Dictionary):
+func set_current_action(action: Dictionary, p_is_triggered: bool = false, trigger_name: String = ""):
     current_action = action
     action_complete = false
     step_timer = 0.0
+
+    if p_is_triggered and not trigger_name.is_empty():
+        current_action_trigger = trigger_name
+    else:
+        # This is a planned action from PlanExecutor or an idle command.
+        # It has no trigger priority and can be interrupted by any trigger.
+        current_action_trigger = ""
+        
     _execute_action(action)
 
 func set_triggered_actions(actions: Dictionary):
@@ -702,9 +801,21 @@ func _execute_action(step: Dictionary):
     if params == null: params = {}
     params = params.duplicate() # Avoid modifying the original
     
+    # Debug logging for ally targeting
+    if params.has("ally_id"):
+        print("DEBUG: Unit %s executing action '%s' targeting ally %s" % [unit_id, action, params.ally_id])
+    
     match action:
         "move_to":
-            if params.has("position") and params.position != null:
+            if params.has("ally_id") and params.ally_id != null:
+                # Move to ally position (for on_ally_health_low trigger)
+                var game_state = get_node("/root/DependencyContainer").get_game_state()
+                var ally = game_state.units.get(params.ally_id)
+                if is_instance_valid(ally):
+                    move_to(ally.global_position)
+                else:
+                    action_complete = true
+            elif params.has("position") and params.position != null:
                 var pos_arr = params.position
                 var relative_pos = Vector3(pos_arr[0], pos_arr[1], pos_arr[2])
                 var team_transform = _get_team_transform()
@@ -714,6 +825,11 @@ func _execute_action(step: Dictionary):
             if params.has("target_id") and params.target_id != null:
                 var game_state = get_node("/root/DependencyContainer").get_game_state()
                 var target = game_state.units.get(params.target_id)
+                # Safety check: don't attack allies
+                if is_instance_valid(target) and target.team_id == team_id:
+                    print("ERROR: Unit %s prevented from attacking ally %s (same team %d)" % [unit_id, target.unit_id, team_id])
+                    action_complete = true
+                    return
                 attack_target(target)
         "retreat":
             retreat()
@@ -721,8 +837,9 @@ func _execute_action(step: Dictionary):
             current_state = GameEnums.UnitState.MOVING # Patrol is essentially moving
             action_complete = true # Patrol is conceptual, for AI; for execution it's just a move. The AI can issue another patrol if it wants. Or we can implement it as a sequence of moves. For now, it's a single action.
         "follow":
-            if params.has("target_id") and params.target_id != null:
-                var target = get_node("/root/DependencyContainer").get_game_state().units.get(params.target_id)
+            var target_id_to_use = params.get("target_id") or params.get("ally_id")
+            if target_id_to_use != null:
+                var target = get_node("/root/DependencyContainer").get_game_state().units.get(target_id_to_use)
                 follow(target)
         "activate_stealth":
             if has_method("activate_stealth"): activate_stealth(params)
@@ -735,7 +852,11 @@ func _execute_action(step: Dictionary):
         "find_cover":
             if has_method("find_cover"): find_cover(params)
         "heal_target":
-            if has_method("heal_target"): heal_target(params)
+            if has_method("heal_target"): 
+                # Convert ally_id to target_id for heal_target method
+                if params.has("ally_id") and params.ally_id != null:
+                    params["target_id"] = params.ally_id
+                heal_target(params)
         "construct":
             if has_method("construct"): construct(params)
         "repair":
@@ -772,29 +893,68 @@ func _check_triggers() -> bool:
         if lowest_ally.get_health_percentage() < 0.5:
             active_triggers.append("on_ally_health_low")
 
-    # Enemy triggers
-    var closest_enemy = _get_closest_enemy_in_vision()
-    if is_instance_valid(closest_enemy) and closest_enemy.global_position.distance_to(global_position) <= attack_range:
-        active_triggers.append("on_enemy_sighted")
+    # --- New Enemy Trigger Logic ---
+    var closest_enemy_in_vision = _get_closest_enemy_in_vision()
 
-    # --- Fire the highest priority trigger that is newly active ---
-    # Priority Order: Critical Health > Under Attack > Enemy Sighted > Low Health > Ally Low
-    var priority_order = [
-        "on_health_critical", "on_under_attack", 
-        "on_enemy_sighted", "on_health_low", "on_ally_health_low"
-    ]
+    # on_enemy_in_range: An enemy is within my direct attack range.
+    if is_instance_valid(closest_enemy_in_vision) and closest_enemy_in_vision.global_position.distance_to(global_position) <= attack_range:
+        active_triggers.append("on_enemy_in_range")
+
+    # on_enemy_sighted: An enemy is visible to me OR a nearby ally.
+    var enemy_sighted_by_team = false
+    if is_instance_valid(closest_enemy_in_vision):
+        enemy_sighted_by_team = true
+    else:
+        # Check allies' vision
+        var visible_allies = _get_visible_entities("units").filter(func(u): return u.team_id == self.team_id)
+        for ally in visible_allies:
+            if is_instance_valid(ally) and ally.has_method("_get_closest_enemy_in_vision"):
+                if is_instance_valid(ally._get_closest_enemy_in_vision()):
+                    enemy_sighted_by_team = true
+                    break
     
-    for trigger_name in priority_order:
-        if trigger_name in active_triggers:
-            var context = {}
-            if trigger_name == "on_enemy_sighted" and is_instance_valid(closest_enemy):
-                context["target_id"] = closest_enemy.unit_id
-            if trigger_name == "on_ally_health_low" and is_instance_valid(lowest_ally):
-                context["target_id"] = lowest_ally.unit_id
+    if enemy_sighted_by_team:
+        active_triggers.append("on_enemy_sighted")
+    
+    # Store active triggers for UI display (always update, even if empty)
+    current_active_triggers = active_triggers
 
-            if _fire_trigger(trigger_name, context):
-                _reset_inactive_triggers(active_triggers)
-                return true # A trigger fired, stop further checks
+    # --- Find the highest priority active trigger ---
+    var best_trigger_name: String = ""
+    var max_priority: int = -1
+
+    for trigger_name in active_triggers:
+        var priority = TRIGGER_PRIORITIES.get(trigger_name, 0)
+        if priority > max_priority:
+            max_priority = priority
+            best_trigger_name = trigger_name
+            
+    # If no trigger is active, we're done with this part.
+    if best_trigger_name.is_empty():
+        _reset_inactive_triggers(active_triggers)
+        return false
+
+    # --- Decide if the new trigger should interrupt the current action ---
+    # A planned action has no trigger, so its priority is -1. Any trigger can interrupt it.
+    var current_trigger_priority = TRIGGER_PRIORITIES.get(current_action_trigger, -1)
+    
+    # A new trigger can interrupt if it has a higher priority than the current action's trigger.
+    var can_interrupt = (max_priority > current_trigger_priority)
+
+    if can_interrupt:
+        var context = {}
+        # Pass target_id for enemy triggers if we have a direct line of sight.
+        if (best_trigger_name == "on_enemy_in_range" or best_trigger_name == "on_enemy_sighted") and is_instance_valid(closest_enemy_in_vision):
+            context["target_id"] = closest_enemy_in_vision.unit_id
+            
+        if best_trigger_name == "on_ally_health_low" and is_instance_valid(lowest_ally):
+            # Use ally_id instead of target_id to prevent accidental attacks on allies
+            context["ally_id"] = lowest_ally.unit_id
+
+        # _fire_trigger will check if this is a new event (rising edge) or refireable.
+        if _fire_trigger(best_trigger_name, context):
+             _reset_inactive_triggers(active_triggers)
+             return true # A trigger fired, interrupt handled.
 
     _reset_inactive_triggers(active_triggers)
     return false
@@ -808,10 +968,11 @@ func _fire_trigger(trigger_name: String, context: Dictionary = {}) -> bool:
     # Allow critical triggers to re-fire if the unit becomes idle again,
     # ensuring it doesn't stay passive in a dangerous situation.
     # This is a level-triggered check for idle units for persistent conditions.
-    var can_refire_when_idle = (trigger_name == "on_enemy_sighted" or trigger_name == "on_ally_health_low")
+    var can_refire_when_idle = (trigger_name == "on_enemy_sighted" or trigger_name == "on_enemy_in_range" or trigger_name == "on_ally_health_low")
     var is_idle = (current_state == GameEnums.UnitState.IDLE)
 
-    if not last_state or (can_refire_when_idle and is_idle): # Fire on rising edge, or if it's an important persistent trigger and the unit is idle.
+    # Only fire on rising edge, or if it's a refireable trigger and the unit is idle.
+    if not last_state or (can_refire_when_idle and is_idle):
         trigger_last_states[trigger_name] = true # Mark as active
         
         var action_name = triggered_actions[trigger_name]
@@ -823,8 +984,8 @@ func _fire_trigger(trigger_name: String, context: Dictionary = {}) -> bool:
             plan_executor.interrupt_plan(unit_id, "Trigger fired: %s" % trigger_name, true)
             plan_executor.trigger_evaluated.emit(unit_id, trigger_name, true)
 
-        # Execute the triggered action
-        call_deferred("set_current_action", action_to_execute)
+        # Execute the triggered action and record which trigger caused it
+        call_deferred("set_current_action", action_to_execute, true, trigger_name)
         
         return true
         
@@ -903,3 +1064,81 @@ func heal_target(_params: Dictionary): pass
 func construct(_params: Dictionary): pass
 func repair(_params: Dictionary): pass
 func lay_mines(_params: Dictionary): pass
+
+# Respawn system methods
+func _start_respawn_timer() -> void:
+    """Start the respawn countdown timer"""
+    is_respawning = true
+    respawn_timer = GameConstants.UNIT_RESPAWN_TIME
+    
+    # CRITICAL: Re-enable physics processing for respawn countdown
+    # The death sequence disables physics, but we need it for the respawn timer
+    set_physics_process(true)
+    
+    print("DEBUG: Unit %s will respawn in %.1f seconds (physics_process re-enabled)" % [unit_id, respawn_timer])
+
+func _handle_respawn() -> void:
+    """Handle unit respawn after timer expires"""
+    if not multiplayer.is_server():
+        return
+    
+    # Get spawn position from home base manager
+    var spawn_position = _get_respawn_position()
+    
+    # Reset unit state
+    is_dead = false
+    is_respawning = false
+    current_health = max_health
+    current_state = GameEnums.UnitState.IDLE
+    
+    # Apply invulnerability period
+    invulnerable = true
+    invulnerability_timer = GameConstants.RESPAWN_INVULNERABILITY_TIME
+    
+    # Clear any ongoing actions and triggers
+    action_complete = true
+    current_action.clear()
+    current_action_trigger = ""
+    target_unit = null
+    follow_target = null
+    
+    # Move to spawn position
+    global_position = spawn_position
+    
+    # Re-enable physics and collision
+    set_physics_process(true)
+    set_collision_layer_value(1, true)  # Re-enable selection
+    
+    # Trigger respawn effects if this is an animated unit
+    if has_method("trigger_respawn_sequence"):
+        call("trigger_respawn_sequence")
+    
+    # Emit respawn signal
+    unit_respawned.emit(unit_id)
+    
+    print("DEBUG: Unit %s respawned at %s with %d health (invulnerable for %.1f seconds)" % [
+        unit_id, spawn_position, current_health, invulnerability_timer
+    ])
+
+func _get_respawn_position() -> Vector3:
+    """Get the respawn position for this unit"""
+    var home_base_manager = get_tree().get_first_node_in_group("home_base_managers")
+    if home_base_manager:
+        var base_spawn = home_base_manager.get_team_spawn_position(team_id)
+        if base_spawn != Vector3.ZERO:
+            # Add random offset within respawn radius to prevent units spawning on top of each other
+            var angle = randf() * 2 * PI
+            var radius = randf() * GameConstants.RESPAWN_OFFSET_RADIUS
+            var offset = Vector3(
+                cos(angle) * radius,
+                0,
+                sin(angle) * radius
+            )
+            return base_spawn + offset
+    
+    # Fallback to original spawn position with offset
+    return original_spawn_position + Vector3(randf() * 2.0 - 1.0, 0, randf() * 2.0 - 1.0)
+
+func get_respawn_time_remaining() -> float:
+    """Get remaining respawn time (for UI display)"""
+    return respawn_timer if is_respawning else 0.0

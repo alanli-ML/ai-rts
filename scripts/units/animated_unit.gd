@@ -15,6 +15,10 @@ var model_container: Node3D
 const WeaponDatabase = preload("res://scripts/units/weapon_database.gd")
 var weapon_db = WeaponDatabase.new()
 
+# Charge shot visual effects
+var charge_effect_node: Node3D = null
+var charge_intensity: float = 0.0
+
 func _ready() -> void:
 	super._ready()
 	
@@ -124,7 +128,9 @@ func update_client_visuals(server_velocity: Vector3, _delta: float) -> void:
 	if server_velocity.length_squared() > 0.01:
 		play_animation("Run")
 	else:
-		if current_state == GameEnums.UnitState.ATTACKING:
+		if current_state == GameEnums.UnitState.CHARGING_SHOT:
+			_handle_charging_shot_animation()
+		elif current_state == GameEnums.UnitState.ATTACKING:
 			play_animation("Attack")
 		else:
 			play_animation("Idle")
@@ -140,18 +146,200 @@ func _physics_process(delta: float):
 	if is_dead:
 		return
 
+	# Handle charge shot visual effects
+	_update_charge_effects(delta)
+
 	# If we are the server but not headless, we are the host. Animate ourselves.
 	# Pure clients will have their visuals updated by ClientDisplayManager.
 	if multiplayer.is_server() and DisplayServer.get_name() != "headless":
 		# The parent Unit node is now rotated by the new logic in unit.gd.
 		# The model_container is rotated 180 degrees at load time to face forward.
 		# This host-only logic just needs to manage animations based on state and velocity.
-		if current_state == GameEnums.UnitState.ATTACKING:
+		if current_state == GameEnums.UnitState.CHARGING_SHOT:
+			_handle_charging_shot_animation()
+		elif current_state == GameEnums.UnitState.ATTACKING:
 			play_animation("Attack")
 		elif velocity.length_squared() > 0.01:
 			play_animation("Run")
 		else:
 			play_animation("Idle")
+
+func _handle_charging_shot_animation():
+	"""Handle animations and effects for charging shot state"""
+	# Play aiming/charging animation - try holding weapon animations first
+	if animation_player:
+		if animation_player.has_animation("holding-both"):
+			animation_player.play("holding-both")
+		elif animation_player.has_animation("holding-right"):
+			animation_player.play("holding-right")
+		else:
+			play_animation("Attack")  # Fallback to attack pose
+	
+	# Create or update charging visual effects
+	if not charge_effect_node:
+		_create_charge_effect()
+
+func _update_charge_effects(delta: float):
+	"""Update charging visual effects intensity"""
+	if current_state == GameEnums.UnitState.CHARGING_SHOT:
+		# Get charge progress from the sniper unit if available
+		var charge_progress = 0.0
+		if has_method("get_charge_progress"):
+			charge_progress = call("get_charge_progress")
+		else:
+			# Fallback: estimate based on timer if accessible
+			if is_instance_valid(self) and self.get("charge_timer") != null and self.get("charge_time") != null:
+				var charge_timer = self.get("charge_timer") 
+				var charge_time = self.get("charge_time")
+				if charge_time > 0:
+					charge_progress = 1.0 - (charge_timer / charge_time)
+		
+		charge_intensity = charge_progress
+		_update_charge_visual_intensity()
+	else:
+		# Gradually fade out charge effects
+		if charge_intensity > 0:
+			charge_intensity = max(0, charge_intensity - delta * 3.0)
+			_update_charge_visual_intensity()
+		
+		# Remove charge effect when intensity reaches zero
+		if charge_intensity <= 0 and charge_effect_node:
+			charge_effect_node.queue_free()
+			charge_effect_node = null
+
+func update_charge_data(charge_timer: float, charge_time: float):
+	"""Update charge data received from server for client units"""
+	set("charge_timer", charge_timer)
+	set("charge_time", charge_time)
+
+func _create_charge_effect():
+	"""Create visual charging effect (scope glint, energy buildup, etc.)"""
+	if charge_effect_node:
+		return
+	
+	# Create a glowing sphere effect above the weapon/unit
+	charge_effect_node = Node3D.new()
+	charge_effect_node.name = "ChargeEffect"
+	add_child(charge_effect_node)
+	
+	# Position above the unit
+	charge_effect_node.position = Vector3(0, 2.5, 0)
+	
+	# Create a glowing sphere mesh
+	var sphere_mesh = MeshInstance3D.new()
+	sphere_mesh.mesh = SphereMesh.new()
+	sphere_mesh.mesh.radius = 0.1
+	sphere_mesh.mesh.height = 0.2
+	charge_effect_node.add_child(sphere_mesh)
+	
+	# Create glowing material
+	var glow_material = StandardMaterial3D.new()
+	glow_material.albedo_color = Color.CYAN
+	glow_material.emission_enabled = true
+	glow_material.emission = Color.CYAN
+	glow_material.flags_transparent = true
+	sphere_mesh.material_override = glow_material
+	
+	# Add pulsing effect
+	var tween = create_tween()
+	tween.set_loops()
+	tween.tween_property(sphere_mesh, "scale", Vector3(1.2, 1.2, 1.2), 0.5)
+	tween.tween_property(sphere_mesh, "scale", Vector3(0.8, 0.8, 0.8), 0.5)
+
+func _update_charge_visual_intensity():
+	"""Update the visual intensity of the charging effect"""
+	if not charge_effect_node:
+		return
+	
+	var sphere_mesh = charge_effect_node.get_child(0) as MeshInstance3D
+	if not sphere_mesh or not sphere_mesh.material_override:
+		return
+	
+	var material = sphere_mesh.material_override as StandardMaterial3D
+	if not material:
+		return
+	
+	# Update glow intensity based on charge progress
+	var base_color = Color.CYAN
+	var intensity = 1.0 + (charge_intensity * 4.0)  # Scale from 1.0 to 5.0
+	
+	material.emission = base_color * intensity
+	material.albedo_color = base_color * (0.5 + charge_intensity * 0.5)
+	
+	# Update scale based on charge intensity
+	var scale_factor = 0.5 + (charge_intensity * 1.5)  # Scale from 0.5 to 2.0
+	charge_effect_node.scale = Vector3(scale_factor, scale_factor, scale_factor)
+	
+	# Update opacity
+	material.albedo_color.a = 0.3 + (charge_intensity * 0.7)
+
+func play_charged_shot_effect():
+	"""Play special effects when the charged shot is fired"""
+	print("DEBUG: Playing charged shot firing effect for unit %s" % unit_id)
+	
+	# Play enhanced shooting animation
+	if animation_player:
+		if animation_player.has_animation("holding-both-shoot"):
+			animation_player.play("holding-both-shoot")
+		elif animation_player.has_animation("holding-right-shoot"):
+			animation_player.play("holding-right-shoot")
+		else:
+			play_animation("Attack")
+	
+	# Create enhanced muzzle flash effect
+	_create_enhanced_muzzle_flash()
+	
+	# Play charged shot sound
+	_play_charged_shot_sound()
+	
+	# Remove charge effect immediately
+	if charge_effect_node:
+		charge_effect_node.queue_free()
+		charge_effect_node = null
+	charge_intensity = 0.0
+
+func _create_enhanced_muzzle_flash():
+	"""Create an enhanced muzzle flash for charged shots"""
+	if not weapon_attachment:
+		return
+	
+	var muzzle_point = weapon_attachment.get("muzzle_point")
+	if not muzzle_point:
+		return
+	
+	# Create larger, more intense muzzle flash
+	var enhanced_flash = MeshInstance3D.new()
+	enhanced_flash.name = "EnhancedMuzzleFlash"
+	enhanced_flash.mesh = SphereMesh.new()
+	enhanced_flash.mesh.radius = 0.15  # Larger than normal
+	enhanced_flash.mesh.height = 0.3
+	
+	var flash_material = StandardMaterial3D.new()
+	flash_material.albedo_color = Color(1.0, 0.8, 0.3, 0.8)  # Orange-yellow
+	flash_material.emission_enabled = true
+	flash_material.emission = Color(1.0, 0.8, 0.3) * 5.0  # Very bright
+	flash_material.flags_transparent = true
+	enhanced_flash.material_override = flash_material
+	
+	muzzle_point.add_child(enhanced_flash)
+	
+	# Animate enhanced muzzle flash
+	var tween = create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(enhanced_flash, "scale", Vector3(3.0, 3.0, 3.0), 0.1)
+	tween.tween_property(enhanced_flash, "scale", Vector3(0.1, 0.1, 0.1), 0.2)
+	tween.tween_property(enhanced_flash, "modulate:a", 0.0, 0.15)
+	tween.tween_callback(func(): if is_instance_valid(enhanced_flash): enhanced_flash.queue_free())
+
+func _play_charged_shot_sound():
+	"""Play enhanced sound effect for charged shot"""
+	var audio_manager = get_node_or_null("/root/DependencyContainer/AudioManager")
+	if audio_manager:
+		# Try to play a special charged shot sound, fallback to regular shot
+		if audio_manager.has_method("play_sound_3d"):
+			# First try charged shot sound
+			audio_manager.play_sound_3d("res://assets/audio/sfx/charged_shot.wav", global_position)
+			# If that doesn't exist, the audio manager should fallback gracefully
 
 func get_skeleton() -> Skeleton3D:
 	if model_container and model_container.get_child_count() > 0:
@@ -185,15 +373,16 @@ func _attach_weapon():
 		print("DEBUG: AnimatedUnit._attach_weapon() - weapon attachment already exists")
 
 func trigger_death_sequence():
-	if is_dead: 
-		print("DEBUG: AnimatedUnit %s trigger_death_sequence() called but already dead, returning" % unit_id)
-		return # Already dead
-
+	# Allow death sequence to run even if already marked as dead
+	# This ensures visual effects play when unit dies
 	print("DEBUG: AnimatedUnit %s (%s) starting death sequence" % [unit_id, archetype])
 	
-	# Prevent further actions
+	# Prevent further actions and ensure dead state
 	is_dead = true
 	set_collision_layer_value(1, false) # No more selection/raycast hits
+	
+	# Add immediate visual feedback that the unit is dead
+	_apply_immediate_death_effects()
 	
 	_play_death_sound()
 	
@@ -239,8 +428,7 @@ func _start_death_visual_effects():
 	"""Start the visual death effects sequence"""
 	print("DEBUG: Starting death visual effects for unit %s" % unit_id)
 	
-	# Stop physics processing
-	set_physics_process(false)
+	# Note: Keep physics processing enabled for respawn timer countdown
 	
 	# Add death effects (rotation, scale, etc.)
 	_apply_death_effects()
@@ -248,6 +436,25 @@ func _start_death_visual_effects():
 	# Wait a moment, then fade out
 	await get_tree().create_timer(0.5).timeout
 	_fade_out_unit()
+
+func _apply_immediate_death_effects():
+	"""Apply immediate visual changes when unit dies (before animation)"""
+	print("DEBUG: Applying immediate death effects for unit %s" % unit_id)
+	
+	# Note: Don't disable physics processing here as it will be re-enabled for respawn countdown
+	# The respawn system will manage physics processing state
+	
+	# Immediately start darkening the unit (check if modulate exists)
+	if has_method("set_modulate"):
+		self.modulate = Color(0.7, 0.7, 0.7, 1.0)  # Darker/grayer immediately
+	elif "modulate" in self:
+		self.modulate = Color(0.7, 0.7, 0.7, 1.0)
+	else:
+		print("DEBUG: Unit %s does not support modulate property, skipping color change" % unit_id)
+	
+	# Slightly reduce scale immediately to show impact
+	if model_container:
+		model_container.scale = Vector3(0.95, 0.95, 0.95)
 
 func _apply_death_effects():
 	"""Apply visual death effects like rotation and scaling"""
@@ -262,19 +469,29 @@ func _apply_death_effects():
 	death_tween.tween_property(model_container, "rotation_degrees:z", 90.0, 1.0)
 	death_tween.tween_property(model_container, "scale", Vector3(0.8, 0.8, 0.8), 1.0)
 	
-	# Optional: Change color to darker/grayer
-	death_tween.tween_property(self, "modulate", Color.GRAY, 0.8)
+	# Continue darkening the unit (check if modulate exists)
+	if has_method("set_modulate") or "modulate" in self:
+		death_tween.tween_property(self, "modulate", Color(0.5, 0.5, 0.5, 1.0), 0.8)
+	else:
+		print("DEBUG: Skipping modulate tween for unit %s (property not available)" % unit_id)
 
 func _fade_out_unit():
 	"""Gradually fade out the unit after death animation"""
 	print("DEBUG: Starting fade out for unit %s" % unit_id)
 	
-	# Create a fade tween
-	var tween = create_tween()
-	tween.tween_property(self, "modulate:a", 0.0, 2.0)
+	# Check if we can fade using modulate
+	if has_method("set_modulate") or "modulate" in self:
+		# Create a fade tween
+		var tween = create_tween()
+		tween.tween_property(self, "modulate:a", 0.0, 2.0)
+		
+		# Wait for fade to complete then make completely invisible
+		await tween.finished
+	else:
+		# Fallback: just wait a bit then make invisible
+		print("DEBUG: Modulate not available, using fallback fade for unit %s" % unit_id)
+		await get_tree().create_timer(2.0).timeout
 	
-	# Wait for fade to complete then make completely invisible
-	await tween.finished
 	visible = false
 	print("DEBUG: Unit %s fully faded out" % unit_id)
 
@@ -283,6 +500,56 @@ func _play_death_sound():
 	if audio_manager:
 		# In the future, this could be archetype-specific from the database
 		audio_manager.play_sound_3d("res://assets/audio/sfx/unit_death_01.wav", global_position)
+
+func trigger_respawn_sequence():
+	"""Called when unit respawns - visual effects for revival"""
+	print("DEBUG: AnimatedUnit %s (%s) starting respawn sequence" % [unit_id, archetype])
+	
+	# Make unit visible again and reset visual state
+	visible = true
+	
+	# Reset modulate if available
+	if has_method("set_modulate") or "modulate" in self:
+		self.modulate = Color.WHITE
+	else:
+		print("DEBUG: Modulate not available for unit %s, skipping color reset" % unit_id)
+	
+	# Reset model container
+	if model_container:
+		model_container.scale = Vector3.ONE
+		model_container.rotation_degrees = Vector3.ZERO
+	
+	# Enable collision again
+	set_collision_layer_value(1, true)
+	
+	# Apply respawn visual effects
+	_apply_respawn_effects()
+	
+	# Play respawn animation if available
+	if animation_player and animation_player.has_animation("idle"):
+		animation_player.play("idle")
+	else:
+		play_animation("Idle")
+	
+	print("DEBUG: Unit %s respawn sequence completed" % unit_id)
+
+func _apply_respawn_effects():
+	"""Apply visual effects for respawn"""
+	# Start with slightly enlarged scale and fade in
+	if model_container:
+		model_container.scale = Vector3(1.2, 1.2, 1.2)
+		var respawn_tween = create_tween()
+		respawn_tween.set_parallel(true)
+		
+		# Scale back to normal
+		respawn_tween.tween_property(model_container, "scale", Vector3.ONE, 0.5)
+		
+		# Add a brief glow effect (if modulate is available)
+		if has_method("set_modulate") or "modulate" in self:
+			respawn_tween.tween_property(self, "modulate", Color(1.2, 1.2, 1.2, 1.0), 0.2)
+			respawn_tween.tween_property(self, "modulate", Color.WHITE, 0.3)
+		else:
+			print("DEBUG: Skipping glow effect for unit %s (modulate not available)" % unit_id)
 
 func debug_list_available_animations() -> void:
 	"""Debug method to list all available animations for this unit"""

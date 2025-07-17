@@ -34,6 +34,11 @@ const MAX_BUILDINGS_PER_PLAYER: int = 20
 const BUILDING_PLACEMENT_RADIUS: float = 2.0
 const BUILDING_CONSTRUCTION_RANGE: float = 5.0
 
+# Respawn constants
+const UNIT_RESPAWN_TIME: float = 30.0
+const RESPAWN_INVULNERABILITY_TIME: float = 3.0
+const RESPAWN_OFFSET_RADIUS: float = 5.0
+
 # Unit configurations
 const UNIT_CONFIGS: Dictionary = {
     "scout": {
@@ -56,7 +61,7 @@ const UNIT_CONFIGS: Dictionary = {
     },
     "tank": {
         "health": 300,
-        "speed": 2.0,
+        "speed": 3.0,
         "damage": 20,
         "range": 6.0,
         "vision": 24.0,
@@ -87,20 +92,23 @@ const UNIT_CONFIGS: Dictionary = {
 # Default triggered actions by unit archetype
 const DEFAULT_TRIGGERED_ACTIONS: Dictionary = {
     "scout": {
-        "on_enemy_sighted": "attack",
+        "on_enemy_in_range": "attack",
+        "on_enemy_sighted": "move_to",
         "on_under_attack": "activate_stealth",
         "on_health_low": "retreat",
         "on_health_critical": "retreat",
         "on_ally_health_low": "move_to"
     },
     "tank": {
-        "on_enemy_sighted": "attack",
-        "on_under_attack": "activate_shield",
-        "on_health_low": "find_cover",
+        "on_enemy_in_range": "attack",
+        "on_enemy_sighted": "move_to",
+        "on_under_attack": "taunt_enemies",
+        "on_health_low": "activate_shield",
         "on_health_critical": "retreat",
         "on_ally_health_low": "move_to"
     },
     "sniper": {
+        "on_enemy_in_range": "retreat",
         "on_enemy_sighted": "charge_shot",
         "on_under_attack": "find_cover",
         "on_health_low": "find_cover",
@@ -108,21 +116,24 @@ const DEFAULT_TRIGGERED_ACTIONS: Dictionary = {
         "on_ally_health_low": "find_cover"
     },
     "medic": {
-        "on_enemy_sighted": "attack",
+        "on_enemy_in_range": "retreat",
+        "on_enemy_sighted": "find_cover",
         "on_under_attack": "find_cover",
         "on_health_low": "find_cover",
         "on_health_critical": "retreat",
         "on_ally_health_low": "heal_target"
     },
     "engineer": {
-        "on_enemy_sighted": "attack",
+        "on_enemy_in_range": "attack",
+        "on_enemy_sighted": "move_to",
         "on_under_attack": "find_cover",
         "on_health_low": "find_cover",
         "on_health_critical": "retreat",
         "on_ally_health_low": "move_to"
     },
     "general": {
-        "on_enemy_sighted": "attack",
+        "on_enemy_in_range": "attack",
+        "on_enemy_sighted": "move_to",
         "on_under_attack": "retreat",
         "on_health_low": "retreat",
         "on_health_critical": "retreat",

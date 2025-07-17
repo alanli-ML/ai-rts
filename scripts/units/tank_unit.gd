@@ -39,6 +39,7 @@ func activate_shield(_params: Dictionary):
 	shield_health = max_shield_health
 	shield_cooldown_timer = shield_cooldown
 	print("%s activated its shield." % unit_id)
+	action_complete = true
 
 func taunt_enemies(_params: Dictionary):
 	print("%s is taunting nearby enemies." % unit_id)

@@ -44,6 +44,7 @@ func activate_stealth(_params: Dictionary):
 	stealth_timer = stealth_duration
 	stealth_cooldown_timer = stealth_cooldown
 	print("%s is activating stealth." % unit_id)
+	action_complete = true
 
 func deactivate_stealth():
 	if not is_stealthed: return

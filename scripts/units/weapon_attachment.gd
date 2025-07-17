@@ -282,7 +282,7 @@ func _adjust_weapon_positioning() -> void:
 	"""Adjust weapon position and rotation for proper grip"""
 	# Standard weapon positioning (can be customized per weapon type)
 	position = Vector3(0.05, 0.05, 0.1)  # Slight offset from hand
-	rotation_degrees = Vector3(0, 90, 0)  # Rotate to face forward
+	rotation_degrees = Vector3(0, -90, 0)  # Rotate to face forward (-Z)
 	
 	# Weapon-specific adjustments
 	match weapon_type:
@@ -560,8 +560,12 @@ func _spawn_projectile() -> void:
 	Spawns a logical projectile on the server and tells clients to spawn a
 	visual-only projectile via RPC.
 	"""
-	if not PROJECTILE_SCENE or not muzzle_point:
-		_log_error("Cannot spawn projectile - scene or muzzle point missing.")
+	if not PROJECTILE_SCENE or not is_instance_valid(muzzle_point):
+		_log_error("Cannot spawn projectile - scene or muzzle point is missing or invalid.")
+		return
+
+	if not muzzle_point.is_inside_tree():
+		_log_error("Cannot spawn projectile - muzzle point is not in the scene tree. Aborting fire.")
 		return
 
 	# This projectile is server-side only, for logic and collision.
@@ -574,16 +578,18 @@ func _spawn_projectile() -> void:
 	projectile.lifetime = range / 20.0
 	
 	# Calculate direction (forward from muzzle point)
-	var forward_direction = -muzzle_point.global_transform.basis.z.normalized()
+	var muzzle_transform = muzzle_point.global_transform
+	var forward_direction = -muzzle_transform.basis.z
 	
-	# Add some accuracy variation
-	var accuracy_spread = (1.0 - accuracy) * 0.2
-	var random_spread = Vector3(
-		randf_range(-accuracy_spread, accuracy_spread),
-		randf_range(-accuracy_spread, accuracy_spread),
-		0.0
-	)
-	projectile.direction = (forward_direction + random_spread).normalized()
+	# Add some accuracy variation (cone of fire)
+	var accuracy_spread = (1.0 - accuracy) * 0.2 # Max deviation angle in radians
+	var spread_x = randf_range(-accuracy_spread, accuracy_spread)
+	var spread_y = randf_range(-accuracy_spread, accuracy_spread)
+	
+	# Rotate the forward vector by random amounts around the muzzle's local up and right axes
+	var final_direction = forward_direction.rotated(muzzle_transform.basis.y, spread_x).rotated(muzzle_transform.basis.x, spread_y)
+
+	projectile.direction = final_direction.normalized()
 	
 	# Position projectile at muzzle
 	projectile.global_position = muzzle_point.global_position
@@ -721,15 +727,15 @@ func _set_static_weapon_position() -> void:
 	
 	# Base rotations for different weapon types
 	var base_rotations = {
-		"pistol": Vector3(0, 90, -10),    # Slight downward angle
-		"rifle": Vector3(0, 90, 0),       # Horizontal
-		"sniper": Vector3(0, 90, 5),      # Slight upward angle
-		"heavy": Vector3(0, 90, -5),      # Slight downward for stability
-		"support": Vector3(0, 90, -8),    # Supportive angle
-		"carbine": Vector3(0, 90, -3),    # Slight downward
-		"smg": Vector3(0, 90, -12),       # More downward angle
-		"marksman": Vector3(0, 90, 3),    # Slight upward
-		"utility": Vector3(0, 90, -6)     # Utility angle
+		"pistol": Vector3(0, 180, -10),    # Slight downward angle
+		"rifle": Vector3(0, 180, 0),       # Horizontal
+		"sniper": Vector3(0, 180, 5),      # Slight upward angle
+		"heavy": Vector3(0, 180, -5),      # Slight downward for stability
+		"support": Vector3(0, 180, -8),    # Supportive angle
+		"carbine": Vector3(0, 180, -3),    # Slight downward
+		"smg": Vector3(0, 180, -12),       # More downward angle
+		"marksman": Vector3(0, 180, 3),    # Slight upward
+		"utility": Vector3(0, 180, -6)     # Utility angle
 	}
 	
 	# Get weapon category from weapon name
@@ -857,14 +863,14 @@ func _get_base_weapon_rotation() -> Vector3:
 				weapon_category = "rifle"
 	
 	var base_rotations = {
-		"pistol": Vector3(0, 90, -10),
-		"rifle": Vector3(0, 90, 0),
-		"sniper": Vector3(0, 90, 5),
-		"heavy": Vector3(0, 90, -5),
-		"support": Vector3(0, 90, -8),
-		"carbine": Vector3(0, 90, -3),
-		"smg": Vector3(0, 90, -12),
-		"marksman": Vector3(0, 90, 3),
-		"utility": Vector3(0, 90, -6)
+		"pistol": Vector3(0, -90, -10),
+		"rifle": Vector3(0, -90, 0),
+		"sniper": Vector3(0, -90, 5),
+		"heavy": Vector3(0, -90, -5),
+		"support": Vector3(0, -90, -8),
+		"carbine": Vector3(0, -90, -3),
+		"smg": Vector3(0, -90, -12),
+		"marksman": Vector3(0, -90, 3),
+		"utility": Vector3(0, -90, -6)
 	}
-	return base_rotations.get(weapon_category, Vector3(0, 90, 0)) 
+	return base_rotations.get(weapon_category, Vector3(0, -90, 0))

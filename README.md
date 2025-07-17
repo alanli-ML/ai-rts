@@ -149,8 +149,8 @@ PathPlanner->>Physics60Hz: velocities / projectiles
 Note over PlanExecutor: 30 Hz checks duration_ms or trigger;<br/>activates next step and speech bubble
 Module	Role
 ActionValidator.gd	Verifies plan schema, verb whitelist, param bounds, cost, speech profanity; rejects > 3 steps or > 6 s cumulative duration.
-PlanExecutor.gd	Stores plan, timers; at 30 Hz activates or aborts steps; requests fresh plan when finished.
-FiniteStateMachine.gd	Checks if step legal in current state; emergency overrides (auto-retreat).
+PlanExecutor.gd	Stores the sequential plan for each unit. Monitors the unit's `action_complete` flag to advance the plan to the next step. No longer evaluates triggers.
+FiniteStateMachine.gd	The core state machine within each `Unit.gd` script. Executes actions from `PlanExecutor` or triggered actions. Evaluates all triggers autonomously and can interrupt the `PlanExecutor`'s plan.
 PathPlanner.gd	60 Hz A* pathing & local avoidance; resolves cover id to waypoint.
 SpeechBubble.tscn	Billboard UI; fades after 2 s.
 
@@ -328,8 +328,8 @@ Edit
 Module	Role
 LLMBridge.gd	Builds prompt with System Prompt + player intent + Unit Packet; batches; posts to OpenAI.
 ActionValidator.gd	Checks JSON schema, verb whitelist, param bounds, build permissions, Energy cost, profanity.
-PlanExecutor.gd	Stores plan; at 30 Hz checks duration_ms / trigger; dispatches current step & speech via FSM.
-FiniteStateMachine.gd	Validates against state (e.g., cannot construct while Panicked); falls back to emergency retreat.
+PlanExecutor.gd	Stores the sequential plan for each unit. Monitors the unit's `action_complete` flag to advance the plan. No longer evaluates triggers.
+FiniteStateMachine.gd	The core state machine within each `Unit.gd` script. Executes actions from `PlanExecutor` or triggered actions. Evaluates all triggers autonomously.
 PathPlanner.gd	60 Hz A* with local avoidance; finds path to build slot, cover tile, etc.
 BuildManager.gd	Spawns BuildingState; ticks construction_progress; flips operational.
 EnergySystem.gd	Tallies Power Spires each 2 s and credits team Energy; debits on build / ability actions.

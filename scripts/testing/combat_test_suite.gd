@@ -130,9 +130,28 @@ func _test_death_mechanics(archetype: String):
     var unit = await _spawn_unit_for_test(archetype, 1, Vector3(0, 1, 0))
     if not is_instance_valid(unit): return
     
+    # Give time to see the unit alive
     await get_tree().create_timer(1.0).timeout
-    logger.info("CombatTestSuite", "Killing unit %s" % unit.unit_id)
+    
+    logger.info("CombatTestSuite", "Killing unit %s (current health: %f)" % [unit.unit_id, unit.current_health])
+    
+    # If it's an AnimatedUnit, check if it has the death animation available
+    if unit.has_method("play_animation") and unit.get("animation_player"):
+        var anim_player = unit.get("animation_player")
+        if anim_player:
+            var available_anims = anim_player.get_animation_list()
+            logger.info("CombatTestSuite", "Available animations for %s: %s" % [archetype, available_anims])
+            if "die" in available_anims:
+                logger.info("CombatTestSuite", "✓ Death animation 'die' available for %s" % archetype)
+            else:
+                logger.warning("CombatTestSuite", "⚠ Death animation 'die' NOT available for %s" % archetype)
+    
+    # Kill the unit and watch for death animation
     unit.take_damage(unit.max_health * 2)
+    
+    # Wait to see death animation play
+    await get_tree().create_timer(3.0).timeout
+    logger.info("CombatTestSuite", "Death animation test completed for %s" % archetype)
 
 func _test_team_fight():
     logger.info("CombatTestSuite", "Starting team fight.")

@@ -38,6 +38,7 @@ func _load_model() -> void:
 	if model_scene:
 		var model_instance = model_scene.instantiate()
 		model_container.add_child(model_instance)
+		model_container.rotation_degrees.y = 180.0
 		
 		# Find the animation player in the new model
 		animation_player = model_instance.find_child("AnimationPlayer", true, false)
@@ -50,10 +51,17 @@ func _load_model() -> void:
 
 func play_animation(animation_name: String):
 	if not animation_player:
+		print("DEBUG: No animation player for unit %s, cannot play '%s'" % [unit_id, animation_name])
 		return
+	
+	# Add debug output for death animations specifically
+	if animation_name in ["Die", "Death", "die"]:
+		print("DEBUG: Unit %s attempting to play death animation: '%s'" % [unit_id, animation_name])
 		
 	# First try exact match
 	if animation_player.has_animation(animation_name):
+		if animation_name in ["Die", "Death", "die"]:
+			print("DEBUG: Playing exact match death animation: '%s'" % animation_name)
 		animation_player.play(animation_name)
 		return
 	
@@ -63,6 +71,8 @@ func play_animation(animation_name: String):
 	# Try case-insensitive match
 	for anim in available_animations:
 		if anim.to_lower() == animation_name.to_lower():
+			if animation_name in ["Die", "Death", "die"]:
+				print("DEBUG: Playing case-insensitive match death animation: '%s'" % anim)
 			animation_player.play(anim)
 			return
 	
@@ -82,30 +92,34 @@ func play_animation(animation_name: String):
 	if animation_name in animation_mappings:
 		for fallback in animation_mappings[animation_name]:
 			if animation_player.has_animation(fallback):
+				if animation_name in ["Die", "Death", "die"]:
+					print("DEBUG: Playing mapped fallback death animation: '%s' (for requested '%s')" % [fallback, animation_name])
 				animation_player.play(fallback)
 				return
 	
 	# Final fallback - play the first available animation if nothing else works
 	if available_animations.size() > 0:
+		if animation_name in ["Die", "Death", "die"]:
+			print("WARN: Using final fallback '%s' for death animation '%s'" % [available_animations[0], animation_name])
 		animation_player.play(available_animations[0])
 		print("INFO: Using fallback animation '%s' for requested '%s'" % [available_animations[0], animation_name])
 	else:
 		print("WARN: No animations available for '%s'" % animation_name)
 
-func update_client_visuals(server_velocity: Vector3, delta: float) -> void:
-	# Handle turning
+func update_client_visuals(server_velocity: Vector3, _delta: float) -> void:
+	# Don't update visuals if unit is dead - death animation should not be interrupted
+	if is_dead:
+		return
+	
+	# The parent (AnimatedUnit) is now rotated by ClientDisplayManager.
+	# We just need to play the correct animation based on velocity and state.
 	if server_velocity.length_squared() > 0.01:
-		var target_rotation_y = atan2(server_velocity.x, server_velocity.z)
-		# Use slerp for smooth rotation
-		var current_quat = model_container.transform.basis.get_rotation_quaternion()
-		var target_quat = Quaternion(Vector3.UP, target_rotation_y)
-		model_container.transform.basis = Basis(current_quat.slerp(target_quat, delta * 10.0))
-		
-		# Play running animation if moving
 		play_animation("Run")
 	else:
-		# Play idle animation if not moving
-		play_animation("Idle")
+		if current_state == GameEnums.UnitState.ATTACKING:
+			play_animation("Attack")
+		else:
+			play_animation("Idle")
 
 func _on_script_changed():
 	if Engine.is_editor_hint():
@@ -113,27 +127,23 @@ func _on_script_changed():
 
 func _physics_process(delta: float):
 	super._physics_process(delta)
+	
+	# Skip all animation logic if dead - death animation is handled by trigger_death_sequence()
+	if is_dead:
+		return
 
 	# If we are the server but not headless, we are the host. Animate ourselves.
 	# Pure clients will have their visuals updated by ClientDisplayManager.
 	if multiplayer.is_server() and DisplayServer.get_name() != "headless":
-		# Basic animation state machine
+		# The parent Unit node is now rotated by the new logic in unit.gd.
+		# The model_container is rotated 180 degrees at load time to face forward.
+		# This host-only logic just needs to manage animations based on state and velocity.
 		if current_state == GameEnums.UnitState.ATTACKING:
 			play_animation("Attack")
-		elif current_state == GameEnums.UnitState.DEAD:
-			# Animation handled by trigger_death_sequence()
-			pass
+		elif velocity.length_squared() > 0.01:
+			play_animation("Run")
 		else:
-			# Handle movement/idle animations
-			if velocity.length_squared() > 0.01:
-				var target_rotation_y = atan2(velocity.x, velocity.z)
-				# Use slerp for smooth rotation
-				var current_quat = model_container.transform.basis.get_rotation_quaternion()
-				var target_quat = Quaternion(Vector3.UP, target_rotation_y)
-				model_container.transform.basis = Basis(current_quat.slerp(target_quat, delta * 10.0))
-				play_animation("Run")
-			else:
-				play_animation("Idle")
+			play_animation("Idle")
 
 func get_skeleton() -> Skeleton3D:
 	if model_container and model_container.get_child_count() > 0:
@@ -169,15 +179,60 @@ func _attach_weapon():
 func trigger_death_sequence():
 	if is_dead: return # Already dead
 
+	print("DEBUG: AnimatedUnit %s (%s) starting death sequence" % [unit_id, archetype])
+	
 	# Prevent further actions
 	is_dead = true
 	set_collision_layer_value(1, false) # No more selection/raycast hits
 	
 	_play_death_sound()
-	play_animation("Die")
 	
-	# Stop further processing
-	set_physics_process(false)
+	# Connect to animation finished signal if not already connected
+	if animation_player and not animation_player.is_connected("animation_finished", _on_death_animation_finished):
+		animation_player.animation_finished.connect(_on_death_animation_finished)
+	
+	# Play death animation with debug feedback
+	if animation_player:
+		var available_anims = animation_player.get_animation_list()
+		print("DEBUG: Available animations for death: %s" % available_anims)
+		if animation_player.has_animation("die"):
+			print("DEBUG: Playing 'die' animation directly")
+			animation_player.play("die")
+		else:
+			print("DEBUG: Using fallback animation system for 'Die'")
+			play_animation("Die")
+	else:
+		print("DEBUG: No animation player found for death sequence")
+	
+	# Don't stop physics process immediately - let death animation play
+	# We'll handle cleanup in _on_death_animation_finished()
+
+func _on_death_animation_finished(animation_name: String):
+	"""Handle completion of death animation"""
+	if animation_name == "die":
+		print("DEBUG: Death animation completed for unit %s" % unit_id)
+		
+		# Now stop physics processing and disable further updates
+		set_physics_process(false)
+		
+		# Optional: Add a slight delay before fading or removing
+		await get_tree().create_timer(1.0).timeout
+		
+		# Fade out the unit gradually
+		_fade_out_unit()
+
+func _fade_out_unit():
+	"""Gradually fade out the unit after death animation"""
+	print("DEBUG: Starting fade out for unit %s" % unit_id)
+	
+	# Create a fade tween
+	var tween = create_tween()
+	tween.tween_property(self, "modulate:a", 0.0, 2.0)
+	
+	# Wait for fade to complete then make completely invisible
+	await tween.finished
+	visible = false
+	print("DEBUG: Unit %s fully faded out" % unit_id)
 
 func _play_death_sound():
 	var audio_manager = get_node_or_null("/root/DependencyContainer/AudioManager")

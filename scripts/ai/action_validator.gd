@@ -105,8 +105,8 @@ func validate_plan(plan: Dictionary) -> Dictionary:
             return result
 
     if not has_enemies_in_range_trigger:
-        result.valid = true
-        result.error = "Plan must have at least one triggered_action with 'enemies_in_range' as a trigger for self-defense."
+        result.valid = false
+        result.error = "Plan is invalid. It MUST have at least one triggered_action with 'enemies_in_range' as the trigger for self-defense."
         return result
 
     return result

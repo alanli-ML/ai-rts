@@ -6,6 +6,7 @@ extends CharacterBody3D
 const GameEnums = preload("res://scripts/shared/types/game_enums.gd")
 const GameConstants = preload("res://scripts/shared/constants/game_constants.gd")
 const UnitStatusBarScene = preload("res://scenes/units/UnitStatusBar.tscn")
+const UnitHealthBarScene = preload("res://scenes/units/UnitHealthBar.tscn")
 const UnitRangeVisualizationScene = preload("res://scenes/units/UnitRangeVisualization.tscn")
 
 # Unit identification
@@ -41,7 +42,16 @@ var target_building: Node = null
 var weapon_attachment: Node = null
 var can_move: bool = true
 var status_bar: Node3D = null
+var health_bar: Node3D = null
 var range_visualization: Node3D = null
+
+# New action state variables
+var current_action: Dictionary = {}
+var action_complete: bool = true
+var _old_action_complete: bool = true # To detect changes
+var triggered_actions: Array = []
+var trigger_last_states: Dictionary = {}
+var step_timer: float = 0.0
 
 # Movement
 var navigation_agent: NavigationAgent3D
@@ -76,6 +86,9 @@ func _ready() -> void:
     # Create status bar
     _create_status_bar()
     
+    # Create health bar
+    _create_health_bar()
+    
     # Create range visualization
     _create_range_visualization()
     
@@ -83,7 +96,7 @@ func _ready() -> void:
     
     # Configure NavigationAgent3D after movement_speed is set
     if navigation_agent:
-        navigation_agent.radius = 2.5 # Matches unit's collision shape radius
+        navigation_agent.radius = 1.0 # Matches unit's collision shape radius
         navigation_agent.max_speed = movement_speed
         navigation_agent.avoidance_enabled = true # Ensure avoidance is enabled
         # Path postprocessing will use default settings
@@ -144,16 +157,30 @@ func _load_archetype_stats() -> void:
 func _physics_process(delta: float) -> void:
     if is_dead: return
 
+    # NEW: First, check for trigger interruptions. They have the highest priority.
+    if _check_triggers():
+        return # A trigger fired and set a new action. The new action will be processed next frame.
+
+    # If an action is running, increment its timer
+    if not action_complete:
+        step_timer += delta
+
     # Always apply gravity regardless of state
     if not is_on_floor():
         velocity.y += get_gravity().y * delta
 
     # State machine logic
     match current_state:
+        GameEnums.UnitState.MOVING:
+            if navigation_agent.is_navigation_finished():
+                current_state = GameEnums.UnitState.IDLE
+                action_complete = true
+        
         GameEnums.UnitState.ATTACKING:
             if not is_instance_valid(target_unit) or target_unit.is_dead:
                 print("DEBUG: Unit %s stopping attack - target invalid or dead" % unit_id)
                 current_state = GameEnums.UnitState.IDLE
+                action_complete = true # The attack action is complete because the target is gone.
             else:
                 var distance = global_position.distance_to(target_unit.global_position)
                 if distance > attack_range:
@@ -171,68 +198,73 @@ func _physics_process(delta: float) -> void:
                         print("DEBUG: Unit %s attempting to fire at target %s" % [unit_id, target_unit.unit_id])
                         var attack_successful = false
                         
+                        var shot_fired = false
                         # Try weapon attachment first
                         if weapon_attachment and weapon_attachment.has_method("fire"):
-                            print("DEBUG: Unit %s has weapon attachment, checking if can fire" % unit_id)
                             if weapon_attachment.can_fire():
                                 print("DEBUG: Unit %s firing weapon at target %s" % [unit_id, target_unit.unit_id])
                                 var fire_result = weapon_attachment.fire()
-                                print("DEBUG: Weapon fire result: %s" % str(fire_result))
                                 if not fire_result.is_empty():
-                                    attack_successful = true
+                                    shot_fired = true
+                                    print("DEBUG: Weapon fire result: %s" % str(fire_result))
                             else:
-                                print("DEBUG: Unit %s weapon cannot fire (ammo: %d, equipped: %s)" % [unit_id, weapon_attachment.current_ammo if weapon_attachment else 0, weapon_attachment.is_equipped if weapon_attachment else false])
-                        
-                        # Fallback to direct damage if weapon failed
-                        if not attack_successful:
-                            print("DEBUG: Unit %s using fallback direct damage (weapon failed or missing)" % unit_id)
+                                # Weapon on cooldown or out of ammo, do nothing this frame.
+                                print("DEBUG: Unit %s weapon cannot fire (on cooldown or out of ammo)" % unit_id)
+                        else:
+                            # No weapon attachment, use fallback direct damage.
+                            print("DEBUG: Unit %s using fallback direct damage (no weapon)" % unit_id)
                             target_unit.take_damage(attack_damage)
                             print("DEBUG: Unit %s dealt %f direct damage to %s" % [unit_id, attack_damage, target_unit.unit_id])
-                            attack_successful = true
+                            shot_fired = true
                         
-                        if attack_successful:
+                        if shot_fired:
                             last_attack_time = current_time
-                            print("DEBUG: Unit %s attack completed successfully" % unit_id)
-                        else:
-                            print("DEBUG: Unit %s attack failed completely" % unit_id)
-                    else:
-                        var cooldown_remaining = attack_cooldown - (current_time - last_attack_time)
-                        #print("DEBUG: Unit %s attack on cooldown (%.1fs remaining)" % [unit_id, cooldown_remaining])
+                            print("DEBUG: Unit %s attack action successful" % unit_id)
         
         GameEnums.UnitState.HEALING:
             if not is_instance_valid(target_unit) or target_unit.is_dead or target_unit.get_health_percentage() >= 1.0:
                 current_state = GameEnums.UnitState.IDLE
+                action_complete = true
             else:
                 var distance = global_position.distance_to(target_unit.global_position)
                 if distance > attack_range: # Use attack_range as heal_range for simplicity
-                    move_to(target_unit.global_position)
+                    navigation_agent.target_position = target_unit.global_position
+                else:
+                    # In range, perform healing
+                    navigation_agent.target_position = global_position # Stop moving
+                    look_at(target_unit.global_position, Vector3.UP)
+                    if "heal_rate" in self:
+                        target_unit.receive_healing(self.get("heal_rate") * delta)
         
         GameEnums.UnitState.CONSTRUCTING, GameEnums.UnitState.REPAIRING:
             if not is_instance_valid(target_building):
                 current_state = GameEnums.UnitState.IDLE
+                action_complete = true
             else:
                 var distance = global_position.distance_to(target_building.global_position)
                 if distance > attack_range: # Use attack_range as build_range
-                    move_to(target_building.global_position)
+                    navigation_agent.target_position = target_building.global_position
                 else:
-                    velocity.x = 0
-                    velocity.z = 0
+                    navigation_agent.target_position = global_position # Stop moving
                     if target_building.has_method("add_construction_progress"):
                         var build_rate = self.build_rate if "build_rate" in self else 0.1
                         target_building.add_construction_progress(build_rate * delta)
                     if target_building.is_operational:
                         current_state = GameEnums.UnitState.IDLE
                         target_building = null
+                        action_complete = true
         
         GameEnums.UnitState.LAYING_MINES:
+            # Completion is handled by the EngineerUnit script, which will set action_complete = true
             velocity.x = 0
             velocity.z = 0
     
-        _: # Default case for IDLE, MOVING, FOLLOWING etc.
+        _: # Default case for IDLE, FOLLOWING etc.
             if current_state == GameEnums.UnitState.FOLLOWING:
                 if not is_instance_valid(follow_target) or follow_target.is_dead:
                     current_state = GameEnums.UnitState.IDLE
                     follow_target = null
+                    action_complete = true
                 else:
                     var distance_to_follow_target = global_position.distance_to(follow_target.global_position)
                     if distance_to_follow_target > FOLLOW_DISTANCE:
@@ -252,13 +284,35 @@ func _physics_process(delta: float) -> void:
             velocity.z = 0
             if current_state == GameEnums.UnitState.MOVING: # Only if explicitly moving to a point
                 current_state = GameEnums.UnitState.IDLE # Return to idle once path is finished
+                action_complete = true # Also signal completion
     else:
         # If can_move is false or no navigation agent, ensure no horizontal movement from pathfinding
         velocity.x = 0
         velocity.z = 0
 
+    # Rotate the unit to face its movement direction.
+    # This is skipped if horizontal velocity is zero (e.g., when attacking in range and stopped).
+    var horizontal_velocity = velocity
+    horizontal_velocity.y = 0
+    if horizontal_velocity.length_squared() > 0.01:
+        var new_transform = transform.looking_at(global_position + horizontal_velocity, Vector3.UP)
+        transform.basis = transform.basis.slerp(new_transform.basis, delta * 10.0)
+
     # Always call move_and_slide to apply physics and update velocity
     move_and_slide()
+
+    # Check if the unit just finished an action
+    if not _old_action_complete and action_complete:
+        # The action has just been completed on this frame.
+        # Check if this unit has a sequential plan.
+        var plan_executor = get_node("/root/DependencyContainer").get_node_or_null("PlanExecutor")
+        if plan_executor and not plan_executor.active_plans.has(unit_id):
+            # This unit just finished an action (must have been a triggered one)
+            # and it does not have a sequential plan waiting. It is now truly idle.
+            # We need to tell the system to consider giving it a new plan.
+            plan_executor.unit_became_idle.emit(unit_id)
+            
+    _old_action_complete = action_complete
 
 # New function to receive velocity computed by NavigationAgent3D (including RVO avoidance)
 func _on_navigation_velocity_computed(safe_velocity: Vector3) -> void:
@@ -323,6 +377,11 @@ func die() -> void:
     is_dead = true
     current_state = GameEnums.UnitState.DEAD
     unit_died.emit(unit_id)
+    
+    # Trigger death animation sequence if this is an animated unit
+    if has_method("trigger_death_sequence"):
+        call("trigger_death_sequence")
+    
     # The unit now persists after death. Its 'is_dead' state is broadcast
     # to clients, and it will be ignored by most game logic.
 
@@ -486,6 +545,14 @@ func _create_status_bar() -> void:
     if status_bar.has_method("update_status"):
         status_bar.update_status(plan_summary)
 
+func _create_health_bar() -> void:
+    """Create and attach the health bar to this unit"""
+    if health_bar:
+        return  # Already has a health bar
+    
+    health_bar = UnitHealthBarScene.instantiate()
+    add_child(health_bar)
+
 func _create_range_visualization() -> void:
     """Create and attach the range visualization to this unit"""
     if range_visualization:
@@ -536,6 +603,21 @@ func set_status_bar_visibility(visible: bool) -> void:
     """Set the visibility of the status bar"""
     if status_bar and status_bar.has_method("set_visibility"):
         status_bar.set_visibility(visible)
+
+func set_health_bar_visibility(visible: bool) -> void:
+    """Set the visibility of the health bar"""
+    if health_bar and health_bar.has_method("set_visibility"):
+        health_bar.set_visibility(visible)
+
+func set_health_bar_hide_when_full(hide: bool) -> void:
+    """Set whether health bar should hide when unit is at full health"""
+    if health_bar and health_bar.has_method("set_hide_when_full"):
+        health_bar.set_hide_when_full(hide)
+
+func refresh_health_display() -> void:
+    """Force refresh the health bar display"""
+    if health_bar:
+        health_changed.emit(current_health, max_health)
 
 func refresh_range_visualization() -> void:
     """Refresh the range visualization (useful when unit stats change)"""
@@ -594,3 +676,246 @@ func get_attack_capability_debug() -> String:
     info.append("Attack range: %.1f" % attack_range)
     info.append("Last attack: %.1fs ago" % ((Time.get_ticks_msec() / 1000.0) - last_attack_time))
     return "\n".join(info)
+
+# --- New Action & Trigger System ---
+
+func set_current_action(action: Dictionary):
+    current_action = action
+    action_complete = false
+    step_timer = 0.0
+    _execute_action(action)
+
+func set_triggered_actions(actions: Array):
+    triggered_actions = actions
+    trigger_last_states.clear()
+
+func _execute_action(step: Dictionary):
+    var action = step.get("action")
+    var params = step.get("params", {})
+    if params == null: params = {}
+    params = params.duplicate()
+
+    if params.has("trigger_context"):
+        var trigger_context = params.get("trigger_context", {})
+        for key in trigger_context:
+            if not params.has(key):
+                params[key] = trigger_context[key]
+    
+    match action:
+        "move_to":
+            if params.has("position") and params.position != null:
+                var pos_arr = params.position
+                var relative_pos = Vector3(pos_arr[0], pos_arr[1], pos_arr[2])
+                var team_transform = _get_team_transform()
+                var world_pos = team_transform * relative_pos
+                move_to(world_pos)
+        "attack":
+            if params.has("target_id") and params.target_id != null:
+                var game_state = get_node("/root/DependencyContainer").get_game_state()
+                var target = game_state.units.get(params.target_id)
+                attack_target(target)
+        "retreat":
+            retreat()
+        "patrol":
+            current_state = GameEnums.UnitState.MOVING # Patrol is essentially moving
+            action_complete = true # Patrol is conceptual, for AI; for execution it's just a move. The AI can issue another patrol if it wants. Or we can implement it as a sequence of moves. For now, it's a single action.
+        "follow":
+            if params.has("target_id") and params.target_id != null:
+                var target = get_node("/root/DependencyContainer").get_game_state().units.get(params.target_id)
+                follow(target)
+        "activate_stealth":
+            if has_method("activate_stealth"): activate_stealth(params)
+        "activate_shield":
+            if has_method("activate_shield"): activate_shield(params)
+        "taunt_enemies":
+            if has_method("taunt_enemies"): taunt_enemies(params)
+        "charge_shot":
+            if has_method("charge_shot"): charge_shot(params)
+        "find_cover":
+            if has_method("find_cover"): find_cover(params)
+        "heal_target":
+            if has_method("heal_target"): heal_target(params)
+        "construct":
+            if has_method("construct"): construct(params)
+        "repair":
+            if has_method("repair"): repair(params)
+        "lay_mines":
+            if has_method("lay_mines"): lay_mines(params)
+        "idle":
+            current_state = GameEnums.UnitState.IDLE
+            action_complete = true
+        _:
+            action_complete = true # Unknown action, complete immediately
+
+func _check_triggers() -> bool:
+    if triggered_actions.is_empty():
+        return false
+
+    var context = get_node("/root/DependencyContainer").get_game_state().get_context_for_ai(self)
+    
+    for triggered_action in triggered_actions:
+        var source = triggered_action.get("trigger_source")
+        var comparison = triggered_action.get("trigger_comparison")
+        var value = triggered_action.get("trigger_value")
+        var trigger_description = "%s %s %s" % [source, comparison, str(value)]
+
+        var trigger_result = _evaluate_structured_trigger(source, comparison, value, context)
+        var current_trigger_state = trigger_result.result
+        var last_trigger_state = trigger_last_states.get(trigger_description, false)
+        
+        trigger_last_states[trigger_description] = current_trigger_state
+            
+        # Fire on rising edge
+        if current_trigger_state and not last_trigger_state:
+            push_warning("Unit %s: Trigger '%s' fired. Interrupting current action." % [unit_id, trigger_description])
+
+            # Interrupt current plan execution by notifying the executor
+            var plan_executor = get_node("/root/DependencyContainer").get_node_or_null("PlanExecutor")
+            if plan_executor:
+                plan_executor.interrupt_plan(unit_id, "Trigger fired: %s" % trigger_description, true)
+
+            # Execute the triggered action immediately
+            var action_to_execute = triggered_action.duplicate()
+            action_to_execute.params["trigger_context"] = trigger_result.context
+            
+            call_deferred("set_current_action", action_to_execute)
+            
+            # Let the UI know
+            if plan_executor:
+                plan_executor.trigger_evaluated.emit(unit_id, trigger_description, true)
+            
+            return true
+            
+    return false
+
+func _evaluate_structured_trigger(source: String, comparison: String, value: Variant, unit_context: Dictionary) -> Dictionary:
+    var metric_result = _get_metric_value(source, unit_context)
+    var metric_context = {}
+    var current_value
+    
+    if metric_result is Dictionary:
+        if metric_result.has("result"):
+            current_value = metric_result.result
+            metric_context = metric_result.get("context", {})
+        elif metric_result.has("value"):
+            current_value = metric_result.value
+            metric_context = metric_result.get("context", {})
+        else:
+            current_value = metric_result
+    else:
+        current_value = metric_result
+    
+    var comparison_value = value
+    if value is String:
+        if value == "true": comparison_value = true
+        elif value == "false": comparison_value = false
+        elif value.is_valid_float(): comparison_value = float(value)
+        elif value.is_valid_int(): comparison_value = int(value)
+    
+    var comparison_result = false
+    
+    if comparison in ["<", "<=", ">", ">="]:
+        if not (current_value is float or current_value is int) or not (comparison_value is float or comparison_value is int):
+            return {"result": false, "context": {}}
+    
+    match comparison:
+        "=", "==": comparison_result = current_value == comparison_value
+        "!=": comparison_result = current_value != comparison_value
+        "<": comparison_result = current_value < comparison_value
+        "<=": comparison_result = current_value <= comparison_value
+        ">": comparison_result = current_value > comparison_value
+        ">=": comparison_result = current_value >= comparison_value
+        _:
+            return {"result": false, "context": {}}
+            
+    if comparison_result:
+        return {"result": true, "context": metric_context}
+    else:
+        return {"result": false, "context": {}}
+
+func _get_metric_value(metric: String, unit_context: Dictionary) -> Variant:
+    match metric:
+        "elapsed_ms":
+            return step_timer * 1000.0
+        "health_pct":
+            return get_health_percentage() * 100.0
+        "ammo_pct":
+            return (float(ammo) / max_ammo) * 100.0 if max_ammo > 0 else 0.0
+        "morale":
+            return morale
+        "incoming_fire_count":
+            var attackers = unit_context.get("unit_state", {}).get("attackers", [])
+            return attackers.size() if attackers is Array else 0
+        "target_health_pct":
+            if is_instance_valid(target_unit):
+                return target_unit.get_health_percentage() * 100.0
+            return 0.0
+        "enemies_in_range":
+            var enemies = unit_context.get("sensor_data", {}).get("visible_enemies", [])
+            var count = 0
+            var closest_enemy_id = ""
+            for enemy in enemies:
+                if enemy.get("dist", 9999.0) <= attack_range:
+                    count += 1
+                    if closest_enemy_id.is_empty():
+                        closest_enemy_id = enemy.get("id", "")
+            if count > 0:
+                return {"value": count, "context": {"target_id": closest_enemy_id}}
+            else:
+                return {"value": 0, "context": {}}
+        "enemy_dist":
+            var enemies = unit_context.get("sensor_data", {}).get("visible_enemies", [])
+            if enemies.is_empty():
+                return {"value": 9999.0, "context": {}}
+            var closest_enemy = enemies[0]
+            var dist_value = closest_enemy.get("dist", 9999.0)
+            return {"value": float(dist_value), "context": {"target_id": closest_enemy.get("id", "")}}
+        "ally_health_pct":
+            var allies = unit_context.get("sensor_data", {}).get("visible_allies", [])
+            var lowest_health_ally = null
+            var lowest_health_pct = 100.0
+            for ally in allies:
+                if ally.health_pct < lowest_health_pct:
+                    lowest_health_ally = ally
+                    lowest_health_pct = ally.health_pct
+            if lowest_health_ally:
+                return {"value": lowest_health_pct, "context": {"target_id": lowest_health_ally.id}}
+            return {"value": 100.0, "context": {}}
+        "nearby_enemies":
+            var enemies = unit_context.get("sensor_data", {}).get("visible_enemies", [])
+            return enemies.size() if enemies is Array else 0
+        "move_speed":
+            return velocity.length()
+        _:
+            return null
+
+func _get_team_transform() -> Transform3D:
+    var home_base_manager = get_tree().get_first_node_in_group("home_base_managers")
+    if not home_base_manager:
+        push_error("HomeBaseManager not found!")
+        return Transform3D.IDENTITY
+
+    var my_base_pos = home_base_manager.get_home_base_position(team_id)
+    var enemy_team_id = 2 if team_id == 1 else 1
+    var enemy_base_pos = home_base_manager.get_home_base_position(enemy_team_id)
+
+    if my_base_pos == Vector3.ZERO or enemy_base_pos == Vector3.ZERO:
+        push_error("Home base positions not set up correctly.")
+        return Transform3D.IDENTITY
+        
+    var forward_vec = (enemy_base_pos - my_base_pos).normalized()
+    var right_vec = forward_vec.cross(Vector3.UP).normalized()
+    var up_vec = right_vec.cross(forward_vec).normalized()
+
+    return Transform3D(right_vec, up_vec, forward_vec, my_base_pos)
+
+# Stub methods for archetype-specific abilities (overridden in subclasses)
+func activate_stealth(_params: Dictionary): pass
+func activate_shield(_params: Dictionary): pass  
+func taunt_enemies(_params: Dictionary): pass
+func charge_shot(_params: Dictionary): pass
+func find_cover(_params: Dictionary): pass
+func heal_target(_params: Dictionary): pass
+func construct(_params: Dictionary): pass
+func repair(_params: Dictionary): pass
+func lay_mines(_params: Dictionary): pass

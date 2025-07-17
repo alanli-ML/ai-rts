@@ -108,10 +108,10 @@ func _gather_game_state() -> Dictionary:
             if plan_executor:
                 # 1. Process sequential plan for UI
                 var active_plan = plan_executor.active_plans.get(unit_id, [])
-                var current_step = plan_executor.current_steps.get(unit_id, null)
-                var current_step_index = -1
-                if current_step:
-                    current_step_index = active_plan.find(current_step)
+                var current_step_index = plan_executor.current_step_indices.get(unit_id, -1)
+                var current_step = null
+                if current_step_index >= 0 and current_step_index < active_plan.size():
+                    current_step = active_plan[current_step_index]
 
                 for i in range(active_plan.size()):
                     var step = active_plan[i]
@@ -137,7 +137,7 @@ func _gather_game_state() -> Dictionary:
                     plan_summary = full_plan_data[current_step_index].action
 
                 # 2. Process triggered actions for UI
-                var triggered_actions = plan_executor.active_triggered_actions.get(unit_id, [])
+                var triggered_actions = unit.triggered_actions if unit.has_method("get") and "triggered_actions" in unit else []
                 for step in triggered_actions:
                     var action = step.get("action", "unknown")
                     var params = step.get("params", {})
@@ -168,6 +168,12 @@ func _gather_game_state() -> Dictionary:
                 "team_id": unit.team_id,
                 "position": { "x": unit.global_position.x, "y": unit.global_position.y, "z": unit.global_position.z },
                 "velocity": { "x": unit.velocity.x, "y": unit.velocity.y, "z": unit.velocity.z },
+                "basis": {
+                    "x": [unit.transform.basis.x.x, unit.transform.basis.x.y, unit.transform.basis.x.z],
+                    "y": [unit.transform.basis.y.x, unit.transform.basis.y.y, unit.transform.basis.y.z],
+                    "z": [unit.transform.basis.z.x, unit.transform.basis.z.y, unit.transform.basis.z.z]
+                },
+                "current_state": unit.current_state,
                 "health": unit.current_health,
                 "is_stealthed": unit.is_stealthed if "is_stealthed" in unit else false,
                 "shield_active": false,
@@ -902,7 +908,10 @@ func _get_plan_info_for_unit(unit_id: String) -> Dictionary:
         plan_context.steps.append(step)
 
     # Get triggered actions
-    var triggered_actions = plan_executor.active_triggered_actions.get(unit_id, [])
+    var unit = units.get(unit_id)
+    var triggered_actions = []
+    if unit and "triggered_actions" in unit:
+        triggered_actions = unit.triggered_actions
     for step in triggered_actions:
         plan_context.triggered_actions.append(step)
 

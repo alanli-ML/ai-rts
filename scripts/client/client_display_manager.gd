@@ -197,6 +197,20 @@ func _update_unit(unit_data: Dictionary, delta: float) -> void:
 	
 	# Smoothly interpolate position to avoid jitter
 	unit_instance.global_position = unit_instance.global_position.lerp(target_pos, delta * 10.0)
+
+	# Smoothly interpolate rotation based on server-authoritative basis
+	if unit_data.has("basis"):
+		var basis_data = unit_data.basis
+		var target_basis = Basis(
+			Vector3(basis_data.x[0], basis_data.x[1], basis_data.x[2]),
+			Vector3(basis_data.y[0], basis_data.y[1], basis_data.y[2]),
+			Vector3(basis_data.z[0], basis_data.z[1], basis_data.z[2])
+		)
+		unit_instance.transform.basis = unit_instance.transform.basis.slerp(target_basis, delta * 10.0)
+
+	# Update current state for animation
+	if unit_data.has("current_state"):
+		unit_instance.current_state = unit_data.current_state
 	
 	var server_velocity = Vector3(unit_data.velocity.x, unit_data.velocity.y, unit_data.velocity.z)
 	if unit_instance.has_method("update_client_visuals"):
@@ -222,6 +236,14 @@ func _update_unit(unit_data: Dictionary, delta: float) -> void:
 		# Update status bar to show processing state if needed
 		if unit_instance.has_method("set_ai_processing_status"):
 			unit_instance.set_ai_processing_status(unit_data.waiting_for_ai)
+	
+	# Update health from server
+	if unit_data.has("health"):
+		var old_health = unit_instance.current_health
+		unit_instance.current_health = unit_data.health
+		# Emit health changed signal if health actually changed
+		if old_health != unit_instance.current_health:
+			unit_instance.health_changed.emit(unit_instance.current_health, unit_instance.max_health)
 	
 	# Update full plan data from server
 	if unit_data.has("full_plan"):

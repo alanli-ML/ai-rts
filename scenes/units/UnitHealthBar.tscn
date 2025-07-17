@@ -1,0 +1,56 @@
+[gd_scene load_steps=3 format=3 uid="uid://bvq7k8nap3r2s"]
+
+[ext_resource type="Script" path="res://scripts/units/unit_health_bar.gd" id="1_health_bar"]
+
+[sub_resource type="QuadMesh" id="QuadMesh_1"]
+size = Vector2(3, 0.4)
+
+[node name="UnitHealthBar" type="Node3D"]
+script = ExtResource("1_health_bar")
+
+[node name="HealthQuad" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.8, 0)
+mesh = SubResource("QuadMesh_1")
+
+[node name="SubViewport" type="SubViewport" parent="HealthQuad"]
+size = Vector2i(300, 40)
+render_target_update_mode = 4
+
+[node name="HealthPanel" type="Panel" parent="HealthQuad/SubViewport"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="HealthContainer" type="Control" parent="HealthQuad/SubViewport/HealthPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = -4.0
+offset_bottom = -4.0
+
+[node name="HealthBackground" type="ColorRect" parent="HealthQuad/SubViewport/HealthPanel/HealthContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.2, 0.2, 0.2, 0.8)
+
+[node name="HealthBar" type="ColorRect" parent="HealthQuad/SubViewport/HealthPanel/HealthContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0.8, 0, 1)
+
+[node name="HealthText" type="Label" parent="HealthQuad/SubViewport/HealthPanel/HealthContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+text = "100/100"
+horizontal_alignment = 1
+vertical_alignment = 1
+clip_contents = true 

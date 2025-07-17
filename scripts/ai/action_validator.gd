@@ -14,6 +14,14 @@ const ALLOWED_ACTIONS = [
 const MAX_COORDINATE = 120.0
 const MIN_COORDINATE = -120.0
 
+const REQUIRED_TRIGGERS = [
+    "on_enemy_sighted",
+    "on_under_attack",
+    "on_health_low",
+    "on_health_critical",
+    "on_ally_health_low"
+]
+
 func get_allowed_actions() -> Array:
     return ALLOWED_ACTIONS.duplicate()
 
@@ -63,50 +71,35 @@ func validate_plan(plan: Dictionary) -> Dictionary:
             return result
 
     # Validate triggered actions
-    var has_enemies_in_range_trigger = false
-    if not plan.has("triggered_actions") or not plan.triggered_actions is Array:
+    if not plan.has("triggered_actions") or not plan.triggered_actions is Dictionary:
         result.valid = false
-        result.error = "Plan must have a 'triggered_actions' array."
+        result.error = "Plan must have a 'triggered_actions' dictionary."
         return result
-        
-    for step in plan.triggered_actions:
-        if not step is Dictionary or not step.has("action"):
-            result.valid = false
-            result.error = "Each item in 'triggered_actions' must be a dictionary with an 'action' key."
-            return result
-        
-        # Check for new trigger format (trigger_source, trigger_comparison, trigger_value)
-        if step.has("trigger_source") and step.has("trigger_comparison") and step.has("trigger_value"):
-            # New structured trigger format
-            if step.trigger_source == "enemies_in_range":
-                has_enemies_in_range_trigger = true
-        elif step.has("trigger") and not step.trigger.is_empty():
-            # Legacy trigger format for backward compatibility
-            if "enemies_in_range" in step.trigger:
-                has_enemies_in_range_trigger = true
-        else:
-            result.valid = false
-            result.error = "Each item in 'triggered_actions' must have either the new trigger format (trigger_source, trigger_comparison, trigger_value) or legacy trigger format."
-            return result
 
-        var action = step.get("action")
+    var triggered_actions = plan.get("triggered_actions", {})
+    for trigger_key in REQUIRED_TRIGGERS:
+        if not triggered_actions.has(trigger_key):
+            result.valid = false
+            result.error = "Plan is missing required triggered_action key: '%s'." % trigger_key
+            return result
+        
+        var action = triggered_actions[trigger_key]
+        if not action is String:
+            result.valid = false
+            result.error = "Action for trigger '%s' must be a string." % trigger_key
+            return result
+            
         if action not in ALLOWED_ACTIONS:
             result.valid = false
-            result.error = "Triggered action '%s' is not allowed. Allowed: %s" % [action, ALLOWED_ACTIONS]
+            result.error = "Action '%s' for trigger '%s' is not allowed. Allowed: %s" % [action, trigger_key, ALLOWED_ACTIONS]
             return result
+            
+        # For triggered actions, we don't need to validate params because they are context-sensitive
+        # and often don't have explicit params in the plan. The unit will supply them.
 
-        var params = step.get("params", {})
-        # Handle null params (valid for some actions like activate_stealth, lay_mines, patrol)
-        if params == null:
-            params = {}
-        if not _validate_parameters(action, params, true):
-            result.valid = false
-            result.error = "Invalid parameters for triggered action '%s'." % action
-            return result
-
-    if not has_enemies_in_range_trigger:
+    if not triggered_actions.has("on_enemy_sighted") or triggered_actions.on_enemy_sighted.is_empty():
         result.valid = false
-        result.error = "Plan is invalid. It MUST have at least one triggered_action with 'enemies_in_range' as the trigger for self-defense."
+        result.error = "Plan is invalid. It MUST have a valid action for 'on_enemy_sighted' for self-defense."
         return result
 
     return result

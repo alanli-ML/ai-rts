@@ -24,6 +24,7 @@ var attack_range: float = 15.0
 var vision_range: float = 30.0
 var attack_cooldown: float = 1.0
 var last_attack_time: float = 0.0
+var _last_damage_time: float = 0.0
 var ammo: int = 30
 var max_ammo: int = 30
 var morale: float = 1.0
@@ -49,7 +50,7 @@ var range_visualization: Node3D = null
 var current_action: Dictionary = {}
 var action_complete: bool = true
 var _old_action_complete: bool = true # To detect changes
-var triggered_actions: Array = []
+var triggered_actions: Dictionary = {}
 var trigger_last_states: Dictionary = {}
 var step_timer: float = 0.0
 
@@ -353,6 +354,7 @@ func follow(target: Unit) -> void:
 func take_damage(damage: float) -> void:
     if is_dead: return
 
+    _last_damage_time = Time.get_ticks_msec() / 1000.0
     var old_health = current_health
     current_health = max(0, current_health - damage)
     
@@ -685,7 +687,7 @@ func set_current_action(action: Dictionary):
     step_timer = 0.0
     _execute_action(action)
 
-func set_triggered_actions(actions: Array):
+func set_triggered_actions(actions: Dictionary):
     triggered_actions = actions
     trigger_last_states.clear()
 
@@ -693,13 +695,7 @@ func _execute_action(step: Dictionary):
     var action = step.get("action")
     var params = step.get("params", {})
     if params == null: params = {}
-    params = params.duplicate()
-
-    if params.has("trigger_context"):
-        var trigger_context = params.get("trigger_context", {})
-        for key in trigger_context:
-            if not params.has(key):
-                params[key] = trigger_context[key]
+    params = params.duplicate() # Avoid modifying the original
     
     match action:
         "move_to":
@@ -751,143 +747,119 @@ func _check_triggers() -> bool:
     if triggered_actions.is_empty():
         return false
 
-    var context = get_node("/root/DependencyContainer").get_game_state().get_context_for_ai(self)
+    var active_triggers = []
     
-    for triggered_action in triggered_actions:
-        var source = triggered_action.get("trigger_source")
-        var comparison = triggered_action.get("trigger_comparison")
-        var value = triggered_action.get("trigger_value")
-        var trigger_description = "%s %s %s" % [source, comparison, str(value)]
-
-        var trigger_result = _evaluate_structured_trigger(source, comparison, value, context)
-        var current_trigger_state = trigger_result.result
-        var last_trigger_state = trigger_last_states.get(trigger_description, false)
+    # --- Evaluate all trigger conditions ---
+    # Health triggers
+    if get_health_percentage() < 0.25:
+        active_triggers.append("on_health_critical")
+    elif get_health_percentage() < 0.5:
+        active_triggers.append("on_health_low")
         
-        trigger_last_states[trigger_description] = current_trigger_state
-            
-        # Fire on rising edge
-        if current_trigger_state and not last_trigger_state:
-            push_warning("Unit %s: Trigger '%s' fired. Interrupting current action." % [unit_id, trigger_description])
+    # Under attack trigger
+    var time_since_damage = Time.get_ticks_msec() / 1000.0 - _last_damage_time
+    if time_since_damage < 1.0: # Attacked within the last second
+        active_triggers.append("on_under_attack")
 
-            # Interrupt current plan execution by notifying the executor
-            var plan_executor = get_node("/root/DependencyContainer").get_node_or_null("PlanExecutor")
-            if plan_executor:
-                plan_executor.interrupt_plan(unit_id, "Trigger fired: %s" % trigger_description, true)
+    # Ally health triggers
+    var lowest_ally = _get_lowest_health_ally_in_vision()
+    if is_instance_valid(lowest_ally):
+        if lowest_ally.get_health_percentage() < 0.5:
+            active_triggers.append("on_ally_health_low")
 
-            # Execute the triggered action immediately
-            var action_to_execute = triggered_action.duplicate()
-            action_to_execute.params["trigger_context"] = trigger_result.context
-            
-            call_deferred("set_current_action", action_to_execute)
-            
-            # Let the UI know
-            if plan_executor:
-                plan_executor.trigger_evaluated.emit(unit_id, trigger_description, true)
-            
-            return true
-            
+    # Enemy triggers
+    var closest_enemy = _get_closest_enemy_in_vision()
+    if is_instance_valid(closest_enemy) and closest_enemy.global_position.distance_to(global_position) <= attack_range:
+        active_triggers.append("on_enemy_sighted")
+
+    # --- Fire the highest priority trigger that is newly active ---
+    # Priority Order: Critical Health > Under Attack > Enemy Sighted > Low Health > Ally Low
+    var priority_order = [
+        "on_health_critical", "on_under_attack", 
+        "on_enemy_sighted", "on_health_low", "on_ally_health_low"
+    ]
+    
+    for trigger_name in priority_order:
+        if trigger_name in active_triggers:
+            var context = {}
+            if trigger_name == "on_enemy_sighted" and is_instance_valid(closest_enemy):
+                context["target_id"] = closest_enemy.unit_id
+            if trigger_name == "on_ally_health_low" and is_instance_valid(lowest_ally):
+                context["target_id"] = lowest_ally.unit_id
+
+            if _fire_trigger(trigger_name, context):
+                _reset_inactive_triggers(active_triggers)
+                return true # A trigger fired, stop further checks
+
+    _reset_inactive_triggers(active_triggers)
     return false
 
-func _evaluate_structured_trigger(source: String, comparison: String, value: Variant, unit_context: Dictionary) -> Dictionary:
-    var metric_result = _get_metric_value(source, unit_context)
-    var metric_context = {}
-    var current_value
-    
-    if metric_result is Dictionary:
-        if metric_result.has("result"):
-            current_value = metric_result.result
-            metric_context = metric_result.get("context", {})
-        elif metric_result.has("value"):
-            current_value = metric_result.value
-            metric_context = metric_result.get("context", {})
-        else:
-            current_value = metric_result
-    else:
-        current_value = metric_result
-    
-    var comparison_value = value
-    if value is String:
-        if value == "true": comparison_value = true
-        elif value == "false": comparison_value = false
-        elif value.is_valid_float(): comparison_value = float(value)
-        elif value.is_valid_int(): comparison_value = int(value)
-    
-    var comparison_result = false
-    
-    if comparison in ["<", "<=", ">", ">="]:
-        if not (current_value is float or current_value is int) or not (comparison_value is float or comparison_value is int):
-            return {"result": false, "context": {}}
-    
-    match comparison:
-        "=", "==": comparison_result = current_value == comparison_value
-        "!=": comparison_result = current_value != comparison_value
-        "<": comparison_result = current_value < comparison_value
-        "<=": comparison_result = current_value <= comparison_value
-        ">": comparison_result = current_value > comparison_value
-        ">=": comparison_result = current_value >= comparison_value
-        _:
-            return {"result": false, "context": {}}
-            
-    if comparison_result:
-        return {"result": true, "context": metric_context}
-    else:
-        return {"result": false, "context": {}}
+func _fire_trigger(trigger_name: String, context: Dictionary = {}) -> bool:
+    if not triggered_actions.has(trigger_name):
+        return false
+        
+    var last_state = trigger_last_states.get(trigger_name, false)
+    if not last_state: # Fire on rising edge
+        trigger_last_states[trigger_name] = true # Mark as active
+        
+        var action_name = triggered_actions[trigger_name]
+        var action_to_execute = {"action": action_name, "params": context}
+        
+        # Interrupt current plan execution
+        var plan_executor = get_node("/root/DependencyContainer").get_node_or_null("PlanExecutor")
+        if plan_executor:
+            plan_executor.interrupt_plan(unit_id, "Trigger fired: %s" % trigger_name, true)
+            plan_executor.trigger_evaluated.emit(unit_id, trigger_name, true)
 
-func _get_metric_value(metric: String, unit_context: Dictionary) -> Variant:
-    match metric:
-        "elapsed_ms":
-            return step_timer * 1000.0
-        "health_pct":
-            return get_health_percentage() * 100.0
-        "ammo_pct":
-            return (float(ammo) / max_ammo) * 100.0 if max_ammo > 0 else 0.0
-        "morale":
-            return morale
-        "incoming_fire_count":
-            var attackers = unit_context.get("unit_state", {}).get("attackers", [])
-            return attackers.size() if attackers is Array else 0
-        "target_health_pct":
-            if is_instance_valid(target_unit):
-                return target_unit.get_health_percentage() * 100.0
-            return 0.0
-        "enemies_in_range":
-            var enemies = unit_context.get("sensor_data", {}).get("visible_enemies", [])
-            var count = 0
-            var closest_enemy_id = ""
-            for enemy in enemies:
-                if enemy.get("dist", 9999.0) <= attack_range:
-                    count += 1
-                    if closest_enemy_id.is_empty():
-                        closest_enemy_id = enemy.get("id", "")
-            if count > 0:
-                return {"value": count, "context": {"target_id": closest_enemy_id}}
-            else:
-                return {"value": 0, "context": {}}
-        "enemy_dist":
-            var enemies = unit_context.get("sensor_data", {}).get("visible_enemies", [])
-            if enemies.is_empty():
-                return {"value": 9999.0, "context": {}}
-            var closest_enemy = enemies[0]
-            var dist_value = closest_enemy.get("dist", 9999.0)
-            return {"value": float(dist_value), "context": {"target_id": closest_enemy.get("id", "")}}
-        "ally_health_pct":
-            var allies = unit_context.get("sensor_data", {}).get("visible_allies", [])
-            var lowest_health_ally = null
-            var lowest_health_pct = 100.0
-            for ally in allies:
-                if ally.health_pct < lowest_health_pct:
-                    lowest_health_ally = ally
-                    lowest_health_pct = ally.health_pct
-            if lowest_health_ally:
-                return {"value": lowest_health_pct, "context": {"target_id": lowest_health_ally.id}}
-            return {"value": 100.0, "context": {}}
-        "nearby_enemies":
-            var enemies = unit_context.get("sensor_data", {}).get("visible_enemies", [])
-            return enemies.size() if enemies is Array else 0
-        "move_speed":
-            return velocity.length()
-        _:
-            return null
+        # Execute the triggered action
+        call_deferred("set_current_action", action_to_execute)
+        
+        return true
+        
+    return false
+
+func _reset_inactive_triggers(active_triggers: Array) -> void:
+    # Reset triggers that are no longer active to allow them to fire again
+    for trigger_name in trigger_last_states.keys():
+        if trigger_last_states[trigger_name] and not trigger_name in active_triggers:
+            trigger_last_states[trigger_name] = false
+
+func _get_visible_entities(group_name: String) -> Array:
+    var visible_entities = []
+    var game_state = get_node("/root/DependencyContainer").get_game_state()
+    if not game_state: return []
+    
+    var entities_to_check = []
+    if group_name == "units":
+        entities_to_check = game_state.units.values()
+
+    for entity in entities_to_check:
+        if is_instance_valid(entity) and entity != self:
+            if global_position.distance_to(entity.global_position) < vision_range:
+                visible_entities.append(entity)
+    return visible_entities
+
+func _get_lowest_health_ally_in_vision() -> Unit:
+    var allies = _get_visible_entities("units").filter(func(u): return u.team_id == self.team_id)
+    var lowest_health_ally: Unit = null
+    var lowest_health_pct = 1.1
+    for ally in allies:
+        var ally_health_pct = ally.get_health_percentage()
+        if ally_health_pct < lowest_health_pct:
+            lowest_health_pct = ally_health_pct
+            lowest_health_ally = ally
+    return lowest_health_ally
+
+func _get_closest_enemy_in_vision() -> Unit:
+    var enemies = _get_visible_entities("units").filter(func(u): return u.team_id != self.team_id)
+    var closest_enemy: Unit = null
+    var closest_dist = 9999.0
+    for enemy in enemies:
+        var dist = global_position.distance_to(enemy.global_position)
+        if dist < closest_dist:
+            closest_dist = dist
+            closest_enemy = enemy
+    return closest_enemy
 
 func _get_team_transform() -> Transform3D:
     var home_base_manager = get_tree().get_first_node_in_group("home_base_managers")

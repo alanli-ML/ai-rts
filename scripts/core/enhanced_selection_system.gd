@@ -106,7 +106,13 @@ func _gui_input(event: InputEvent):
                         _finish_selection(event.position)
                     queue_redraw()
         elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-            if camera and not selected_units.is_empty():
+            print("EnhancedSelectionSystem: Right-click detected at %s" % event.position)
+            if not camera:
+                print("EnhancedSelectionSystem: No camera available for right-click processing")
+            elif selected_units.is_empty():
+                print("EnhancedSelectionSystem: No units selected for right-click command")
+            else:
+                print("EnhancedSelectionSystem: Processing right-click with %d selected units" % selected_units.size())
                 _handle_right_click(event.position)
     
     if event is InputEventMouseMotion and is_box_selecting:
@@ -234,7 +240,9 @@ func _get_units_in_box() -> Array[Unit]:
     return units_in_box
 
 func _handle_right_click(screen_pos: Vector2):
-    if selected_units.is_empty(): return
+    if selected_units.is_empty(): 
+        print("EnhancedSelectionSystem: Right-click ignored - no units selected")
+        return
 
     var unit_ids = []
     for unit in selected_units:
@@ -246,14 +254,21 @@ func _handle_right_click(screen_pos: Vector2):
     if target_unit and target_unit.team_id != selected_units[0].team_id:
         # Attack command
         command_text = "Attack target %s" % target_unit.unit_id
+        print("EnhancedSelectionSystem: Generated attack command: %s" % command_text)
     else:
         # Move command
         var world_pos = _screen_to_world_ground_pos(screen_pos)
         if world_pos != null:
             command_text = "Move to position (%s, %s, %s)" % [round(world_pos.x), round(world_pos.y), round(world_pos.z)]
+            print("EnhancedSelectionSystem: Generated move command: %s" % command_text)
+        else:
+            print("EnhancedSelectionSystem: Failed to calculate world position from screen pos: %s" % screen_pos)
 
     if not command_text.is_empty():
-        get_node("/root/UnifiedMain").rpc("submit_command_rpc", command_text, unit_ids)
+        print("EnhancedSelectionSystem: Sending DIRECT command to %d units: %s" % [unit_ids.size(), command_text])
+        get_node("/root/UnifiedMain").rpc("submit_direct_command_rpc", command_text, unit_ids)
+    else:
+        print("EnhancedSelectionSystem: No command generated for right-click at %s" % screen_pos)
 
 func _screen_to_world_ground_pos(screen_pos: Vector2) -> Variant:
     var from = camera.project_ray_origin(screen_pos)

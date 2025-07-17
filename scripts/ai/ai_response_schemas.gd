@@ -13,11 +13,7 @@ const SNIPER_ACTIONS = ["move_to", "attack", "retreat", "patrol", "follow", "cha
 const MEDIC_ACTIONS = ["move_to", "attack", "retreat", "patrol", "follow", "heal_target"]
 const ENGINEER_ACTIONS = ["move_to", "attack", "retreat", "patrol", "follow", "construct", "repair", "lay_mines"]
 
-# Trigger source enums
-const TRIGGER_SOURCES = ["health_pct", "ammo_pct", "morale", "incoming_fire_count", "target_health_pct", "enemies_in_range", "enemy_dist", "ally_health_pct", "nearby_enemies", "move_speed", "elapsed_ms"]
 
-# Comparison operators
-const COMPARISON_OPERATORS = ["<", "=", ">", "!="]
 
 # Helper function to get the params schema (shared between all schemas)
 static func get_params_schema() -> Dictionary:
@@ -44,39 +40,23 @@ static func get_params_schema() -> Dictionary:
 # Helper function to get the triggered_actions schema (shared between all schemas)
 static func get_triggered_actions_schema(allowed_actions: Array) -> Dictionary:
 	return {
-		"type": "array",
-		"description": "Conditional actions that interrupt the main plan",
-		"items": {
-			"type": "object",
-			"properties": {
-				"action": {
-					"type": "string",
-					"enum": allowed_actions,
-					"description": "Name of the action to perform"
-				},
-				"params": get_params_schema(),
-				"trigger_source": {
-					"type": "string",
-					"enum": TRIGGER_SOURCES,
-					"description": "The metric to check (e.g., health_pct, enemies_in_range)"
-				},
-				"trigger_comparison": {
-					"type": "string",
-					"enum": COMPARISON_OPERATORS,
-					"description": "The comparison operator (e.g., <, >=, =)"
-				},
-				"trigger_value": {
-					"type": "number",
-					"description": "The value to compare against (e.g., 50, 1)"
-				}
-				#"speech": {
-				#	"type": ["string", "null"],
-				#	"description": "Optional dialogue for the unit"
-				#}
-			},
-			"required": ["action", "params", "trigger_source", "trigger_comparison", "trigger_value"],# "speech"],
-			"additionalProperties": false
-		}
+		"type": "object",
+		"description": "A dictionary of automatic reactions to specific game events. You must provide an action for every key.",
+		"properties": {
+			"on_enemy_sighted": {"type": "string", "enum": allowed_actions, "description": "Action when an enemy enters weapon range."},
+			"on_under_attack": {"type": "string", "enum": allowed_actions, "description": "Action when taking damage."},
+			"on_health_low": {"type": "string", "enum": allowed_actions, "description": "Action when health is below 50%."},
+			"on_health_critical": {"type": "string", "enum": allowed_actions, "description": "Action when health is below 25%."},
+			"on_ally_health_low": {"type": "string", "enum": allowed_actions, "description": "Action when an ally's health is low."}
+		},
+		"required": [
+			"on_enemy_sighted",
+			"on_under_attack",
+			"on_health_low",
+			"on_health_critical",
+			"on_ally_health_low"
+		],
+		"additionalProperties": false
 	}
 
 # Helper function to get actions for a specific archetype

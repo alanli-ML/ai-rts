@@ -48,7 +48,7 @@ func execute_plan(unit_id: String, plan_data: Dictionary) -> bool:
         return false
 
     active_plans[unit_id] = plan_data.get("steps", [])
-    unit.set_triggered_actions(plan_data.get("triggered_actions", []))
+    unit.set_triggered_actions(plan_data.get("triggered_actions", {}))
     current_step_indices[unit_id] = -1 # Start before the first step
     
     plan_started.emit(unit_id, plan_data)

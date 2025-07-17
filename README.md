@@ -90,35 +90,30 @@ var schema = AIResponseSchemas.get_schema_for_command(is_group, ["scout", "engin
       },
       {
         "action": "activate_stealth", 
-        "params": null,
+        "params": {},
         "speech": "Going dark"
       }
     ],
-    "triggered_actions": [
-      {
-        "action": "retreat",
-        "params": {"position": [80, 0, 30]},
-        "trigger_source": "health_pct",
-        "trigger_comparison": "<",
-        "trigger_value": 40,
-        "speech": "Taking heavy damage, falling back!"
-      },
-      {
-        "action": "attack",
-        "params": {"target_id": "enemy_tank_02"},
-        "trigger_source": "enemies_in_range", 
-        "trigger_comparison": "=",
-        "trigger_value": true,
-        "speech": "Contact! Engaging target!"
-      }
-    ]
+    "triggered_actions": {
+      "on_enemy_sighted": "attack",
+      "on_under_attack": "find_cover",
+      "on_health_low": "retreat",
+      "on_health_critical": "retreat",
+      "on_ally_health_low": "move_to"
+    }
   }],
   "message": "Scout deploying for reconnaissance mission",
   "summary": "Stealth approach with defensive fallbacks"
 }
 ```
 
-**Trigger Sources:** `health_pct`, `ammo_pct`, `morale`, `incoming_fire_count`, `target_health_pct`, `enemies_in_range`, `enemy_dist`, `ally_health_pct`, `nearby_enemies`, `move_speed`, `elapsed_ms`
+**Triggered Actions:** This is a dictionary of pre-defined trigger slots. The LLM must provide a valid action for each key. The game engine determines when these triggers are met.
+
+-   `on_enemy_sighted`: An enemy is within the unit's weapon range.
+-   `on_under_attack`: The unit has recently taken damage.
+-   `on_health_low`: The unit's health is below 50%.
+-   `on_health_critical`: The unit's health is below 25%.
+-   `on_ally_health_low`: (For Medics) A visible ally's health is below 50%.
 
 **Action Enums by Archetype:**
 - **General**: `move_to`, `attack`, `retreat`, `patrol`, `stance`, `follow`
@@ -312,15 +307,21 @@ jsonc
 Copy
 Edit
 {
-  "plan":[
-    {"action":"construct",
-     "params":{"node_id":"N5","type":"defense_tower"},
-     "speech":"Building the tower!", "duration_ms":4000},
-    {"action":"retreat",
-     "trigger":"health_pct<40",
-     "params":{"cover_id":"C13"},
-     "speech":"Back to safety!"}
-  ]
+  "plans": [{
+    "unit_id": "scout_01",
+    "goal": "Secure northern sector",
+    "steps": [{
+      "action": "move_to",
+      "params": {"position": [100, 0, 50]}
+    }],
+    "triggered_actions": {
+      "on_enemy_sighted": "attack",
+      "on_under_attack": "find_cover",
+      "on_health_low": "retreat",
+      "on_health_critical": "retreat",
+      "on_ally_health_low": "move_to"
+    }
+  }]
 }
 (now uses OpenAI structured outputs with archetype-specific action enums and structured triggers)
 

@@ -282,7 +282,6 @@ func _update_selection_display(selected_units: Array):
             
             if not full_plan.is_empty():
                 var sequential_steps = full_plan.filter(func(s): return s.get("status") != "triggered")
-                var triggered_steps = full_plan.filter(func(s): return s.get("status") == "triggered")
 
                 if not sequential_steps.is_empty():
                     _add_detailed_plan_display(sequential_steps)
@@ -292,16 +291,11 @@ func _update_selection_display(selected_units: Array):
                     no_plan_label.text = "[i]No sequential plan.[/i]"
                     no_plan_label.fit_content = true
                     action_queue_list.add_child(no_plan_label)
-
-                if not triggered_steps.is_empty():
-                    var separator = RichTextLabel.new()
-                    separator.bbcode_enabled = true
-                    separator.text = "\n[center][color=gray]Conditional Actions[/color][/center]"
-                    separator.fit_content = true
-                    action_queue_list.add_child(separator)
-                    _add_detailed_plan_display(triggered_steps)
             else:
                 _add_simple_status_display(unit)
+            
+            # Show triggered actions from the new dictionary format
+            _add_triggered_actions_display(unit)
             
             # Add separator between units if multiple selected
             if selected_units.size() > 1:
@@ -371,6 +365,52 @@ func _add_simple_status_display(unit: Node) -> void:
     status_label.text = status_text
     status_label.fit_content = true
     action_queue_list.add_child(status_label)
+
+func _add_triggered_actions_display(unit: Node) -> void:
+    """Add triggered actions display for the new dictionary format"""
+    if not "triggered_actions" in unit:
+        return
+    
+    var triggered_actions = unit.triggered_actions
+    if not triggered_actions is Dictionary or triggered_actions.is_empty():
+        return
+    
+    # Add separator and header
+    var separator = RichTextLabel.new()
+    separator.bbcode_enabled = true
+    separator.text = "\n[center][color=gray]─── Triggered Actions ───[/color][/center]"
+    separator.fit_content = true
+    action_queue_list.add_child(separator)
+    
+    # Display each trigger-action pair
+    for trigger_name in triggered_actions:
+        var action = triggered_actions[trigger_name]
+        var trigger_display = _format_trigger_name(trigger_name)
+        var action_color = _get_action_color_hud(action)
+        
+        var trigger_text = "[font_size=14][color=orange]⚡[/color] [color=lightgray]%s[/color] → [color=%s]%s[/color][/font_size]" % [trigger_display, action_color, action.capitalize().replace("_", " ")]
+        
+        var trigger_label = RichTextLabel.new()
+        trigger_label.bbcode_enabled = true
+        trigger_label.text = trigger_text
+        trigger_label.fit_content = true
+        action_queue_list.add_child(trigger_label)
+
+func _format_trigger_name(trigger_name: String) -> String:
+    """Format trigger name for display"""
+    match trigger_name:
+        "on_enemy_sighted":
+            return "Enemy in range"
+        "on_under_attack":
+            return "Taking damage"
+        "on_health_low":
+            return "Health < 50%"
+        "on_health_critical":
+            return "Health < 25%"
+        "on_ally_health_low":
+            return "Ally needs help"
+        _:
+            return trigger_name.replace("_", " ").capitalize()
 
 func _get_action_color_hud(action: String) -> String:
     """Get color for action type in HUD display"""

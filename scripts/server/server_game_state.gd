@@ -137,30 +137,16 @@ func _gather_game_state() -> Dictionary:
                     plan_summary = full_plan_data[current_step_index].action
 
                 # 2. Process triggered actions for UI
-                var triggered_actions = unit.triggered_actions if unit.has_method("get") and "triggered_actions" in unit else []
-                for step in triggered_actions:
-                    var action = step.get("action", "unknown")
-                    var params = step.get("params", {})
-                    if params == null: params = {}
+                var triggered_actions = unit.triggered_actions if "triggered_actions" in unit else {}
+                for trigger_name in triggered_actions:
+                    var action = triggered_actions[trigger_name]
                     
-                    # Handle both new structured triggers and legacy trigger format
-                    var trigger = ""
-                    if step.has("trigger_source") and step.has("trigger_comparison") and step.has("trigger_value"):
-                        # New structured trigger format
-                        var source = step.get("trigger_source")
-                        var comparison = step.get("trigger_comparison")
-                        var value = step.get("trigger_value")
-                        if source != null and comparison != null and value != null:
-                            trigger = "%s %s %s" % [source, comparison, str(value)]
-                    elif step.has("trigger") and step.trigger != null and not step.trigger.is_empty():
-                        # Legacy trigger format
-                        trigger = step.trigger
+                    # Convert trigger name to human-readable format
+                    var trigger_display = trigger_name.replace("_", " ").capitalize()
                     
                     var action_display = action.capitalize().replace("_", " ")
-                    if params.has("target_id") and params.target_id != null:
-                        action_display += " " + str(params.target_id).right(4)
                     
-                    full_plan_data.append({"action": action_display, "status": "triggered", "trigger": trigger})
+                    full_plan_data.append({"action": action_display, "status": "triggered", "trigger": trigger_display})
 
             var unit_data = {
                 "id": unit.unit_id,
@@ -414,8 +400,8 @@ func _on_unit_became_idle(unit_id: String):
 
 func _request_autonomous_plan_for_unit(unit_id: String):
     # Do not allow autonomous actions until the player has issued their first group command.
-    if not initial_group_command_given:
-        return
+    #if not initial_group_command_given:
+    return
 
     if not units.has(unit_id): return
     if unit_id in units_waiting_for_ai: return

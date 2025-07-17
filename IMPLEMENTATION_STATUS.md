@@ -40,14 +40,17 @@ The refactor is being implemented in the following phases:
 
 ### Phase 3: Integrate Triggers into the `Unit` (Completed)
 
-*   **Goal**: All trigger evaluation logic has been moved from `PlanExecutor` into the `Unit` for immediate, state-aware reactions.
-*   **`scripts/ai/plan_executor.gd`**:
-    *   All trigger evaluation methods (`_evaluate_trigger`, etc.) have been removed.
-    *   `interrupt_plan` method was updated to handle trigger-based interruptions without requesting a new plan prematurely.
+*   **Goal**: To simplify trigger generation for the LLM, the trigger system has been overhauled from a flexible, structured system to a more rigid, slot-filling mechanism. This moves the complexity of evaluating trigger conditions from the LLM to hardcoded, reliable game logic within the `Unit` class.
 *   **`scripts/core/unit.gd`**:
-    *   A `_check_triggers()` method is called at the start of `_physics_process`.
-    *   When a trigger fires, it interrupts the `PlanExecutor`'s plan and sets a new `current_action`.
-    *   The unit now signals when it becomes idle after a triggered action, allowing `ServerGameState` to request a new plan.
+    *   The `triggered_actions` property is now a `Dictionary` (e.g., `{"on_health_critical": "retreat"}`) instead of an `Array`.
+    *   The `_check_triggers()` method now contains hardcoded logic to evaluate a pre-defined set of conditions (e.g., `health < 25%`) and fires the corresponding action from the `triggered_actions` dictionary.
+    *   The old generic trigger evaluation methods have been removed.
+*   **`scripts/ai/action_validator.gd`**:
+    *   The `validate_plan` function has been updated to validate the new `triggered_actions` dictionary structure, ensuring all required trigger keys are present.
+*   **`scripts/ai/ai_command_processor.gd`**:
+    *   The system prompt and response schema have been rewritten to instruct the LLM on how to fill the new pre-defined trigger slots.
+*   **`scripts/ai/ai_response_schemas.gd`**:
+    *   A new schema definition file was created to enforce the new structure for OpenAI's structured output feature.
 
 ### Phase 4: System-Wide Cleanup & Final Integration (Completed)
 

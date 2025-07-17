@@ -57,7 +57,7 @@ const UNIT_CONFIGS: Dictionary = {
     "tank": {
         "health": 300,
         "speed": 2.0,
-        "damage": 30,
+        "damage": 20,
         "range": 6.0,
         "vision": 24.0,
         "cost": 200,
@@ -81,6 +81,52 @@ const UNIT_CONFIGS: Dictionary = {
         "vision": 12.0,
         "cost": 80,
         "build_time": 10.0
+    }
+}
+
+# Default triggered actions by unit archetype
+const DEFAULT_TRIGGERED_ACTIONS: Dictionary = {
+    "scout": {
+        "on_enemy_sighted": "attack",
+        "on_under_attack": "activate_stealth",
+        "on_health_low": "retreat",
+        "on_health_critical": "retreat",
+        "on_ally_health_low": "move_to"
+    },
+    "tank": {
+        "on_enemy_sighted": "attack",
+        "on_under_attack": "activate_shield",
+        "on_health_low": "find_cover",
+        "on_health_critical": "retreat",
+        "on_ally_health_low": "move_to"
+    },
+    "sniper": {
+        "on_enemy_sighted": "charge_shot",
+        "on_under_attack": "find_cover",
+        "on_health_low": "find_cover",
+        "on_health_critical": "retreat",
+        "on_ally_health_low": "find_cover"
+    },
+    "medic": {
+        "on_enemy_sighted": "attack",
+        "on_under_attack": "find_cover",
+        "on_health_low": "find_cover",
+        "on_health_critical": "retreat",
+        "on_ally_health_low": "heal_target"
+    },
+    "engineer": {
+        "on_enemy_sighted": "attack",
+        "on_under_attack": "find_cover",
+        "on_health_low": "find_cover",
+        "on_health_critical": "retreat",
+        "on_ally_health_low": "move_to"
+    },
+    "general": {
+        "on_enemy_sighted": "attack",
+        "on_under_attack": "retreat",
+        "on_health_low": "retreat",
+        "on_health_critical": "retreat",
+        "on_ally_health_low": "move_to"
     }
 }
 
@@ -175,4 +221,10 @@ static func is_valid_unit_type(unit_type: String) -> bool:
     return UNIT_CONFIGS.has(unit_type)
 
 static func is_valid_building_type(building_type: String) -> bool:
-    return BUILDING_CONFIGS.has(building_type) 
+    return BUILDING_CONFIGS.has(building_type)
+
+static func get_default_triggered_actions(unit_archetype: String) -> Dictionary:
+    return DEFAULT_TRIGGERED_ACTIONS.get(unit_archetype, DEFAULT_TRIGGERED_ACTIONS.get("general", {}))
+
+static func get_all_unit_archetypes() -> Array:
+    return DEFAULT_TRIGGERED_ACTIONS.keys() 

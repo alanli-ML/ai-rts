@@ -1,1 +1,112 @@
-uid://b0x8kqtqw4e6n
+[gd_resource type="Script" format=3 uid="uid://dovw0u8qf1x2y"]
+
+[resource]
+script/source = "
+# scripts/ai/ai_response_schemas.gd
+class_name AIResponseSchemas
+extends Node
+
+# This class provides structured JSON schemas for OpenAI function calls.
+# This ensures the AI's response is always in the correct format,
+# eliminating the need for complex string parsing and error handling.
+
+# Load the ActionValidator to get the list of allowed actions
+const ActionValidator = preload(\"res://scripts/ai/action_validator.gd\")
+
+static func get_schema_for_command(_is_group_command: bool, _unit_archetypes: Array) -> Dictionary:
+    var validator = ActionValidator.new()
+    var allowed_actions = validator.get_allowed_actions()
+    
+    var plan_properties = {
+        \"unit_id\": {\"type\": \"string\", \"description\": \"The unique identifier for the unit receiving this plan.\"},
+        \"goal\": {\"type\": \"string\", \"description\": \"A high-level tactical goal for the unit to achieve.\"},
+        \"steps\": {
+            \"type\": \"array\",
+            \"description\": \"A sequential list of actions for the unit to perform.\",
+            \"items\": {
+                \"type\": \"object\",
+                \"properties\": {
+                    \"action\": {
+                        \"type\": \"string\",
+                        \"description\": \"The action to perform.\",
+                        \"enum\": allowed_actions
+                    },
+                    \"params\": {
+                        \"type\": \"object\",
+                        \"description\": \"Parameters for the action. Varies by action type. Can be empty.\",
+                        \"properties\": {
+                            \"position\": {
+                                \"type\": \"array\",
+                                \"description\": \"A 3D coordinate [x, y, z].\",
+                                \"items\": {\"type\": \"number\"}
+                            },
+                            \"target_id\": {
+                                \"type\": \"string\",
+                                \"description\": \"The ID of the target unit or building.\"
+                            }
+                        }
+                    },
+                    \"speech\": {
+                        \"type\": \"string\",
+                        \"description\": \"A short line of dialogue for the unit to say (under 50 characters).\"
+                    }
+                },
+                \"required\": [\"action\", \"params\"]
+            }
+        },
+        \"triggered_actions\": {
+            \"type\": \"object\",
+            \"description\": \"A dictionary of automatic reactions to specific game events. You must provide an action for every key.\",
+            \"properties\": {
+                \"on_enemy_sighted\": {\"type\": \"string\", \"enum\": allowed_actions, \"description\": \"Action when an enemy enters weapon range.\"},
+                \"on_no_threat_detected\": {\"type\": \"string\", \"enum\": allowed_actions, \"description\": \"Action when no enemies are in range.\"},
+                \"on_under_attack\": {\"type\": \"string\", \"enum\": allowed_actions, \"description\": \"Action when taking damage.\"},
+                \"on_health_low\": {\"type\": \"string\", \"enum\": allowed_actions, \"description\": \"Action when health is below 50%.\"},
+                \"on_health_critical\": {\"type\": \"string\", \"enum\": allowed_actions, \"description\": \"Action when health is below 25%.\"},
+                \"on_ally_health_low\": {\"type\": \"string\", \"enum\": allowed_actions, \"description\": \"Action when an ally's health is low.\"},
+                \"on_ally_health_critical\": {\"type\": \"string\", \"enum\": allowed_actions, \"description\": \"Action when an ally's health is critical.\"}
+            },
+            \"required\": [
+                \"on_enemy_sighted\",
+                \"on_no_threat_detected\",
+                \"on_under_attack\",
+                \"on_health_low\",
+                \"on_health_critical\",
+                \"on_ally_health_low\",
+                \"on_ally_health_critical\"
+            ]
+        }
+    }
+    
+    var plan_schema = {
+        \"type\": \"object\",
+        \"properties\": plan_properties,
+        \"required\": [\"unit_id\", \"goal\", \"steps\", \"triggered_actions\"]
+    }
+    
+    var response_schema = {
+        \"name\": \"process_game_command\",
+        \"description\": \"Process a natural language command and generate a structured multi-step plan for one or more game units.\",
+        \"parameters\": {
+            \"type\": \"object\",
+            \"properties\": {
+                \"plans\": {
+                    \"type\": \"array\",
+                    \"description\": \"An array of plans, one for each unit being commanded.\",
+                    \"items\": plan_schema
+                },
+                \"message\": {
+                    \"type\": \"string\",
+                    \"description\": \"A confirmation message for the player about the overall plan.\"
+                },
+                \"summary\": {
+                    \"type\": \"string\",
+                    \"description\": \"A brief summary of the tactical situation or plan.\"
+                }
+            },
+            \"required\": [\"plans\", \"message\", \"summary\"]
+        }
+    }
+    
+    return response_schema
+"

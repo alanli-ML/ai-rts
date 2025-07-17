@@ -22,8 +22,8 @@ var max_request_timeout: float = 30.0  # 30 second timeout
 # gpt-4o: Fast and capable for individual commands and real-time responses
 # gpt-4o-mini: Fastest option for simple autonomous decisions (if speed is critical)
 var group_command_model: String = "gpt-4o"  # Slower but more capable for complex group coordination
-var individual_command_model: String = "gpt-4.1-nano"  # Faster for simple individual commands  
-var autonomous_command_model: String = "gpt-4.1-nano"  # Fast for autonomous decision making
+var individual_command_model: String = "gpt-4o-mini"  # Faster for simple individual commands
+var autonomous_command_model: String = "gpt-4o-mini"  # Fast for autonomous decision making
 
 # Universal base prompt shared between group and individual commands
 var base_system_prompt_template = """
@@ -37,11 +37,9 @@ Your response will automatically follow the required JSON format. Focus on creat
 
 CRITICAL STRUCTURE REQUIREMENTS:
 - "steps" is a sequential plan. Actions are executed in order.
-- "triggered_actions" are conditional and interrupt the main plan.
+- "triggered_actions" is a dictionary of automatic reactions to specific situations. The game engine handles when to fire these triggers; you just define the action to take.
+- You MUST provide an action for EVERY trigger key listed below.
 - You MUST provide at least one action in the "steps" array.
-- You MUST provide at least one action in "triggered_actions" with 'enemies_in_range' as the trigger for self-defense.
-- You can add other triggered actions, like retreating on low health.
-- Limit to a maximum of 3 triggered actions per unit.
 - Keep "speech" text brief (under 50 characters each).
 
 IMPORTANT: You may ONLY use actions from the following list. Do not invent new actions.
@@ -49,22 +47,22 @@ Available actions: {actions_list}
 
 Action Parameter Examples:
 - "move_to": {"position": [x: float, y: float, z: float]}
-- "attack": {"target_id": "string_unit_id"}
+- "attack": {"target_id": "string_unit_id"} - For triggered actions, you can omit target_id; the game will provide it from context.
 - "follow": {"target_id": "string_unit_id"}
-- "heal_target": {"target_id": "string_unit_id"}
+- "heal_target": {"target_id": "string_unit_id"} - For triggered actions, you can omit target_id.
 - "repair": {"target_id": "string_building_or_unit_id"}
 - "construct": {"position": [x: float, y: float, z: float]} // Always builds power_spire
 - For actions with no parameters like "activate_shield" or "lay_mines", use {}.
 
-Your response will use structured triggers with three separate fields:
-- trigger_source: The metric to check (health_pct, ammo_pct, morale, incoming_fire_count, target_health_pct, enemies_in_range, enemy_dist, ally_health_pct, nearby_enemies, move_speed, elapsed_ms)
-- trigger_comparison: The comparison operator (<, =, >, !=)
-- trigger_value: The value to compare against (number)
+**TRIGGERED ACTIONS (MANDATORY)**
+Your `triggered_actions` response MUST be a dictionary with the following keys. The value for each key must be an action from the list above.
 
-Examples:
-- For "health below 50%": trigger_source="health_pct", trigger_comparison="<", trigger_value=50
-- For "enemy in range": trigger_source="enemies_in_range", trigger_comparison=">", trigger_value=0
-- For "elapsed time over 2 seconds": trigger_source="elapsed_ms", trigger_comparison=">", trigger_value=2000
+- `on_enemy_sighted`: Primary self-defense action when an enemy enters weapon range. Usually "attack".
+- `on_under_attack`: Action to take when you are taking damage. Good for defensive abilities like "activate_shield" or "find_cover".
+- `on_health_low`: Action when health is below 50%. Good for cautious actions like "find_cover".
+- `on_health_critical`: Action when health is below 25%. Usually "retreat".
+- `on_ally_health_low`: (For Medics) Action when an ally's health is below 50%. Usually "heal_target".
+
 
 TEAM-RELATIVE DATA EXPLANATION:
 All data in your context uses team-relative values from YOUR team's perspective:
@@ -89,7 +87,7 @@ When you provide a `position` for an action, you MUST use this same relative coo
 #- unit_id: Unique identifier for the unit
 #- goal: High-level objective like "Secure the northern sector and provide overwatch"
 #- steps: Sequential actions like move_to, patrol, attack
-#- triggered_actions: Conditional responses like "attack when enemies_in_range" or "retreat when health_pct < 25"
+#- triggered_actions: A dictionary of pre-defined conditional responses, like `"on_health_critical": "retreat"`.
 
 # Signals
 signal plan_processed(plans: Array, message: String)

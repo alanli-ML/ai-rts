@@ -380,9 +380,14 @@ func die() -> void:
     current_state = GameEnums.UnitState.DEAD
     unit_died.emit(unit_id)
     
+    print("DEBUG: Unit %s die() called - is_dead set to true" % unit_id)
+    
     # Trigger death animation sequence if this is an animated unit
     if has_method("trigger_death_sequence"):
+        print("DEBUG: Unit %s calling trigger_death_sequence()" % unit_id)
         call("trigger_death_sequence")
+    else:
+        print("DEBUG: Unit %s does not have trigger_death_sequence() method" % unit_id)
     
     # The unit now persists after death. Its 'is_dead' state is broadcast
     # to clients, and it will be ignored by most game logic.
@@ -799,7 +804,14 @@ func _fire_trigger(trigger_name: String, context: Dictionary = {}) -> bool:
         return false
         
     var last_state = trigger_last_states.get(trigger_name, false)
-    if not last_state: # Fire on rising edge
+    
+    # Allow critical triggers to re-fire if the unit becomes idle again,
+    # ensuring it doesn't stay passive in a dangerous situation.
+    # This is a level-triggered check for idle units for persistent conditions.
+    var can_refire_when_idle = (trigger_name == "on_enemy_sighted" or trigger_name == "on_ally_health_low")
+    var is_idle = (current_state == GameEnums.UnitState.IDLE)
+
+    if not last_state or (can_refire_when_idle and is_idle): # Fire on rising edge, or if it's an important persistent trigger and the unit is idle.
         trigger_last_states[trigger_name] = true # Mark as active
         
         var action_name = triggered_actions[trigger_name]

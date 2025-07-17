@@ -184,13 +184,19 @@ func _update_unit(unit_data: Dictionary, delta: float) -> void:
 	
 	# Check for death state first
 	if unit_data.get("is_dead", false):
+		print("DEBUG: ClientDisplayManager detected unit %s is dead (server says is_dead=true)" % unit_id)
 		if not unit_instance.is_dead:
+			print("DEBUG: ClientDisplayManager - unit %s was alive, now triggering death sequence" % unit_id)
 			if unit_instance.has_method("trigger_death_sequence"):
+				print("DEBUG: ClientDisplayManager - calling trigger_death_sequence() on unit %s" % unit_id)
 				unit_instance.trigger_death_sequence()
 			else:
+				print("DEBUG: ClientDisplayManager - unit %s has no trigger_death_sequence(), using fallback" % unit_id)
 				# Fallback for non-animated units
 				unit_instance.is_dead = true
 				unit_instance.visible = false # Or some other visual change
+		else:
+			print("DEBUG: ClientDisplayManager - unit %s already marked as dead, skipping death sequence" % unit_id)
 		return # Don't process other updates for dead units
 	
 	var target_pos = Vector3(unit_data.position.x, unit_data.position.y, unit_data.position.z)

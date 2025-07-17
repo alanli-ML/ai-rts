@@ -185,7 +185,9 @@ func _attach_weapon():
 		print("DEBUG: AnimatedUnit._attach_weapon() - weapon attachment already exists")
 
 func trigger_death_sequence():
-	if is_dead: return # Already dead
+	if is_dead: 
+		print("DEBUG: AnimatedUnit %s trigger_death_sequence() called but already dead, returning" % unit_id)
+		return # Already dead
 
 	print("DEBUG: AnimatedUnit %s (%s) starting death sequence" % [unit_id, archetype])
 	

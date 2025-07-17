@@ -13,6 +13,7 @@ var lobby_instance: Control
 var hud_instance: Control
 var map_instance: Node
 var client_display_manager: Node
+var combat_test_suite: Node
 var client_team_id: int = -1
 
 func _ready() -> void:
@@ -102,6 +103,19 @@ func submit_command_rpc(command_text: String, unit_ids: Array):
     if ai_processor:
         ai_processor.process_command(command_text, unit_ids, peer_id)
 
+@rpc("any_peer", "call_local")
+func submit_test_command_rpc(command_text: String):
+    if not dependency_container.is_server_mode():
+        return
+    
+    if not is_instance_valid(combat_test_suite):
+        var CombatTestSuiteScene = load("res://scenes/testing/CombatTestSuite.tscn")
+        combat_test_suite = CombatTestSuiteScene.instantiate()
+        add_child(combat_test_suite)
+        combat_test_suite.setup(dependency_container)
+
+    combat_test_suite.execute_command(command_text)
+
 func _on_match_start_requested() -> void:
     logger.info("UnifiedMain", "Match start requested.")
 
@@ -166,6 +180,17 @@ func _on_game_started(data: Dictionary) -> void:
 func _on_game_state_update(state: Dictionary) -> void:
     if client_display_manager:
         client_display_manager.update_state(state)
+
+@rpc("any_peer", "call_local", "reliable")
+func _on_ai_command_feedback_rpc(summary_message: String, status_message: String):
+    """
+    Called by the server to send AI command feedback (summary and status)
+    to all clients.
+    """
+    if hud_instance and is_instance_valid(hud_instance):
+        hud_instance.update_ai_command_feedback(summary_message, status_message)
+    else:
+        logger.warning("UnifiedMain", "GameHUD not found for AI command feedback RPC.")
 
 @rpc("any_peer", "call_local")
 func display_speech_bubble_rpc(unit_id: String, speech_text: String):

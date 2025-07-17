@@ -21,7 +21,7 @@ var max_request_timeout: float = 30.0  # 30 second timeout
 # o1-mini: Best for complex reasoning, group coordination, strategic planning (slower but smarter)
 # gpt-4o: Fast and capable for individual commands and real-time responses
 # gpt-4o-mini: Fastest option for simple autonomous decisions (if speed is critical)
-var group_command_model: String = "gpt-4.1-nano"  # Slower but more capable for complex group coordination
+var group_command_model: String = "gpt-4o"  # Slower but more capable for complex group coordination
 var individual_command_model: String = "gpt-4.1-nano"  # Faster for simple individual commands  
 var autonomous_command_model: String = "gpt-4.1-nano"  # Fast for autonomous decision making
 
@@ -320,8 +320,8 @@ func _process_group_command(command_text: String, units: Array, server_game_stat
     var game_context = server_game_state.get_group_context_for_ai(units)
    
     # Notify game state that the first group command has been issued.
-    #if server_game_state and server_game_state.has_method("set_initial_group_command_given"):
-    #    server_game_state.set_initial_group_command_given()
+    if server_game_state and server_game_state.has_method("set_initial_group_command_given"):
+        server_game_state.set_initial_group_command_given()
         
     var unit_count = game_context.allied_units.size()
     var unit_list = []
@@ -532,11 +532,14 @@ func _process_multi_step_plans(ai_response: Dictionary) -> void:
             
             # Set the strategic goal on the unit
             var goal = plan_data.get("goal", "")
-            if not goal.is_empty() and game_state.units.has(unit_id):
+            if game_state.units.has(unit_id): # Always attempt to update if unit exists
                 var unit = game_state.units[unit_id]
                 if is_instance_valid(unit):
-                    unit.strategic_goal = goal
-                    logger.info("AICommandProcessor", "Set goal for unit %s: '%s'" % [unit_id, goal])
+                    unit.strategic_goal = goal # Set it directly. If AI provides "", it becomes "".
+                    if goal.is_empty():
+                        logger.info("AICommandProcessor", "Set goal for unit %s to empty (AI provided empty goal)." % unit_id)
+                    else:
+                        logger.info("AICommandProcessor", "Set goal for unit %s: '%s'" % [unit_id, goal])
 
             # Add summary to plan data for UI display
             if not summary.is_empty():

@@ -51,9 +51,10 @@ func create_capture_node(pos: Vector3, node_name: String) -> void:
 	control_point.name = node_name
 	control_point.control_point_name = node_name
 	control_point.control_point_id = node_name
-	control_point.global_position = pos
 	
-	capture_nodes.add_child(control_point)
+	capture_nodes.add_child(control_point) # Add to scene tree FIRST
+	control_point.global_position = pos # THEN set global position
+	
 
 func setup_spawn_points() -> void:
 	for child in spawn_points.get_children():

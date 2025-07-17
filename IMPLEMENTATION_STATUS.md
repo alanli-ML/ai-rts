@@ -37,6 +37,13 @@ With the AI systems now capable of autonomous action, the next phase will focus 
     *   **Change (Current)**: Refactoring control point logic to be based on unit advantage, adding win condition checks to the node system, and connecting systems.
     *   **Files**: `scripts/gameplay/control_point.gd`, `scripts/gameplay/node_capture_system.gd`, `scripts/server/server_game_state.gd`.
 
+### Phase 9: Combat Testing & Debugging (In Progress)
+*   **Goal**: Ensure all combat mechanics, including attacks, abilities, damage, and death, are functioning correctly.
+*   **Task 1: Create Combat Test Suite (In Progress)**
+    *   **Goal**: Build a comprehensive, command-driven test suite for debugging combat scenarios.
+    *   **Change (Current)**: Added `CombatTestSuite.gd` and integrated it with the command input system. The suite allows for spawning units, triggering duels, and testing specific abilities via chat commands (e.g., `/test_duel scout tank`).
+    *   **Files**: `scripts/testing/combat_test_suite.gd`, `scenes/testing/CombatTestSuite.tscn`, `scripts/ui/game_hud.gd`, `scripts/unified_main.gd`.
+
 ---
 
 ## AI System Specification (Updated)

@@ -40,7 +40,7 @@ const UNIT_CONFIGS: Dictionary = {
         "health": 80,
         "speed": 6.0,
         "damage": 20,
-        "range": 5.0,
+        "range": 10.0,
         "vision": 20.0,
         "cost": 50,
         "build_time": 5.0
@@ -49,7 +49,7 @@ const UNIT_CONFIGS: Dictionary = {
         "health": 120,
         "speed": 4.0,
         "damage": 35,
-        "range": 12.0,
+        "range": 20.0,
         "vision": 32.0,
         "cost": 75,
         "build_time": 8.0
@@ -58,7 +58,7 @@ const UNIT_CONFIGS: Dictionary = {
         "health": 300,
         "speed": 2.0,
         "damage": 30,
-        "range": 3.0,
+        "range": 6.0,
         "vision": 24.0,
         "cost": 200,
         "build_time": 20.0
@@ -67,7 +67,7 @@ const UNIT_CONFIGS: Dictionary = {
         "health": 100,
         "speed": 4.5,
         "damage": 10,
-        "range": 4.0,
+        "range": 6.0,
         "vision": 16.0,
         "cost": 100,
         "build_time": 12.0,
@@ -77,7 +77,7 @@ const UNIT_CONFIGS: Dictionary = {
         "health": 90,
         "speed": 4.0,
         "damage": 15,
-        "range": 4.0,
+        "range": 6.0,
         "vision": 12.0,
         "cost": 80,
         "build_time": 10.0

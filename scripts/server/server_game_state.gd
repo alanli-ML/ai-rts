@@ -285,6 +285,29 @@ func _on_ai_plan_processed(plans: Array, message: String) -> void:
         if not unit_id.is_empty() and unit_id in units_waiting_for_ai:
             units_waiting_for_ai.erase(unit_id)
             _log_info("ServerGameState", "Cleared waiting status for unit %s" % unit_id)
+    
+    # CRITICAL: Immediately broadcast game state to sync goal updates to clients
+    # Don't wait for the next scheduled broadcast - goals need to be visible immediately
+    _log_info("ServerGameState", "Broadcasting immediate state update after AI plan processing")
+    _broadcast_game_state()
+    
+    # ALSO: Ensure host's client display manager updates immediately
+    # This ensures goals are visible on the host side without waiting for network loop-back
+    var client_display_manager = get_node_or_null("/root/UnifiedMain/ClientDisplayManager")
+    if client_display_manager:
+        var current_state = _gather_game_state()
+        client_display_manager.update_state(current_state)
+        _log_info("ServerGameState", "Updated host client display manager with new goal data")
+    
+    # Broadcast AI command feedback (summary message and status) to all clients
+    var root_node = get_tree().get_root().get_node_or_null("UnifiedMain")
+    if root_node:
+        var session_manager = get_node("/root/DependencyContainer").get_node("SessionManager")
+        if session_manager and session_manager.get_session_count() > 0:
+            var session_id = session_manager.sessions.keys()[0]
+            var peer_ids = session_manager.get_all_peer_ids_in_session(session_id)
+            for peer_id in peer_ids:
+                root_node.rpc_id(peer_id, "_on_ai_command_feedback_rpc", message, "[color=green]✓ Command completed[/color]")
 
 func _on_ai_command_failed(error: String, p_unit_ids: Array) -> void:
     """Handle failed AI command processing"""
@@ -299,12 +322,22 @@ func _on_ai_command_failed(error: String, p_unit_ids: Array) -> void:
         if unit_id in units_waiting_for_ai:
             units_waiting_for_ai.erase(unit_id)
             _log_info("ServerGameState", "Cleared waiting status for unit %s due to AI command failure" % unit_id)
+    
+    # Broadcast AI command failure feedback to all clients
+    var root_node = get_tree().get_root().get_node_or_null("UnifiedMain")
+    if root_node:
+        var session_manager = get_node("/root/DependencyContainer").get_node("SessionManager")
+        if session_manager and session_manager.get_session_count() > 0:
+            var session_id = session_manager.sessions.keys()[0]
+            var peer_ids = session_manager.get_all_peer_ids_in_session(session_id)
+            for peer_id in peer_ids:
+                root_node.rpc_id(peer_id, "_on_ai_command_feedback_rpc", "[color=red]Error: %s[/color]" % error, "[color=red]✗ Command failed[/color]")
 
 # Resource System Integration
 func _on_resource_changed(team_id: int, resource_type: int, current_amount: int) -> void:
     """Handle resource changes"""
     var resource_type_str = "energy" # Assuming only energy for now (enum 0)
-    _log_info("ServerGameState", "Resource changed: Team %d, %s: %d" % [team_id, resource_type_str, current_amount])
+    #_log_info("ServerGameState", "Resource changed: Team %d, %s: %d" % [team_id, resource_type_str, current_amount])
     
     # Update cached resource data
     if team_id not in resource_data:
@@ -531,7 +564,8 @@ func spawn_unit(archetype: String, team_id: int, position: Vector3, owner_id: St
         elif unit.has_method("get"):
             unit_id = unit.get("unit_id", "")
         else:
-            unit_id = "unit_" + str(randi())
+            # Fallback ID generation using archetype and team
+            unit_id = _generate_fallback_unit_id(archetype, team_id)
             
         if not unit_id.is_empty():
             units[unit_id] = unit
@@ -903,5 +937,12 @@ func set_initial_group_command_given():
     if not initial_group_command_given:
         initial_group_command_given = true
         _log_info("ServerGameState", "Initial group command received. Autonomous unit prompts are now enabled.")
+
+func _generate_fallback_unit_id(archetype: String, team_id: int) -> String:
+    """Generate a fallback unit ID when unit doesn't have one"""
+    # Use a simple counter approach for fallback
+    var counter_key = "%s_t%d" % [archetype, team_id]
+    var counter = units.size() + 1  # Simple fallback counter
+    return "%s_%02d_fallback" % [counter_key, counter]
 
 # Existing methods continue...

@@ -5,6 +5,10 @@ extends Node
 var game_state: Node
 var logger: Node
 
+# Constants for action limits
+const MAX_TRIGGERED_ACTIONS = 3
+const MAX_SEQUENTIAL_ACTIONS = 5
+
 var active_plans: Dictionary = {}  # unit_id -> Array of steps (sequential plan)
 var active_triggered_actions: Dictionary = {} # unit_id -> Array of triggered actions
 var trigger_last_states: Dictionary = {} # unit_id -> { trigger_description -> bool }
@@ -79,8 +83,22 @@ func execute_plan(unit_id: String, plan_data: Dictionary) -> bool:
     if trigger_last_states.has(unit_id):
         trigger_last_states.erase(unit_id)
 
-    active_plans[unit_id] = plan_data.get("steps", [])
-    active_triggered_actions[unit_id] = plan_data.get("triggered_actions", [])
+    # Limit sequential steps to a maximum of MAX_SEQUENTIAL_ACTIONS (FIFO)
+    var new_steps = plan_data.get("steps", [])
+    if new_steps.size() > MAX_SEQUENTIAL_ACTIONS:
+        logger.info("PlanExecutor", "Unit %s received %d sequential steps, truncating to latest %d." % [unit_id, new_steps.size(), MAX_SEQUENTIAL_ACTIONS])
+        active_plans[unit_id] = new_steps.slice(new_steps.size() - MAX_SEQUENTIAL_ACTIONS, new_steps.size())
+    else:
+        active_plans[unit_id] = new_steps
+    
+    # Limit triggered actions to a maximum of MAX_TRIGGERED_ACTIONS (FIFO)
+    var new_triggered_actions = plan_data.get("triggered_actions", [])
+    if new_triggered_actions.size() > MAX_TRIGGERED_ACTIONS:
+        logger.info("PlanExecutor", "Unit %s received %d triggered actions, truncating to latest %d." % [unit_id, new_triggered_actions.size(), MAX_TRIGGERED_ACTIONS])
+        active_triggered_actions[unit_id] = new_triggered_actions.slice(new_triggered_actions.size() - MAX_TRIGGERED_ACTIONS, new_triggered_actions.size())
+    else:
+        active_triggered_actions[unit_id] = new_triggered_actions
+    
     current_steps[unit_id] = null
     step_timers[unit_id] = 0.0
     
@@ -526,9 +544,9 @@ func _execute_step_action(unit_id: String, step: Dictionary) -> void:
         "taunt_enemies":
             if unit.has_method("taunt_enemies"): unit.taunt_enemies(params)
         "charge_shot":
-            if params.has("target_id") and params.target_id != null and unit.has_method("charge_shot"):
+            if params.has("target_id") and params.target_id != null:
                 var target = game_state.units.get(params.target_id)
-                if is_instance_valid(target):
+                if is_instance_valid(target) and unit.has_method("charge_shot"):
                     unit.charge_shot(target)
             elif not params.has("target_id") and unit.has_method("charge_shot"):
                 # Charge shot without specific target
@@ -536,12 +554,12 @@ func _execute_step_action(unit_id: String, step: Dictionary) -> void:
         "find_cover":
             if unit.has_method("find_cover"): unit.find_cover(params)
         "heal_target":
-            if params.has("target_id") and params.target_id != null and unit.has_method("heal_target"):
+            if params.has("target_id") and params.target_id != null:
                 var target = game_state.units.get(params.target_id)
-                if is_instance_valid(target):
-                    unit.heal_target(target)
+                if is_instance_valid(target) and unit.has_method("heal_target"):
+                    unit.heal_target(params)
         "construct":
-            if params.has("position") and params.position != null and unit.has_method("construct"):
+            if params.has("position") and params.position != null:
                 var pos_arr = params.position
                 var relative_pos = Vector3(pos_arr[0], pos_arr[1], pos_arr[2])
                 var team_transform = _get_team_transform(unit.team_id)
@@ -551,9 +569,9 @@ func _execute_step_action(unit_id: String, step: Dictionary) -> void:
                 world_params["position"] = [world_pos.x, world_pos.y, world_pos.z]
                 unit.construct(world_params)
         "repair":
-            if params.has("target_id") and params.target_id != null and unit.has_method("repair"):
+            if params.has("target_id") and params.target_id != null:
                 var target = game_state.units.get(params.target_id)
-                if is_instance_valid(target):
+                if is_instance_valid(target) and unit.has_method("repair"):
                     unit.repair(target)
         "lay_mines":
             if unit.has_method("lay_mines"): unit.lay_mines(params)

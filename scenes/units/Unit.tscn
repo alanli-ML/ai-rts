@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://scripts/core/unit.gd" id="1_6lqld"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_1"]
-radius = 2.5
+radius = 1.0
 height = 4.0
 
 [node name="root" type="CharacterBody3D"]

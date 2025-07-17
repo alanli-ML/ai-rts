@@ -27,7 +27,7 @@ static func get_params_schema() -> Dictionary:
 		"properties": {
 			"position": {
 				"type": ["array", "null"],
-				"description": "3D coordinates [x, y, z] for movement or construction",
+				"description": "2D coordinates [x, 0.0, z] for movement or construction",
 				"items": {"type": "number"},
 				"minItems": 3,
 				"maxItems": 3

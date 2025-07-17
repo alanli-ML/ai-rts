@@ -4,8 +4,8 @@ extends Node3D
 
 # Home base positions for teams (bottom-left and top-right corners)
 const HOME_BASE_POSITIONS = {
-	1: Vector3(-40, 0, -40),  # Team 1: Bottom-left corner
-	2: Vector3(40, 0, 40)     # Team 2: Top-right corner
+	1: Vector3(40, 0, 40),  # Team 1: Bottom-left corner
+	2: Vector3(-40, 0, -40)     # Team 2: Top-right corner
 }
 
 # Unit spawn areas around home bases (radius for spawning units)
@@ -203,7 +203,7 @@ func _find_all_mesh_instances(node: Node) -> Array[MeshInstance3D]:
 	return mesh_instances
 
 func _setup_building_collision(building_node: Node3D) -> void:
-	"""Setup collision for building"""
+	"""Setup collision for building (disabled for units to pass through)"""
 	# Check if building already has collision
 	var has_collision = false
 	for child in building_node.get_children():
@@ -212,9 +212,15 @@ func _setup_building_collision(building_node: Node3D) -> void:
 			break
 	
 	if not has_collision:
-		# Create basic collision for the building
+		# Create basic collision for the building on a separate layer
 		var static_body = StaticBody3D.new()
 		static_body.name = "BuildingCollision"
+		
+		# Put buildings on collision layer 3 (separate from units on layer 1)
+		# Units won't collide with buildings this way
+		static_body.set_collision_layer_value(1, false)  # Not on unit layer
+		static_body.set_collision_layer_value(3, true)   # On building layer
+		static_body.set_collision_mask_value(1, false)   # Don't collide with units
 		
 		var collision_shape = CollisionShape3D.new()
 		collision_shape.name = "CollisionShape3D"

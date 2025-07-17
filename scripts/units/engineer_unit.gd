@@ -82,7 +82,12 @@ func lay_mines(_params: Dictionary):
 		current_state = GameEnums.UnitState.IDLE
 		return
 
-	# Spawn mine at current position
+	# Spawn mine at current position (check if still in tree first)
+	if not is_inside_tree():
+		print("Engineer %s: No longer in scene tree, cannot lay mine." % unit_id)
+		current_state = GameEnums.UnitState.IDLE
+		return
+		
 	entity_manager.spawn_mine(global_position, team_id)
 	
 	current_state = GameEnums.UnitState.IDLE

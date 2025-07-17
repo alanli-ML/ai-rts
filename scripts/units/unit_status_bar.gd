@@ -23,10 +23,22 @@ var processing_animation_time: float = 0.0
 # Material for the quad
 var status_material: StandardMaterial3D
 
+# Team colors for borders
+var team_colors: Dictionary = {
+	1: Color(0.2, 0.4, 1.0),    # Blue team
+	2: Color(1.0, 0.3, 0.2),    # Red team
+	3: Color(0.2, 1.0, 0.4),    # Green team
+	4: Color(1.0, 0.8, 0.2)     # Yellow team
+}
+
+# Status panel reference
+var status_panel: Panel
+
 func _ready() -> void:
 	# Get node references
 	status_quad = $StatusQuad
 	status_viewport = $StatusQuad/SubViewport
+	status_panel = $StatusQuad/SubViewport/StatusPanel
 	status_label = $StatusQuad/SubViewport/StatusPanel/StatusLabel
 	
 	# Set up the material for the quad
@@ -34,6 +46,9 @@ func _ready() -> void:
 	
 	# Find the parent unit
 	parent_unit = get_parent() as Unit
+	
+	# Set up team-colored border
+	_setup_team_border()
 	
 	# Find the camera
 	_find_camera()
@@ -52,6 +67,37 @@ func _setup_material() -> void:
 	status_material.no_depth_test = true
 	
 	status_quad.material_override = status_material
+
+func _setup_team_border() -> void:
+	"""Setup team-colored border around the status panel"""
+	if not status_panel or not parent_unit:
+		return
+	
+	# Get team color
+	var team_id = parent_unit.team_id if parent_unit.team_id > 0 else 1
+	var border_color = team_colors.get(team_id, Color.WHITE)
+	
+	# Create a StyleBoxFlat for the panel
+	var style_box = StyleBoxFlat.new()
+	
+	# Set background color (keep original semi-transparent black)
+	style_box.bg_color = Color(0, 0, 0, 0.7)
+	
+	# Set border properties
+	style_box.border_width_left = 6
+	style_box.border_width_right = 6  
+	style_box.border_width_top = 6
+	style_box.border_width_bottom = 6
+	style_box.border_color = border_color
+	
+	# Set corner rounding for a polished look
+	style_box.corner_radius_top_left = 8
+	style_box.corner_radius_top_right = 8
+	style_box.corner_radius_bottom_left = 8
+	style_box.corner_radius_bottom_right = 8
+	
+	# Apply the style to the panel
+	status_panel.add_theme_stylebox_override("panel", style_box)
 
 func _find_camera() -> void:
 	"""Find the active camera in the scene"""
@@ -319,6 +365,17 @@ func _refresh_current_display() -> void:
 			update_full_plan(parent_unit.full_plan)
 		else:
 			update_status(parent_unit.plan_summary)
+
+func update_team_border(team_id: int) -> void:
+	"""Update the border color for a different team (if needed)"""
+	if not status_panel:
+		return
+	
+	var border_color = team_colors.get(team_id, Color.WHITE)
+	var current_style = status_panel.get_theme_stylebox("panel")
+	
+	if current_style is StyleBoxFlat:
+		current_style.border_color = border_color
 
 # Called when parent unit's plan_summary changes
 func _on_plan_summary_changed(new_summary: String) -> void:

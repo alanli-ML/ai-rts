@@ -49,8 +49,9 @@ func _ready() -> void:
     if ai_command_processor:
         ai_command_processor.processing_started.connect(_on_ai_processing_started)
         ai_command_processor.processing_finished.connect(_on_ai_processing_finished)
+        # _on_ai_plan_processed is now ONLY for host's local AI processing, not other clients
         ai_command_processor.plan_processed.connect(_on_ai_plan_processed)
-        ai_command_processor.command_failed.connect(_on_ai_command_failed)
+        ai_command_processor.command_failed.connect(_on_ai_command_failed) # This can still be used for local host feedback
     
     command_input.text_submitted.connect(_on_command_submitted)
     spawn_scout_button.pressed.connect(func(): _on_spawn_pressed("scout"))
@@ -175,6 +176,12 @@ func _on_unit_hovered(unit: Unit):
         hover_tooltip.visible = false
 
 func _on_command_submitted(text: String):
+    if text.begins_with("/test"):
+        get_node("/root/UnifiedMain").rpc("submit_test_command_rpc", text)
+        command_input.clear()
+        command_input.grab_focus()
+        return
+        
     if text.is_empty():
         print("GameHUD: Empty command entered")
         command_input.grab_focus()  # Keep focus for next command
@@ -232,13 +239,9 @@ func _update_selection_display(selected_units: Array):
         label.text = "No units selected."
         action_queue_list.add_child(label)
     else:
-        print("GameHUD: Updating selection display for %d units (server: %s)" % [selected_units.size(), multiplayer.is_server()])
-        
         # Show detailed plan data for selected units
         for unit in selected_units:
             if not is_instance_valid(unit): continue
-            
-            print("GameHUD: Processing unit %s - strategic_goal: '%s'" % [unit.unit_id, unit.strategic_goal])
             
             var unit_short_id = unit.unit_id.right(4) if unit.unit_id.length() >= 4 else unit.unit_id
             var unit_header = "[font_size=20][b]%s (%s)[/b][/font_size]" % [unit.archetype.capitalize(), unit_short_id]
@@ -252,12 +255,12 @@ func _update_selection_display(selected_units: Array):
             
             # Show unit goal if available
             var unit_goal = ""
+            # IMPORTANT: unit.strategic_goal is updated by ClientDisplayManager based on RPC from server.
+            # This ensures the client-side UI reflects the latest goal.
             if "strategic_goal" in unit and not unit.strategic_goal.is_empty():
                 unit_goal = unit.strategic_goal
-                print("GameHUD: Unit %s has goal: '%s'" % [unit.unit_id, unit_goal])
             else:
-                unit_goal = "No specific goal assigned"
-                print("GameHUD: Unit %s has no goal set (strategic_goal: '%s')" % [unit.unit_id, unit.strategic_goal])
+                unit_goal = "No specific goal assigned" # Fallback if AI provides empty string or unit is idle
             
             var goal_label = RichTextLabel.new()
             goal_label.bbcode_enabled = true
@@ -414,54 +417,40 @@ func _shorten_trigger_hud(trigger: String) -> String:
     return shortened
 
 # AI Command Processing Signal Handlers
+# This function is now primarily for the host's local AI processing feedback
 func _on_ai_processing_started() -> void:
-    """Handle AI processing started"""
+    """Handle AI processing started (local only)"""
     if command_status_label:
         command_status_label.text = "[color=yellow]🤖 Processing command...[/color]"
     if command_summary_label:
         command_summary_label.text = ""
 
 func _on_ai_processing_finished() -> void:
-    """Handle AI processing finished"""
+    """Handle AI processing finished (local only)"""
+    # This might be overridden by network feedback, but provides an immediate local update
     if command_status_label:
         command_status_label.text = "[color=gray]Ready for commands[/color]"
 
+# This function is now ONLY for the host's local AI processing, not other clients
+# Other clients will get updates via update_ai_command_feedback RPC.
 func _on_ai_plan_processed(plans: Array, message: String) -> void:
-    """Handle successful AI plan processing"""
-    if command_status_label:
-        command_status_label.text = "[color=green]✓ Command completed[/color]"
-    
-    # The message parameter now contains the summary (enhanced_message from AI processor)
-    var summary_text = message
-    
-    # If no meaningful summary, generate a basic one from the plans
-    if summary_text.is_empty() or summary_text == "Executing tactical plans":
-        if not plans.is_empty():
-            var unit_count = plans.size()
-            var action_types = []
-            for plan in plans:
-                if plan.has("steps") and not plan.steps.is_empty():
-                    var first_action = plan.steps[0].get("action", "")
-                    if not action_types.has(first_action):
-                        action_types.append(first_action)
-            
-            if not action_types.is_empty():
-                summary_text = "Coordinating %d units: %s" % [unit_count, ", ".join(action_types)]
-    
-    if not summary_text.is_empty() and command_summary_label:
-        command_summary_label.text = "[color=lightblue]%s[/color]" % summary_text
-    
-    # Auto-clear status after a few seconds
-    await get_tree().create_timer(3.0).timeout
-    if command_status_label:
-        command_status_label.text = "[color=gray]Ready for commands[/color]"
-
-func _on_ai_command_failed(error: String, unit_ids: Array) -> void:
-    """Handle AI command failure"""
-    if command_status_label:
-        command_status_label.text = "[color=red]✗ Command failed[/color]"
-    if command_summary_label:
-        command_summary_label.text = "[color=red]Error: %s[/color]" % error
+    """Handle successful AI plan processing (local host feedback)"""
+    # If not a pure client, this runs for the host
+    if multiplayer.is_server() and DisplayServer.get_name() != "headless":
+        var summary_text = message
+        if summary_text.is_empty() or summary_text == "Executing tactical plans":
+            if not plans.is_empty():
+                var unit_count = plans.size()
+                var action_types = []
+                for plan in plans:
+                    if plan.has("steps") and not plan.steps.is_empty():
+                        var first_action = plan.steps[0].get("action", "")
+                        if not action_types.has(first_action):
+                            action_types.append(first_action)
+                if not action_types.is_empty():
+                    summary_text = "Coordinating %d units: %s" % [unit_count, ", ".join(action_types)]
+        
+        update_ai_command_feedback(summary_text, "[color=green]✓ Command completed[/color]")
     
     # Auto-clear status after a few seconds
     await get_tree().create_timer(3.0).timeout
@@ -469,6 +458,43 @@ func _on_ai_command_failed(error: String, unit_ids: Array) -> void:
         command_status_label.text = "[color=gray]Ready for commands[/color]"
     if command_summary_label:
         command_summary_label.text = ""
+
+# This function can still be used for local host feedback on AI command failure
+func _on_ai_command_failed(error: String, unit_ids: Array) -> void:
+    """Handle AI command failure (local host feedback)"""
+    if multiplayer.is_server() and DisplayServer.get_name() != "headless":
+        update_ai_command_feedback("[color=red]Error: %s[/color]" % error, "[color=red]✗ Command failed[/color]")
+    
+    # Auto-clear status after a few seconds
+    await get_tree().create_timer(3.0).timeout
+    if command_status_label:
+        command_status_label.text = "[color=gray]Ready for commands[/color]"
+    if command_summary_label:
+        command_summary_label.text = ""
+
+func update_ai_command_feedback(summary_text: String, status_text: String) -> void:
+    """
+    Updates the command status and summary labels.
+    Called by UnifiedMain from server RPC or by local AI processing.
+    """
+    if command_status_label:
+        command_status_label.text = status_text
+    
+    if command_summary_label:
+        command_summary_label.text = summary_text
+    
+    # Crucially, force refresh selected unit display to show new strategic goals
+    # and plan summaries that have been updated via the _on_game_state_update RPC.
+    if selection_system and not selection_system.get_selected_units().is_empty():
+        _update_selection_display(selection_system.get_selected_units())
+
+    # Auto-clear status after a few seconds, if this is the final status update
+    # Note: A separate timer might be needed if complex states are involved.
+    # For now, it will clear after a few seconds regardless of how it was triggered.
+    # We will remove the await and only set it on server side for client.
+    # This function is now the end point, not starting a new timer here.
+    pass
+
 
 func _find_selection_system_old():
     """Find the selection system using multiple approaches"""

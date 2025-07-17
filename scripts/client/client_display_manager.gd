@@ -142,19 +142,6 @@ func _create_unit(unit_data: Dictionary) -> void:
 	unit_instance.team_id = unit_data.team_id
 	unit_instance.archetype = unit_data.archetype
 	
-	# Set initial goal data during creation to avoid timing issues
-	if unit_data.has("strategic_goal"):
-		unit_instance.strategic_goal = unit_data.strategic_goal
-	
-	if unit_data.has("plan_summary"):
-		unit_instance.plan_summary = unit_data.plan_summary
-	
-	if unit_data.has("full_plan"):
-		unit_instance.full_plan = unit_data.full_plan
-	
-	if unit_data.has("waiting_for_ai"):
-		unit_instance.waiting_for_ai = unit_data.waiting_for_ai
-	
 	# Add a placeholder for the shield node if it's a tank
 	if unit_data.archetype == "tank":
 		unit_instance.set("shield_node", null)
@@ -167,7 +154,7 @@ func _create_unit(unit_data: Dictionary) -> void:
 	unit_instance.global_position = Vector3(pos_arr.x, pos_arr.y, pos_arr.z)
 	
 	displayed_units[unit_id] = unit_instance
-	print("ClientDisplayManager: Created unit %s with goal: %s" % [unit_id, unit_instance.strategic_goal])
+	print("ClientDisplayManager: Created unit %s" % unit_id)
 
 func _create_mine(mine_data: Dictionary) -> void:
 	var mine_id = mine_data.id
@@ -244,8 +231,8 @@ func _update_unit(unit_data: Dictionary, delta: float) -> void:
 		if unit_instance.has_method("update_full_plan"):
 			unit_instance.update_full_plan(unit_data.full_plan)
 
-	# Update shield visual
-	if unit_data.has("shield_active"):
+	# Update shield visual (only for units that support shields)
+	if unit_data.has("shield_active") and "shield_node" in unit_instance:
 		if unit_data.shield_active and not is_instance_valid(unit_instance.get("shield_node")):
 			var shield_scene = preload("res://scenes/fx/ShieldEffect.tscn")
 			var shield_effect = shield_scene.instantiate()

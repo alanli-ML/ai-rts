@@ -48,6 +48,12 @@ func _ready() -> void:
     add_to_group("control_points")
     # Server is authoritative for capture logic
     set_physics_process(multiplayer.is_server())
+    
+    # Configure StaticBody3D to prevent physical blocking of units
+    set_collision_layer_value(1, false)  # Not on unit layer (Layer 1 is for units)
+    set_collision_layer_value(3, true)   # Put on a "buildings/static structures" layer
+    set_collision_mask_value(1, false)   # Do not collide with units (Layer 1)
+    
     print("ControlPoint %s (%s) initialized" % [control_point_id, control_point_name])
 
 func _physics_process(delta: float) -> void:

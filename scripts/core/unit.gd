@@ -49,9 +49,12 @@ var navigation_agent: NavigationAgent3D
 signal health_changed(new_health: float, max_health: float)
 signal unit_died(unit_id: String)
 
+# Static counters for meaningful unit IDs
+static var unit_counters: Dictionary = {}
+
 func _ready() -> void:
     if unit_id.is_empty():
-        unit_id = "unit_" + str(randi())
+        unit_id = _generate_meaningful_unit_id()
     
     add_to_group("units")
     add_to_group("selectable") # For selection system
@@ -96,6 +99,25 @@ func _ready() -> void:
         global_position.y = 1.0  # Ensure minimum spawn height
     set_physics_process(true)
 
+func _generate_meaningful_unit_id() -> String:
+    """Generate a meaningful unit ID like 'tank_t1_01' instead of random numbers"""
+    # Use default values if archetype or team_id aren't set yet
+    var unit_archetype = archetype if not archetype.is_empty() else "unit"
+    var unit_team = team_id if team_id > 0 else 1
+    
+    # Create key for this archetype-team combination
+    var counter_key = "%s_t%d" % [unit_archetype, unit_team]
+    
+    # Get current counter for this type
+    if not unit_counters.has(counter_key):
+        unit_counters[counter_key] = 0
+    
+    # Increment counter
+    unit_counters[counter_key] += 1
+    
+    # Generate meaningful ID: archetype_team_number
+    return "%s_%02d" % [counter_key, unit_counters[counter_key]]
+
 func _enable_physics():
     # This function is no longer needed with simplified approach
     set_physics_process(true)
@@ -135,12 +157,14 @@ func _physics_process(delta: float) -> void:
             else:
                 var distance = global_position.distance_to(target_unit.global_position)
                 if distance > attack_range:
-                    print("DEBUG: Unit %s moving closer to target %s (distance: %.1f > range: %.1f)" % [unit_id, target_unit.unit_id, distance, attack_range])
-                    move_to(target_unit.global_position)
+                    # Target is out of range, move closer but stay in ATTACKING state.
+                    if navigation_agent:
+                        navigation_agent.target_position = target_unit.global_position
                 else:
-                    # Stop moving and attack
-                    velocity.x = 0
-                    velocity.z = 0
+                    # Target is in range. Stop moving and attack.
+                    if navigation_agent:
+                        navigation_agent.target_position = global_position # Stop moving
+
                     look_at(target_unit.global_position, Vector3.UP)
                     var current_time = Time.get_ticks_msec() / 1000.0
                     if current_time - last_attack_time >= attack_cooldown:
@@ -173,7 +197,7 @@ func _physics_process(delta: float) -> void:
                             print("DEBUG: Unit %s attack failed completely" % unit_id)
                     else:
                         var cooldown_remaining = attack_cooldown - (current_time - last_attack_time)
-                        print("DEBUG: Unit %s attack on cooldown (%.1fs remaining)" % [unit_id, cooldown_remaining])
+                        #print("DEBUG: Unit %s attack on cooldown (%.1fs remaining)" % [unit_id, cooldown_remaining])
         
         GameEnums.UnitState.HEALING:
             if not is_instance_valid(target_unit) or target_unit.is_dead or target_unit.get_health_percentage() >= 1.0:

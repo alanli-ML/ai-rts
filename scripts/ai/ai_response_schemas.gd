@@ -5,13 +5,19 @@ extends RefCounted
 # JSON Schema definitions for OpenAI Structured Outputs
 # These schemas define the exact structure expected from AI responses
 
-# Action enums by archetype
-const GENERAL_ACTIONS = ["move_to", "attack", "retreat", "patrol", "follow"]
-const SCOUT_ACTIONS = ["move_to", "attack", "retreat", "patrol", "follow", "activate_stealth"]
-const TANK_ACTIONS = ["move_to", "attack", "retreat", "patrol", "follow", "activate_shield", "taunt_enemies"]
-const SNIPER_ACTIONS = ["move_to", "attack", "retreat", "patrol", "follow", "charge_shot", "find_cover"]
-const MEDIC_ACTIONS = ["move_to", "attack", "retreat", "patrol", "follow", "heal_target"]
-const ENGINEER_ACTIONS = ["move_to", "attack", "retreat", "patrol", "follow", "construct", "repair", "lay_mines"]
+# Sequential actions (for main plan steps) - strategic, high-level commands (same for all units)
+const SEQUENTIAL_ACTIONS = ["move_to", "patrol", "follow"]
+
+# Base triggered actions (common to all units)
+const BASE_TRIGGERED_ACTIONS = ["move_to", "attack", "retreat", "find_cover"]
+
+# Triggered actions by archetype (includes unit-specific abilities)
+const GENERAL_TRIGGERED = ["move_to", "attack", "retreat", "find_cover"]
+const SCOUT_TRIGGERED = ["move_to", "attack", "retreat", "find_cover", "activate_stealth"]
+const TANK_TRIGGERED = ["move_to", "attack", "retreat", "find_cover", "activate_shield", "taunt_enemies"]
+const SNIPER_TRIGGERED = ["move_to", "attack", "retreat", "find_cover", "charge_shot"]
+const MEDIC_TRIGGERED = ["move_to", "attack", "retreat", "find_cover", "heal_target"]
+const ENGINEER_TRIGGERED = ["move_to", "attack", "retreat", "find_cover", "construct", "repair", "lay_mines"]
 
 
 
@@ -59,15 +65,19 @@ static func get_triggered_actions_schema(allowed_actions: Array) -> Dictionary:
 		"additionalProperties": false
 	}
 
-# Helper function to get actions for a specific archetype
-static func get_actions_for_archetype(archetype: String) -> Array:
+# Helper function to get sequential actions (same for all archetypes)
+static func get_sequential_actions_for_archetype(archetype: String) -> Array:
+	return SEQUENTIAL_ACTIONS
+
+# Helper function to get triggered actions for a specific archetype
+static func get_triggered_actions_for_archetype(archetype: String) -> Array:
 	match archetype:
-		"scout": return SCOUT_ACTIONS
-		"tank": return TANK_ACTIONS
-		"sniper": return SNIPER_ACTIONS
-		"medic": return MEDIC_ACTIONS
-		"engineer": return ENGINEER_ACTIONS
-		_: return GENERAL_ACTIONS
+		"scout": return SCOUT_TRIGGERED
+		"tank": return TANK_TRIGGERED
+		"sniper": return SNIPER_TRIGGERED
+		"medic": return MEDIC_TRIGGERED
+		"engineer": return ENGINEER_TRIGGERED
+		_: return GENERAL_TRIGGERED
 
 # Schema for unit-specific plans with enum actions
 static func get_unit_specific_schema(unit_archetypes: Array, is_group_command: bool = false) -> Dictionary:
@@ -78,21 +88,24 @@ static func get_unit_specific_schema(unit_archetypes: Array, is_group_command: b
 		schema_name = "MultiStepPlanResponse"
 		schema_description = "A structured plan response for RTS game AI commands"
 	
-	# Determine which actions to allow based on unit archetypes
-	var allowed_actions = []
+	# Sequential actions are the same for all unit types
+	var allowed_sequential_actions = SEQUENTIAL_ACTIONS
+	
+	# Determine which triggered actions to allow based on unit archetypes
+	var allowed_triggered_actions = []
 	if unit_archetypes.is_empty():
-		allowed_actions = GENERAL_ACTIONS
+		allowed_triggered_actions = GENERAL_TRIGGERED
 	elif unit_archetypes.size() == 1:
-		# Single archetype - use specific actions
-		allowed_actions = get_actions_for_archetype(unit_archetypes[0])
+		# Single archetype - use specific triggered actions
+		allowed_triggered_actions = get_triggered_actions_for_archetype(unit_archetypes[0])
 	else:
-		# Multiple archetypes - combine all unique actions
+		# Multiple archetypes - combine all unique triggered actions
 		var action_set = {}
 		for archetype in unit_archetypes:
-			var archetype_actions = get_actions_for_archetype(archetype)
+			var archetype_actions = get_triggered_actions_for_archetype(archetype)
 			for action in archetype_actions:
 				action_set[action] = true
-		allowed_actions = action_set.keys()
+		allowed_triggered_actions = action_set.keys()
 	
 	return {
 		"type": "json_schema",
@@ -130,7 +143,7 @@ static func get_unit_specific_schema(unit_archetypes: Array, is_group_command: b
 										"properties": {
 											"action": {
 												"type": "string",
-												"enum": allowed_actions,
+												"enum": allowed_sequential_actions,
 												"description": "Name of the action to perform"
 											},
 											"params": get_params_schema()
@@ -143,7 +156,7 @@ static func get_unit_specific_schema(unit_archetypes: Array, is_group_command: b
 										"additionalProperties": false
 									}
 								},
-								"triggered_actions": get_triggered_actions_schema(allowed_actions)
+								"triggered_actions": get_triggered_actions_schema(allowed_triggered_actions)
 							},
 							"required": ["unit_id", "goal", "steps", "triggered_actions"],
 							"additionalProperties": false
@@ -202,7 +215,7 @@ static func get_multi_step_plan_schema() -> Dictionary:
 										"properties": {
 											"action": {
 												"type": "string",
-												"enum": GENERAL_ACTIONS,
+												"enum": SEQUENTIAL_ACTIONS,
 												"description": "Name of the action to perform"
 											},
 											"params": get_params_schema()
@@ -215,7 +228,7 @@ static func get_multi_step_plan_schema() -> Dictionary:
 										"additionalProperties": false
 									}
 								},
-								"triggered_actions": get_triggered_actions_schema(GENERAL_ACTIONS)
+								"triggered_actions": get_triggered_actions_schema(GENERAL_TRIGGERED)
 							},
 							"required": ["unit_id", "goal", "steps", "triggered_actions"],
 							"additionalProperties": false

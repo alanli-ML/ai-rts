@@ -45,16 +45,16 @@ func _ready() -> void:
 	command_input_field.visible = false
 	radial_menu.visible = false
 	
-	Logger.info("CommandInput", "Command Input UI initialized")
+	print("CommandInput: Command Input UI initialized")
 
 func _create_command_input() -> void:
-	    # Container for input field
-    var input_container = MarginContainer.new()
-    input_container.name = "InputContainer"
-    input_container.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-    input_container.set_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-    input_container.position.y = -100
-    add_child(input_container)
+	# Container for input field
+	var input_container = MarginContainer.new()
+	input_container.name = "InputContainer"
+	input_container.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	input_container.set_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	input_container.position.y = -100
+	add_child(input_container)
 	
 	# Style the container
 	var panel = PanelContainer.new()

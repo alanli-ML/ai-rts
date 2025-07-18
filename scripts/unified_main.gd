@@ -290,6 +290,10 @@ func _on_game_started(data: Dictionary) -> void:
 func _on_game_state_update(state: Dictionary) -> void:
     if client_display_manager:
         client_display_manager.update_state(state)
+    
+    # Update HUD unit status panel with units data
+    if hud_instance and is_instance_valid(hud_instance) and state.has("units"):
+        hud_instance.update_player_units(state.units, multiplayer.get_unique_id())
 
 @rpc("any_peer", "call_local", "reliable")
 func _on_ai_command_feedback_rpc(summary_message: String, status_message: String):

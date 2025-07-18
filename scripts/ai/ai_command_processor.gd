@@ -15,13 +15,13 @@ var plan_executor: Node
 var active_requests: Dictionary = {} # request_id -> { "context": Dictionary, "timestamp": float }
 var request_id_counter: int = 0
 var max_concurrent_requests: int = 10 # Allow up to 10 concurrent requests
-var max_request_timeout: float = 30.0  # 30 second timeout
+var max_request_timeout: float = 60.0  # 60 second timeout
 
 # Model configuration for different prompt types
 # o1-mini: Best for complex reasoning, group coordination, strategic planning (slower but smarter)
 # gpt-4o: Fast and capable for individual commands and real-time responses
 # gpt-4o-mini: Fastest option for simple autonomous decisions (if speed is critical)
-var group_command_model: String = "gpt-4o"  # Slower but more capable for complex group coordination
+var group_command_model: String = "gpt-4o-mini"  # Slower but more capable for complex group coordination
 var individual_command_model: String = "gpt-4o-mini"  # Faster for simple individual commands
 var autonomous_command_model: String = "gpt-4o-mini"  # Fast for autonomous decision making
 
@@ -29,56 +29,74 @@ var autonomous_command_model: String = "gpt-4o-mini"  # Fast for autonomous deci
 var base_system_prompt_template = """
 You are an AI assistant for a 2v2 cooperative RTS game.
 Your task is to translate natural language commands into a structured plan for {target_description}.
-The plan for each unit should consist of a sequential list of "steps" and a list of "triggered_actions".
+The plan defines a unit's reactive "personality" and high-level strategy.
 
-Your response will automatically follow the required JSON format. Focus on creating tactical plans that make strategic sense.
+Your response must be valid JSON in this exact format:
+```json
+{
+  "plans": [
+    {
+      "unit_id": "exact_unit_id_from_context",
+      "goal": "High-level tactical objective for this unit",
+      "control_point_attack_sequence": ["Node1", "Node5", "Node9"],
+              "behavior_matrix": {
+            "attack": {"enemies_in_range": 0.8, "current_health": 0.2, "under_attack": 0.1, "allies_in_range": 0.3, "ally_low_health": 0.1, "enemy_nodes_controlled": 0.4, "ally_nodes_controlled": -0.2, "bias": -0.2},
+            "retreat": {"enemies_in_range": 0.4, "current_health": -0.9, "under_attack": 0.8, "allies_in_range": -0.3, "ally_low_health": -0.5, "enemy_nodes_controlled": 0.1, "ally_nodes_controlled": 0.0, "bias": -0.8},
+            "defend": {"enemies_in_range": -0.5, "current_health": 0.5, "under_attack": -0.6, "allies_in_range": 0.2, "ally_low_health": 0.2, "enemy_nodes_controlled": -0.3, "ally_nodes_controlled": 0.5, "bias": -0.5},
+            "follow": {"enemies_in_range": -0.3, "current_health": 0.0, "under_attack": -0.4, "allies_in_range": 0.7, "ally_low_health": 0.3, "enemy_nodes_controlled": 0.0, "ally_nodes_controlled": 0.0, "bias": -0.6},
+            "activate_stealth": {"enemies_in_range": 0.6, "current_health": -0.3, "under_attack": 0.7, "allies_in_range": -0.2, "ally_low_health": 0.0, "enemy_nodes_controlled": 0.0, "ally_nodes_controlled": 0.0, "bias": -0.7},
+            "find_cover": {"enemies_in_range": 0.3, "current_health": -0.5, "under_attack": 0.7, "allies_in_range": 0.0, "ally_low_health": 0.0, "enemy_nodes_controlled": 0.0, "ally_nodes_controlled": 0.0, "bias": -0.6}
+      }
+    }
+  ],
+  "message": "Confirmation message for the player",
+  "summary": "Brief tactical summary"
+}
+```
 
-{specific_requirements}
+**BEHAVIOR MATRIX EXPLANATION:**
+The behavior_matrix determines how a unit reacts in real-time. Each weight can be any numeric value:
+- Positive weights make an action MORE likely as the state variable increases
+- Negative weights make it LESS likely  
+- Zero means no influence
+- Higher absolute values create stronger influence
 
-CRITICAL STRUCTURE REQUIREMENTS:
-- "steps" is a sequential plan. Actions are executed in order.
-- "triggered_actions" is a dictionary of automatic reactions to specific situations. The game engine handles when to fire these triggers; you just define the action to take.
-- You MUST provide an action for EVERY trigger key listed below.
-- You MUST provide at least one action in the "steps" array.
-- Keep "speech" text brief (under 50 characters each).
+**STATE VARIABLES (Inputs):**
+- `enemies_in_range`: Normalized count of enemies within weapon range (0.0-1.0)
+- `current_health`: Unit's health percentage (1.0=full, 0.0=dead)
+- `under_attack`: 1.0 if recently took damage, 0.0 otherwise
+- `allies_in_range`: Normalized count of friendly units in vision range (0.0-1.0)
+- `ally_low_health`: Highest missing health percentage of nearby ally (0.0-1.0)
+- `enemy_nodes_controlled`: Normalized count of enemy-held control points (0.0-1.0)
+- `ally_nodes_controlled`: Normalized count of friendly-held control points (0.0-1.0)
+- `bias`: Constant 1.0 value for baseline activation levels
 
-IMPORTANT: You may ONLY use actions from the following list. Do not invent new actions.
-Available actions: {actions_list}
+**ACTIONS (Outputs):**
 
-Action Parameter Examples:
-- "move_to": {"position": [x: float, y: float, z: float]}
-- "attack": {"target_id": "string_unit_id"} - For triggered actions, you can omit target_id; the game will provide it from context.
-- "follow": {"target_id": "string_unit_id"}
-- "heal_target": {"target_id": "string_unit_id"} - For triggered actions, you can omit target_id.
-- "repair": {"target_id": "string_building_or_unit_id"}
-- "construct": {"position": [x: float, y: float, z: float]} // Always builds power_spire
-- For actions with no parameters like "activate_shield" or "lay_mines", use {}.
+**Primary States (Mutually Exclusive):**
+- `attack`: Aggressive combat, move toward enemies and control points
+- `retreat`: Defensive withdrawal, move away from threats toward safety
+- `defend`: Capture uncontrolled nodes, then patrol around friendly territory
+- `follow`: Follow nearest ally in range, fallback to next best state if no allies available
 
-**TRIGGERED ACTIONS (MANDATORY)**
-Your `triggered_actions` response MUST be a dictionary with the following keys. The value for each key must be an action from the list above.
+**Independent Abilities (Can activate alongside primary states):**
+- `activate_stealth`: Become invisible to enemies (Scout specialty)
+- `activate_shield`: Absorb incoming damage (Tank specialty)  
+- `taunt_enemies`: Draw enemy fire to protect allies (Tank specialty)
+- `charge_shot`: Powerful long-range attack (Sniper specialty)
+- `heal_ally`: Restore ally health (Medic specialty)
+- `lay_mines`: Deploy explosive traps (Engineer specialty)
+- `construct_turret`: Build an automated turret that attacks enemies (Engineer specialty)
+- `repair`: Fix damaged buildings/units (Engineer specialty)
+- `find_cover`: Move to protected position during combat
 
-- `on_enemy_sighted`: Primary self-defense action when an enemy enters weapon range. Usually "attack".
-- `on_under_attack`: Action to take when you are taking damage. Good for defensive abilities like "activate_shield" or "find_cover".
-- `on_health_low`: Action when health is below 50%. Good for cautious actions like "find_cover".
-- `on_health_critical`: Action when health is below 25%. Usually "retreat".
-- `on_ally_health_low`: (For Medics) Action when an ally's health is below 50%. Usually "heal_target".
+**TACTICAL EXAMPLES:**
+- **Aggressive Tank**: High attack bias, shield when under fire: {"attack": {"bias": 0.3}, "activate_shield": {"under_attack": 0.8}}
+- **Defensive Medic**: Prioritize healing, retreat when threatened: {"heal_ally": {"ally_low_health": 0.9}, "retreat": {"enemies_in_range": 0.7}}
+- **Scout Infiltrator**: Use stealth when enemies near: {"activate_stealth": {"enemies_in_range": 0.8}, "attack": {"bias": 0.2}}
 
-
-TEAM-RELATIVE DATA EXPLANATION:
-All data in your context uses team-relative values from YOUR team's perspective:
-- `team_id` fields: +1 = your team, -1 = enemy team, 0 = neutral
-- `controlling_team` (control points): +1 = controlled by your team, -1 = controlled by enemy team, 0 = neutral
-- `capture_value` (control points): +1.0 = fully controlled by your team, -1.0 = fully controlled by enemy, 0.0 = neutral
-  Values between 0 and ±1 indicate capture progress (e.g., 0.5 = 50 percent captured by your team)
-  All numeric values are rounded to 2 decimal places and relative to YOUR team perspective.
-
-COORDINATE SYSTEM:
-All `position` fields in the context have been transformed into a team-relative coordinate system.
-- Your team's home base is ALWAYS at the origin `[0, 0, 0]`.
-- The enemy team's home base is ALWAYS in the positive Z direction.
-- The X-axis is to the right of the Z-axis.
-When you provide a `position` for an action, you MUST use this same relative coordinate system.
-
+**CONTROL POINT SEQUENCE:**
+Create logical attack routes through control points Node1-Node9. Consider map layout and strategic value.
 
 {additional_content}
 """
@@ -161,27 +179,45 @@ You will be given a single consolidated `game_context` object. It contains:
 - `allied_units`: A list of states for all units in your group.
 - `sensor_data`: A combined view of all enemies and control points visible to your group.
 Use this to make coordinated, high-level tactical decisions."""
-    var actions_list = str(action_validator.get_allowed_actions())
-    var example_suffix = " PER UNIT"
-    var example_unit_id = "unit_123"
-    var example_speech_1 = "Moving to position"
-    var example_speech_2 = "Engaging target"
-    var example_speech_3 = "Falling back"
     var additional_content = ""
     
     # Use safer string building approach
     var template = base_system_prompt_template
     template = template.replace("{target_description}", target_description)
     template = template.replace("{specific_requirements}", specific_requirements)
-    template = template.replace("{actions_list}", actions_list)
-    template = template.replace("{example_suffix}", example_suffix)
-    template = template.replace("{example_unit_id}", example_unit_id)
-    template = template.replace("{example_speech_1}", example_speech_1)
-    template = template.replace("{example_speech_2}", example_speech_2)
-    template = template.replace("{example_speech_3}", example_speech_3)
     template = template.replace("{additional_content}", additional_content)
     
     return template
+
+func _get_archetype_specific_actions_info(unit_archetypes: Array) -> String:
+    """Generate archetype-specific action information for the prompt"""
+    var info_lines = []
+    
+    # Get unique archetypes
+    var unique_archetypes = {}
+    for archetype in unit_archetypes:
+        unique_archetypes[archetype] = true
+    
+    info_lines.append("**ARCHETYPE-SPECIFIC ACTIONS:**")
+    for archetype in unique_archetypes.keys():
+        var valid_actions = action_validator.get_valid_actions_for_archetype(archetype)
+        var primary_actions = []
+        var ability_actions = []
+        
+        for action in valid_actions:
+            if action in action_validator.MUTUALLY_EXCLUSIVE_REACTIVE_ACTIONS:
+                primary_actions.append(action)
+            elif action in action_validator.INDEPENDENT_REACTIVE_ACTIONS:
+                ability_actions.append(action)
+        
+        info_lines.append("- **%s**: Primary states: %s | Special abilities: %s" % [
+            archetype.capitalize(),
+            ", ".join(primary_actions) if not primary_actions.is_empty() else "none",
+            ", ".join(ability_actions) if not ability_actions.is_empty() else "none"
+        ])
+    
+    info_lines.append("\n**CRITICAL**: Only include actions that are valid for each unit's archetype in the behavior_matrix!")
+    return "\n".join(info_lines)
 
 func _build_source_info(units: Array, command_type: String) -> String:
     """Build source information for LangSmith tracing (e.g., 'player1/Tank' or 'player2/Group_3units')"""
@@ -218,14 +254,7 @@ func _build_individual_prompt(unit_personality: String) -> String:
     var plan_description = ""
     var unit_id_example = "id_of_unit_to_command"
     var specific_requirements = """You will be given a detailed context object. Your `unit_state` contains a `strategic_goal`.
-Your generated plan should be a series of concrete actions to achieve this `strategic_goal`.
-When generating a new plan, you MUST also output a new `goal` field. If you are continuing the same overall objective, this can be the same as your input `strategic_goal`. If you are changing tactics, provide a new descriptive goal."""
-    var actions_list = str(action_validator.get_allowed_actions())
-    var example_suffix = ""
-    var example_unit_id = "your_unit_id"
-    var example_speech_1 = "Moving to engage"
-    var example_speech_2 = "Attacking target"
-    var example_speech_3 = "Retreating to safety"
+Your generated plan should define the unit's behavior matrix and attack sequence to achieve this `strategic_goal`."""
     # Simply add unit personality without % escaping
     var additional_content = "\nUNIT PERSONALITY:\n" + unit_personality
     
@@ -233,12 +262,6 @@ When generating a new plan, you MUST also output a new `goal` field. If you are 
     var template = base_system_prompt_template
     template = template.replace("{target_description}", target_description)
     template = template.replace("{specific_requirements}", specific_requirements)
-    template = template.replace("{actions_list}", actions_list)
-    template = template.replace("{example_suffix}", example_suffix)
-    template = template.replace("{example_unit_id}", example_unit_id)
-    template = template.replace("{example_speech_1}", example_speech_1)
-    template = template.replace("{example_speech_2}", example_speech_2)
-    template = template.replace("{example_speech_3}", example_speech_3)
     template = template.replace("{additional_content}", additional_content)
     
     return template
@@ -303,10 +326,13 @@ func process_command(command_text: String, unit_ids: Array = [], peer_id: int = 
     logger.info("AICommandProcessor", "Processing %s command for units %s: '%s'" % [prompt_type, str(unit_list), command_text])
     
     var context = {"expected_unit_ids": unit_list}
+    var start_time = Time.get_ticks_msec() / 1000.0
     active_requests[request_id] = {
         "context": context,
-        "timestamp": Time.get_ticks_msec() / 1000.0
+        "timestamp": start_time
     }
+    
+    logger.info("AICommandProcessor", "Starting request %s at %f for units %s" % [request_id, start_time, str(unit_list)])
     
     if is_group_command:
         _process_group_command(command_text, selected_units, server_game_state, request_id)
@@ -316,30 +342,34 @@ func process_command(command_text: String, unit_ids: Array = [], peer_id: int = 
 func _process_group_command(command_text: String, units: Array, server_game_state: Node, request_id: String) -> void:
     var group_system_prompt = _build_group_prompt()
     var game_context = server_game_state.get_group_context_for_ai(units)
-   
-    # Notify game state that the first group command has been issued.
-    if server_game_state and server_game_state.has_method("set_initial_group_command_given"):
-        server_game_state.set_initial_group_command_given()
         
     var unit_count = game_context.allied_units.size()
     var unit_list = []
+    var present_archetypes = []
     for unit_state in game_context.allied_units:
         unit_list.append(unit_state.get("id", "unknown"))
+        var archetype = unit_state.get("archetype", "general")
+        if archetype not in present_archetypes:
+            present_archetypes.append(archetype)
+    
+    # Generate archetype-specific action information
+    var archetype_info = _get_archetype_specific_actions_info(present_archetypes)
         
     var user_prompt = """Command: '%s'\n
     
-You are coordinating the entire team. Analyze the current battlefield situation and coordinate tactical actions for your entire squad to accomplish the above goal.
+You are coordinating the entire team. Analyze the current battlefield situation and define a behavior matrix and control point attack sequence for EACH unit to accomplish the above goal.
 
-CRITICAL REQUIREMENT: You MUST provide plans for ALL %d units specified in the `allied_units` list below. Do not skip any units.
+CRITICAL REQUIREMENT: You MUST provide a plan (matrix and sequence) for ALL %d units specified in the `allied_units` list below. Do not skip any units.
 Units requiring plans: %s
 
-Focus on:
-- Team synergy and coordinated maneuvers
-- Control point capture strategy  
-- Strategic positioning across the battlefield
-- Role-based tactics (scout reconnaissance, tank frontline, sniper overwatch, medic support, engineer fortification)
+%s
 
-Context: %s""" % [command_text, unit_count, str(unit_list), JSON.stringify({"game_context": game_context})]
+Focus on:
+- Creating complementary behavior matrices for team synergy (e.g., have tanks be aggressive while medics are defensive).
+- Defining a coordinated `control_point_attack_sequence` for the group.
+- Role-based tactics (scout reconnaissance, tank frontline, sniper overwatch, medic support, engineer fortification).
+
+Context: %s""" % [command_text, unit_count, str(unit_list), archetype_info, JSON.stringify({"game_context": game_context})]
 
     var messages = [
         {"role": "system", "content": group_system_prompt},
@@ -363,8 +393,8 @@ Context: %s""" % [command_text, unit_count, str(unit_list), JSON.stringify({"gam
             if unit.archetype not in unit_archetypes:
                 unit_archetypes.append(unit.archetype)
         
-        var response_format = AIResponseSchemas.get_schema_for_command(true, unit_archetypes)  # true = group command
-        langsmith_client.traced_chat_completion(messages, on_response, on_error, metadata, model_to_use, response_format)
+        # No longer using structured JSON schema - relying on prompt instructions instead
+        langsmith_client.traced_chat_completion(messages, on_response, on_error, metadata, model_to_use)
     else:
         logger.error("AICommandProcessor", "LangSmith client not available.")
         var unit_ids = active_requests[request_id].context.get("expected_unit_ids", [])
@@ -377,11 +407,15 @@ func _process_individual_command(command_text: String, unit: Node, server_game_s
     var unit_specific_prompt = _build_individual_prompt(unit.system_prompt)
     var context = server_game_state.get_context_for_ai(unit)
     
+    # Generate archetype-specific action information for this unit
+    var unit_archetype = unit.archetype if "archetype" in unit else "general"
+    var archetype_info = _get_archetype_specific_actions_info([unit_archetype])
+    
     var user_prompt: String
     if command_text == "autonomously decide next action":
-        user_prompt = "You are acting autonomously. Analyze the following context and generate the best plan based on your personality. Context: %s" % JSON.stringify(context)
+        user_prompt = "You are acting autonomously. Analyze the following context and generate the best behavior_matrix and control_point_attack_sequence based on your personality and strategic goal.\n\n%s\n\nContext: %s" % [archetype_info, JSON.stringify(context)]
     else:
-        user_prompt = "Command: '%s'\nContext: %s" % [command_text, JSON.stringify(context)]
+        user_prompt = "Command: '%s'\n\n%s\n\nContext: %s" % [command_text, archetype_info, JSON.stringify(context)]
 
     var messages = [
         {"role": "system", "content": unit_specific_prompt},
@@ -402,8 +436,8 @@ func _process_individual_command(command_text: String, unit: Node, server_game_s
         if command_text == "autonomously decide next action":
             model_to_use = autonomous_command_model
         
-        var response_format = AIResponseSchemas.get_schema_for_command(false, [unit.archetype])  # false = individual command
-        langsmith_client.traced_chat_completion(messages, on_response, on_error, metadata, model_to_use, response_format)
+        # No longer using structured JSON schema - relying on prompt instructions instead
+        langsmith_client.traced_chat_completion(messages, on_response, on_error, metadata, model_to_use)
     else:
         logger.error("AICommandProcessor", "LangSmith client not available.")
         var unit_ids = active_requests[request_id].context.get("expected_unit_ids", [])
@@ -414,9 +448,14 @@ func _process_individual_command(command_text: String, unit: Node, server_game_s
 
 func _on_openai_response(response: Dictionary, request_id: String) -> void:
     if not active_requests.has(request_id):
+        logger.warning("AICommandProcessor", "Response received for unknown/timed-out request: %s" % request_id)
         return # Request already timed out or handled
     
-    var context = active_requests[request_id].context
+    var request_data = active_requests[request_id]
+    var context = request_data.context
+    var request_duration = (Time.get_ticks_msec() / 1000.0) - request_data.timestamp
+    logger.info("AICommandProcessor", "Response received for request %s after %.2f seconds" % [request_id, request_duration])
+    
     active_requests.erase(request_id)
     
     # Check for network/API errors from OpenAI client
@@ -440,25 +479,44 @@ func _on_openai_response(response: Dictionary, request_id: String) -> void:
             processing_finished.emit()
         return
     
-    # With structured outputs, the response is guaranteed to be properly formatted
-    logger.info("AICommandProcessor", "Received structured response length: %d characters" % content.length())
+    # Parse the JSON response from prompt-based instructions
+    logger.info("AICommandProcessor", "Received response length: %d characters" % content.length())
+    logger.info("AICommandProcessor", "Response content preview: %s" % content.substr(0, min(200, content.length())))
     
-    # Parse the guaranteed valid JSON
+    # Strip markdown code block delimiters if present
+    var cleaned_content = content.strip_edges()
+    
+    # Remove leading ```json and trailing ```
+    if cleaned_content.begins_with("```json"):
+        cleaned_content = cleaned_content.substr(7).strip_edges()
+    elif cleaned_content.begins_with("```"):
+        cleaned_content = cleaned_content.substr(3).strip_edges()
+    
+    if cleaned_content.ends_with("```"):
+        cleaned_content = cleaned_content.substr(0, cleaned_content.length() - 3).strip_edges()
+    
+    logger.info("AICommandProcessor", "Cleaned content preview: %s" % cleaned_content.substr(0, min(200, cleaned_content.length())))
+    
+    # Parse the JSON response
     var json = JSON.new()
-    var error = json.parse(content)
+    var error = json.parse(cleaned_content)
     if error != OK:
-        # This should never happen with structured outputs
-        logger.error("AICommandProcessor", "Unexpected JSON parsing error with structured outputs: %s" % json.get_error_message())
+        logger.error("AICommandProcessor", "JSON parsing error: %s" % json.get_error_message())
+        logger.error("AICommandProcessor", "Failed content: %s" % cleaned_content.substr(0, min(500, cleaned_content.length())))
         var unit_ids = context.get("expected_unit_ids", [])
-        command_failed.emit("Unexpected parsing error: " + json.get_error_message(), unit_ids)
+        command_failed.emit("JSON parsing error: " + json.get_error_message(), unit_ids)
         if active_requests.is_empty():
             processing_finished.emit()
         return
     
     var ai_response = json.data
     
+    # Debug: Show the parsed response structure
+    logger.info("AICommandProcessor", "Parsed JSON successfully, structure: %s" % str(ai_response.keys()) if ai_response is Dictionary else "Not a dictionary")
+    
     if not ai_response is Dictionary or not ai_response.has("plans"):
         logger.error("AICommandProcessor", "Invalid plan structure - missing 'plans' key")
+        logger.error("AICommandProcessor", "Received structure: %s" % str(ai_response))
         var unit_ids = context.get("expected_unit_ids", [])
         command_failed.emit("Invalid plan structure from AI", unit_ids)
         if active_requests.is_empty():
@@ -487,8 +545,16 @@ func _on_openai_response(response: Dictionary, request_id: String) -> void:
             return
     
     logger.info("AICommandProcessor", "Response received successfully for units %s" % str(received_unit_ids))
+    logger.info("AICommandProcessor", "Plans count: %d, Message: '%s', Summary: '%s'" % [ai_response.plans.size(), ai_response.get("message", ""), ai_response.get("summary", "")])
     
-    _process_multi_step_plans(ai_response)
+    # Set initial_group_command_given flag only after successful group command response
+    if expected_unit_ids.size() >= 2:  # This was a group command
+        var server_game_state = get_node_or_null("/root/DependencyContainer/GameState")
+        if server_game_state and server_game_state.has_method("set_initial_group_command_given"):
+            server_game_state.set_initial_group_command_given()
+            logger.info("AICommandProcessor", "Set initial_group_command_given flag after successful group command response")
+    
+    _process_behavior_plans(ai_response)
     
     if active_requests.is_empty():
         processing_finished.emit()
@@ -508,7 +574,7 @@ func _on_openai_error(error_type: int, error_message: String, request_id: String
     if active_requests.is_empty():
         processing_finished.emit()
 
-func _process_multi_step_plans(ai_response: Dictionary) -> void:
+func _process_behavior_plans(ai_response: Dictionary) -> void:
     var plans = ai_response.get("plans", [])
     var message = ai_response.get("message", "Executing tactical plans")
     var summary = ai_response.get("summary", "")
@@ -524,20 +590,24 @@ func _process_multi_step_plans(ai_response: Dictionary) -> void:
         return
 
     for plan_data in plans:
-        var validation_result = action_validator.validate_plan(plan_data)
-        if validation_result != null and validation_result.valid:
-            var unit_id = plan_data.get("unit_id", "")
+        # Get unit archetype for validation
+        var unit_id = plan_data.get("unit_id", "")
+        var unit_archetype = ""
+        if game_state.units.has(unit_id):
+            var unit = game_state.units[unit_id]
+            if is_instance_valid(unit) and "archetype" in unit:
+                unit_archetype = unit.archetype
+        
+        var validation_result = action_validator.validate_plan(plan_data, unit_archetype)
+        if validation_result.valid:
             
             # Set the strategic goal on the unit
-            var goal = plan_data.get("goal", "")
-            if game_state.units.has(unit_id): # Always attempt to update if unit exists
+            var goal = plan_data.get("goal", "") # Goal is still useful for high-level context
+            if game_state.units.has(unit_id):
                 var unit = game_state.units[unit_id]
                 if is_instance_valid(unit):
-                    unit.strategic_goal = goal # Set it directly. If AI provides "", it becomes "".
-                    if goal.is_empty():
-                        logger.info("AICommandProcessor", "Set goal for unit %s to empty (AI provided empty goal)." % unit_id)
-                    else:
-                        logger.info("AICommandProcessor", "Set goal for unit %s: '%s'" % [unit_id, goal])
+                    unit.strategic_goal = goal
+                    logger.info("AICommandProcessor", "Set goal for unit %s: '%s'" % [unit_id, goal])
 
             # Add summary to plan data for UI display
             if not summary.is_empty():
@@ -548,7 +618,7 @@ func _process_multi_step_plans(ai_response: Dictionary) -> void:
             else:
                 if logger: logger.warning("AICommandProcessor", "Plan execution failed for unit %s" % unit_id)
         else:
-            if logger: logger.warning("AICommandProcessor", "Plan validation failed: %s" % validation_result.error)
+            if logger: logger.warning("AICommandProcessor", "Plan validation failed for unit %s: %s" % [plan_data.get("unit_id", "N/A"), validation_result.error])
 
     if processed_plans.size() > 0:
         # Create response with summary for UI
@@ -562,11 +632,13 @@ func _on_request_timeout(request_id: String) -> void:
     if not active_requests.has(request_id):
         return # Request already handled
 
-    var context = active_requests[request_id].context
+    var request_data = active_requests[request_id]
+    var context = request_data.context
     var unit_ids = context.get("expected_unit_ids", [])
+    var actual_duration = (Time.get_ticks_msec() / 1000.0) - request_data.timestamp
     
     logger.error("AICommandProcessor", "=== REQUEST TIMEOUT ===")
-    logger.error("AICommandProcessor", "Request %s for units %s timed out after %f seconds" % [request_id, str(unit_ids), max_request_timeout])
+    logger.error("AICommandProcessor", "Request %s for units %s timed out after %.2f seconds (limit: %.2f)" % [request_id, str(unit_ids), actual_duration, max_request_timeout])
     
     active_requests.erase(request_id)
     

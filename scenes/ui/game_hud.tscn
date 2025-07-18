@@ -55,29 +55,28 @@ size_flags_horizontal = 3
 size_flags_stretch_ratio = 3.0
 placeholder_text = "Enter command for your squad..."
 
-[node name="SpawnButtons" type="HBoxContainer" parent="BottomBar/HBoxContainer"]
+[node name="UnitStatusPanel" type="PanelContainer" parent="BottomBar/HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="SpawnScout" type="Button" parent="BottomBar/HBoxContainer/SpawnButtons"]
+[node name="MarginContainer" type="MarginContainer" parent="BottomBar/HBoxContainer/UnitStatusPanel"]
 layout_mode = 2
-text = "Scout"
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
 
-[node name="SpawnTank" type="Button" parent="BottomBar/HBoxContainer/SpawnButtons"]
+[node name="VBoxContainer" type="VBoxContainer" parent="BottomBar/HBoxContainer/UnitStatusPanel/MarginContainer"]
 layout_mode = 2
-text = "Tank"
 
-[node name="SpawnSniper" type="Button" parent="BottomBar/HBoxContainer/SpawnButtons"]
+[node name="HeaderLabel" type="Label" parent="BottomBar/HBoxContainer/UnitStatusPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
-text = "Sniper"
+text = "Your Units"
+horizontal_alignment = 1
 
-[node name="SpawnMedic" type="Button" parent="BottomBar/HBoxContainer/SpawnButtons"]
+[node name="UnitList" type="VBoxContainer" parent="BottomBar/HBoxContainer/UnitStatusPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
-text = "Medic"
-
-[node name="SpawnEngineer" type="Button" parent="BottomBar/HBoxContainer/SpawnButtons"]
-layout_mode = 2
-text = "Engineer"
+size_flags_vertical = 3
 
 [node name="CommandStatusPanel" type="PanelContainer" parent="."]
 layout_mode = 1
@@ -145,7 +144,7 @@ anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = -400.0
-offset_top = -250.0
+offset_top = -400.0
 offset_right = -10.0
 offset_bottom = -90.0
 grow_horizontal = 0

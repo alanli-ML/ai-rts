@@ -99,3 +99,44 @@ func lay_mines(_params: Dictionary):
 	
 	current_state = GameEnums.UnitState.IDLE
 	action_complete = true
+
+func construct_turret(_params: Dictionary):
+	if current_state == GameEnums.UnitState.CONSTRUCTING:
+		return # Already building something
+
+	print("%s is starting to construct a turret." % unit_id)
+	current_state = GameEnums.UnitState.CONSTRUCTING
+	can_move = false
+	action_complete = false
+	
+	# Get construction time from turret config
+	var turret_config = GameConstants.get_unit_config("turret")
+	var construction_time = turret_config.get("build_time", 15.0)
+
+	await get_tree().create_timer(construction_time).timeout
+
+	if not is_instance_valid(self) or current_state != GameEnums.UnitState.CONSTRUCTING:
+		# Engineer was interrupted
+		can_move = true
+		return
+
+	var game_state = get_node_or_null("/root/DependencyContainer/GameState")
+	if not game_state:
+		print("Engineer %s: GameState not found." % unit_id)
+		current_state = GameEnums.UnitState.IDLE
+		can_move = true
+		action_complete = true
+		return
+
+	# Spawn turret in front of the engineer
+	var spawn_pos = global_position + transform.basis.z * -3.0 # 3 units in front
+	var turret_unit_id = await game_state.spawn_unit("turret", team_id, spawn_pos, unit_id)
+
+	if not turret_unit_id.is_empty():
+		print("%s finished constructing turret %s." % [unit_id, turret_unit_id])
+	else:
+		print("%s failed to construct turret." % unit_id)
+		
+	current_state = GameEnums.UnitState.IDLE
+	can_move = true
+	action_complete = true

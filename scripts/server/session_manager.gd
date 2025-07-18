@@ -658,12 +658,27 @@ func _spawn_initial_units(session: Dictionary, map_node: Node) -> void:
         var base_position = team_spawns.get(team_id, Vector3.ZERO)
         _log_info("Spawning initial units for team %d with %d players" % [team_id, team_players.size()])
         
-        # Spawn a mixed squad for this team
+        # Spawn a mixed squad for this team using safe spawn positions
         var archetypes = ["scout", "tank", "sniper", "medic", "engineer"]
+        var home_base_manager = get_tree().get_first_node_in_group("home_base_managers")
+        
         for i in range(archetypes.size()):
             var archetype = archetypes[i]
-            # Spacing increased from 3 to 6 to prevent collision shapes (radius 2.5) from overlapping at spawn.
-            var unit_position = base_position + Vector3(i * 6, 1, 0) # Spawn at Y=1 to be above ground
+            
+            # Use home base manager's safe spawn positioning
+            var unit_position: Vector3
+            if home_base_manager:
+                # Create safe offset for each unit in formation
+                var formation_offset = Vector3(i * 4, 1, 0) # Reduced spacing to 4 units
+                unit_position = home_base_manager.get_spawn_position_with_offset(team_id, formation_offset)
+            else:
+                # Fallback with manual bounds checking
+                var raw_position = base_position + Vector3(i * 4, 1, 0)
+                unit_position = Vector3(
+                    clamp(raw_position.x, -40.0, 40.0),
+                    raw_position.y,
+                    clamp(raw_position.z, -40.0, 40.0)
+                )
             
             var unit_id = await game_state.spawn_unit(archetype, team_id, unit_position, representative_player)
             _log_info("Spawned %s unit %s for team %d at %s" % [archetype, unit_id, team_id, unit_position])

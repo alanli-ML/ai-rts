@@ -1,0 +1,168 @@
+{
+  "layout_name": "Default Urban Layout",
+  "layout_version": "1.0",
+  "description": "A balanced urban layout with commercial core, industrial zones, and residential areas",
+  "map_settings": {
+    "map_size": [100, 100],
+    "map_center": [0, 0, 0],
+    "building_scale": 1.0,
+    "road_scale": 1.0
+  },
+  "districts": [
+    {
+      "district_name": "Commercial Core",
+      "district_type": "commercial",
+      "district_id": "commercial_center",
+      "bounds_center": [0, 0],
+      "bounds_size": [40, 40],
+      "building_density": 0.7,
+      "max_buildings": 20,
+      "preferred_building_types": ["commercial", "skyscraper"],
+      "strategic_value": 4,
+      "theme_color": [0.2, 0.4, 1.0, 1.0],
+      "height_preference": "mixed"
+    },
+    {
+      "district_name": "Industrial Northwest",
+      "district_type": "industrial", 
+      "district_id": "industrial_nw",
+      "bounds_center": [-30, -30],
+      "bounds_size": [35, 35],
+      "building_density": 0.4,
+      "max_buildings": 12,
+      "preferred_building_types": ["industrial"],
+      "strategic_value": 2,
+      "theme_color": [1.0, 0.5, 0.0, 1.0],
+      "height_preference": "high"
+    },
+    {
+      "district_name": "Industrial Southeast",
+      "district_type": "industrial",
+      "district_id": "industrial_se", 
+      "bounds_center": [30, 30],
+      "bounds_size": [35, 35],
+      "building_density": 0.4,
+      "max_buildings": 12,
+      "preferred_building_types": ["industrial"],
+      "strategic_value": 2,
+      "theme_color": [1.0, 0.5, 0.0, 1.0],
+      "height_preference": "high"
+    },
+    {
+      "district_name": "Residential Northeast",
+      "district_type": "residential",
+      "district_id": "residential_ne",
+      "bounds_center": [25, -25],
+      "bounds_size": [30, 30],
+      "building_density": 0.6,
+      "max_buildings": 18,
+      "preferred_building_types": ["residential"],
+      "strategic_value": 1,
+      "theme_color": [0.0, 1.0, 0.3, 1.0],
+      "height_preference": "low"
+    },
+    {
+      "district_name": "Residential Southwest",
+      "district_type": "residential",
+      "district_id": "residential_sw",
+      "bounds_center": [-25, 25],
+      "bounds_size": [30, 30],
+      "building_density": 0.6,
+      "max_buildings": 18,
+      "preferred_building_types": ["residential"],
+      "strategic_value": 1,
+      "theme_color": [0.0, 1.0, 0.3, 1.0],
+      "height_preference": "low"
+    }
+  ],
+  "road_network": {
+    "main_arteries": [
+      {
+        "type": "north_south_main",
+        "start": [0, -50],
+        "end": [0, 50],
+        "width": 8.0,
+        "road_type": "main_artery"
+      },
+      {
+        "type": "east_west_main", 
+        "start": [-50, 0],
+        "end": [50, 0],
+        "width": 8.0,
+        "road_type": "main_artery"
+      }
+    ],
+    "ring_roads": [
+      {
+        "center": [0, 0],
+        "radius": 35,
+        "segments": 16,
+        "width": 6.0,
+        "road_type": "ring_road"
+      }
+    ],
+    "local_streets": {
+      "spacing": 15.0,
+      "width": 3.0,
+      "density": 0.7,
+      "connect_districts": true
+    }
+  },
+  "strategic_points": [
+    {
+      "name": "Central Plaza",
+      "position": [0, 0],
+      "type": "control_point",
+      "strategic_value": 5
+    },
+    {
+      "name": "Industrial Hub Alpha",
+      "position": [-30, -30],
+      "type": "resource_point",
+      "strategic_value": 3
+    },
+    {
+      "name": "Industrial Hub Beta",
+      "position": [30, 30],
+      "type": "resource_point", 
+      "strategic_value": 3
+    },
+    {
+      "name": "Northern Residential",
+      "position": [25, -25],
+      "type": "spawn_area",
+      "strategic_value": 2
+    },
+    {
+      "name": "Southern Residential",
+      "position": [-25, 25],
+      "type": "spawn_area",
+      "strategic_value": 2
+    }
+  ],
+  "gameplay_balance": {
+    "team1_advantage_areas": ["residential_ne", "industrial_nw"],
+    "team2_advantage_areas": ["residential_sw", "industrial_se"],
+    "neutral_areas": ["commercial_center"],
+    "chokepoints": [
+      {"position": [0, 0], "width": 8.0, "name": "Central Crossroads"},
+      {"position": [-15, -15], "width": 6.0, "name": "Northwest Passage"},
+      {"position": [15, 15], "width": 6.0, "name": "Southeast Passage"}
+    ]
+  },
+  "performance_settings": {
+    "use_lod": true,
+    "lod_distances": [50.0, 100.0],
+    "max_visible_buildings": 100,
+    "spatial_partitioning": true,
+    "occlusion_culling": true
+  },
+  "editor_metadata": {
+    "created_by": "BuildingManager",
+    "creation_date": "2024-01-01",
+    "last_modified": "2024-01-01",
+    "version": "1.0",
+    "compatible_with": ["ai-rts-v1.0"],
+    "notes": "Default layout for balanced tactical gameplay with urban environment"
+  }
+} 

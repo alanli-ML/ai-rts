@@ -72,3 +72,44 @@ func check_for_victory():
     elif team_control_counts.get(2, 0) >= NODES_TO_WIN:
         victory_achieved.emit(2)
         print("NodeCaptureSystem: Victory condition met for Team 2.")
+
+func get_team_control_counts() -> Dictionary:
+    """Returns the current count of controlled nodes for each team."""
+    return team_control_counts.duplicate()
+
+func get_closest_friendly_node(position: Vector3, team_id: int) -> Node:
+    """Find the closest control point controlled by the specified team."""
+    var friendly_nodes = []
+    
+    # Find all nodes controlled by this team
+    for cp in control_points:
+        if not is_instance_valid(cp): continue
+        if cp.get_controlling_team() == team_id:
+            friendly_nodes.append(cp)
+    
+    if friendly_nodes.is_empty():
+        return null
+    
+    # Find the closest one
+    var closest_node = null
+    var closest_distance = INF
+    
+    for node in friendly_nodes:
+        var distance = position.distance_to(node.global_position)
+        if distance < closest_distance:
+            closest_distance = distance
+            closest_node = node
+    
+    return closest_node
+
+func get_control_point_by_id(node_id: String) -> Node:
+    """Get a control point by its ID."""
+    for cp in control_points:
+        if not is_instance_valid(cp): continue
+        if cp.control_point_id == node_id:
+            return cp
+    return null
+
+func get_control_points() -> Array[Node]:
+    """Get all control points."""
+    return control_points

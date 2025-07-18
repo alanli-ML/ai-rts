@@ -50,7 +50,7 @@ func _ready() -> void:
 	# Create HTTP request node for LangSmith API
 	http_request = HTTPRequest.new()
 	http_request.name = "LangSmithHTTPRequest"
-	http_request.timeout = 30.0
+	http_request.timeout = 60.0
 	add_child(http_request)
 	
 	# Connect signals

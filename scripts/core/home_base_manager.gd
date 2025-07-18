@@ -2,10 +2,10 @@
 class_name HomeBaseManager
 extends Node3D
 
-# Home base positions for teams (bottom-left and top-right corners)
+# Home base positions for teams (moved inward from edges for safety)
 const HOME_BASE_POSITIONS = {
-	1: Vector3(40, 0, 40),  # Team 1: Bottom-left corner
-	2: Vector3(-40, 0, -40)     # Team 2: Top-right corner
+	1: Vector3(30, 0, 30),  # Team 1: Bottom-right corner (moved inward)
+	2: Vector3(-30, 0, -30)     # Team 2: Top-left corner (moved inward)
 }
 
 # Unit spawn areas around home bases (radius for spawning units)
@@ -244,7 +244,7 @@ func get_home_base_position(team_id: int) -> Vector3:
 	return HOME_BASE_POSITIONS.get(team_id, Vector3.ZERO)
 
 func get_spawn_position_with_offset(team_id: int, offset: Vector3 = Vector3.ZERO) -> Vector3:
-	"""Get spawn position with random offset within spawn radius"""
+	"""Get spawn position with random offset within spawn radius, clamped to map bounds"""
 	var base_spawn = get_team_spawn_position(team_id)
 	
 	if offset == Vector3.ZERO:
@@ -257,7 +257,13 @@ func get_spawn_position_with_offset(team_id: int, offset: Vector3 = Vector3.ZERO
 			sin(angle) * radius
 		)
 	
-	return base_spawn + offset
+	var final_position = base_spawn + offset
+	
+	# Clamp to map bounds (using the same bounds as Unit class)
+	final_position.x = clamp(final_position.x, -40.0, 40.0)  # Leave 5 unit safety margin
+	final_position.z = clamp(final_position.z, -40.0, 40.0)  # Leave 5 unit safety margin
+	
+	return final_position
 
 func is_near_home_base(position: Vector3, team_id: int, max_distance: float = 20.0) -> bool:
 	"""Check if position is near a team's home base"""

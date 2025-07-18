@@ -145,6 +145,13 @@ func _create_unit(unit_data: Dictionary) -> void:
 	# Add a placeholder for the shield node if it's a tank
 	if unit_data.archetype == "tank":
 		unit_instance.set("shield_node", null)
+	
+	# Set default behavior matrix from game constants (same as server-side units)
+	var GameConstants = preload("res://scripts/shared/constants/game_constants.gd")
+	var default_matrix = GameConstants.get_default_behavior_matrix(unit_data.archetype)
+	if not default_matrix.is_empty():
+		unit_instance.behavior_matrix = default_matrix.duplicate()
+		print("ClientDisplayManager: Set default behavior matrix for unit %s (%s)" % [unit_id, unit_data.archetype])
 
 	# Add to scene tree FIRST before setting position
 	units_node.add_child(unit_instance)
@@ -182,8 +189,11 @@ func _update_unit(unit_data: Dictionary, delta: float) -> void:
 	var unit_id = unit_data.id
 	var unit_instance = displayed_units[unit_id]
 	
-	# Check for death state first
-	if unit_data.get("is_dead", false):
+	# Check for death/respawn state changes
+	var server_is_dead = unit_data.get("is_dead", false)
+	var server_is_respawning = unit_data.get("is_respawning", false)
+	
+	if server_is_dead:
 		print("DEBUG: ClientDisplayManager detected unit %s is dead (server says is_dead=true)" % unit_id)
 		if not unit_instance.is_dead:
 			print("DEBUG: ClientDisplayManager - unit %s was alive, now triggering death sequence" % unit_id)
@@ -198,6 +208,21 @@ func _update_unit(unit_data: Dictionary, delta: float) -> void:
 		else:
 			print("DEBUG: ClientDisplayManager - unit %s already marked as dead, skipping death sequence" % unit_id)
 		return # Don't process other updates for dead units
+	elif not server_is_dead and unit_instance.is_dead:
+		# Unit has respawned! Transition from dead to alive
+		print("DEBUG: ClientDisplayManager detected unit %s respawned (server says is_dead=false)" % unit_id)
+		unit_instance.is_dead = false
+		unit_instance.is_respawning = false
+		
+		if unit_instance.has_method("trigger_respawn_sequence"):
+			print("DEBUG: ClientDisplayManager - calling trigger_respawn_sequence() on unit %s" % unit_id)
+			unit_instance.trigger_respawn_sequence()
+		else:
+			print("DEBUG: ClientDisplayManager - unit %s has no trigger_respawn_sequence(), using fallback" % unit_id)
+			# Fallback for non-animated units
+			unit_instance.visible = true
+		
+		print("DEBUG: ClientDisplayManager - unit %s respawn transition completed" % unit_id)
 	
 	var target_pos = Vector3(unit_data.position.x, unit_data.position.y, unit_data.position.z)
 	
@@ -227,18 +252,18 @@ func _update_unit(unit_data: Dictionary, delta: float) -> void:
 		if unit_instance.has_method("update_plan_summary"):
 			unit_instance.update_plan_summary(unit_data.plan_summary)
 		else:
-			unit_instance.plan_summary = unit_data.plan_summary
+			unit_instance.set("plan_summary", unit_data.plan_summary)
 	
 	# Update strategic goal from server
 	if unit_data.has("strategic_goal"):
-		unit_instance.strategic_goal = unit_data.strategic_goal
+		unit_instance.set("strategic_goal", unit_data.strategic_goal)
 		# Also update status bar if it exists
 		if unit_instance.has_method("refresh_status_bar"):
 			unit_instance.refresh_status_bar()
 	
 	# Update AI processing status from server
 	if unit_data.has("waiting_for_ai"):
-		unit_instance.waiting_for_ai = unit_data.waiting_for_ai
+		unit_instance.set("waiting_for_ai", unit_data.waiting_for_ai)
 		# Update status bar to show processing state if needed
 		if unit_instance.has_method("set_ai_processing_status"):
 			unit_instance.set_ai_processing_status(unit_data.waiting_for_ai)
@@ -254,10 +279,45 @@ func _update_unit(unit_data: Dictionary, delta: float) -> void:
 	# Update full plan data from server
 	if unit_data.has("full_plan"):
 		# Store full plan data directly on the unit for HUD access
-		unit_instance.full_plan = unit_data.full_plan
+		unit_instance.set("full_plan", unit_data.full_plan)
 		# Also call update method if available
 		if unit_instance.has_method("update_full_plan"):
 			unit_instance.update_full_plan(unit_data.full_plan)
+	
+	# NOTE: active_triggers and all_triggers are deprecated - replaced by behavior matrix system
+	# Skipping these assignments to avoid property errors on client units
+
+	# Update behavior matrix and scores for UI
+	var behavior_data_updated = false
+	if unit_data.has("behavior_matrix"):
+		# Use set() for safer property assignment
+		unit_instance.set("behavior_matrix", unit_data.behavior_matrix)
+		behavior_data_updated = true
+	if unit_data.has("last_action_scores"):
+		# print("DEBUG: ClientDisplayManager updating unit %s with server action scores: %s" % [unit_id, str(unit_data.last_action_scores)])
+		unit_instance.set("last_action_scores", unit_data.last_action_scores)
+		behavior_data_updated = true
+	if unit_data.has("last_state_variables"):
+		unit_instance.set("last_state_variables", unit_data.last_state_variables)
+		behavior_data_updated = true
+	if unit_data.has("current_reactive_state"):
+		# print("DEBUG: ClientDisplayManager updating unit %s with server reactive state: %s" % [unit_id, unit_data.current_reactive_state])
+		unit_instance.set("current_reactive_state", unit_data.current_reactive_state)
+		behavior_data_updated = true
+	
+	# Refresh status bar when behavior matrix data changes
+	if behavior_data_updated:
+		# Force status bar to refresh its behavior matrix display
+		if unit_instance.has_method("refresh_status_bar"):
+			unit_instance.refresh_status_bar()
+		
+		# Also force the status bar to update its behavior display directly
+		var status_bar = unit_instance.get_node_or_null("UnitStatusBar")
+		if status_bar and status_bar.has_method("force_refresh"):
+			status_bar.force_refresh()
+		
+		# Also refresh the HUD selection display if this unit is currently selected
+		_refresh_hud_if_unit_selected(unit_instance)
 
 	# Update shield visual (only for units that support shields)
 	if unit_data.has("shield_active") and "shield_node" in unit_instance:
@@ -281,6 +341,11 @@ func _update_unit(unit_data: Dictionary, delta: float) -> void:
 				else:
 					_set_model_transparency(model_container, 1.0)
 				unit_instance.set_meta("was_stealthed", unit_data.is_stealthed)
+
+	# Update charge shot data for snipers
+	if unit_data.has("charge_timer") and unit_data.has("charge_time"):
+		if unit_instance.has_method("update_charge_data"):
+			unit_instance.update_charge_data(unit_data.charge_timer, unit_data.charge_time)
 
 func _set_model_transparency(model_container: Node3D, alpha_value: float) -> void:
 	"""Set transparency for all MeshInstance3D nodes in the model container"""
@@ -356,6 +421,41 @@ func remove_unit(unit_id: String) -> void:
 				unit_instance.queue_free()
 				
 		print("ClientDisplayManager: Removed unit %s" % unit_id)
+
+func _refresh_hud_if_unit_selected(unit_instance: Node) -> void:
+	"""Refresh the HUD selection display if the given unit is currently selected"""
+	# Find the selection system to check if this unit is selected
+	var selection_system = null
+	var selection_nodes = get_tree().get_nodes_in_group("selection_systems")
+	if not selection_nodes.is_empty():
+		selection_system = selection_nodes[0]
+	
+	if not selection_system:
+		return
+	
+	# Check if this unit is currently selected
+	var selected_units = selection_system.get_selected_units()
+	var is_selected = false
+	for selected_unit in selected_units:
+		if selected_unit == unit_instance:
+			is_selected = true
+			break
+	
+	if not is_selected:
+		return
+	
+	# Find the game HUD and refresh its selection display
+	var game_hud = get_tree().get_first_node_in_group("game_hud")
+	if not game_hud:
+		# Fallback: try to find it via path
+		game_hud = get_node_or_null("/root/UnifiedMain/GameHUD")
+	
+	if game_hud and game_hud.has_method("_update_selection_display"):
+		game_hud._update_selection_display(selected_units)
+	
+	# Also specifically refresh behavior matrix display if the method exists
+	if game_hud and game_hud.has_method("_refresh_behavior_matrix_display"):
+		game_hud._refresh_behavior_matrix_display()
 
 func cleanup() -> void:
 	for unit_id in displayed_units:

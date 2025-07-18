@@ -12,6 +12,7 @@ const ARCHETYPE_SCRIPTS = {
 	"sniper": "res://scripts/units/sniper_unit.gd",
 	"medic": "res://scripts/units/medic_unit.gd",
 	"engineer": "res://scripts/units/engineer_unit.gd",
+	"turret": "res://scripts/units/turret.gd",
 }
 
 func spawn_initial_squads(map_node: Node) -> void:

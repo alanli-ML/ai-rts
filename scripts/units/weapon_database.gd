@@ -45,6 +45,13 @@ const WEAPON_ASSIGNMENTS = {
 		"attachments": ["scope_small", "clip_large"],
 		"preferred_range": "medium",
 		"combat_style": "utility"
+	},
+	"turret": {
+		"primary": ["blaster-e"], # Engineer's utility carbine
+		"secondary": [],
+		"attachments": [],
+		"preferred_range": "medium",
+		"combat_style": "defensive"
 	}
 }
 

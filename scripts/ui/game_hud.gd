@@ -2,16 +2,15 @@
 class_name GameHUD
 extends Control
 
+# Load shared constants
+const GameConstants = preload("res://scripts/shared/constants/game_constants.gd")
+
 # UI References
 @onready var energy_label = $TopBar/HBoxContainer/EnergyLabel
 @onready var node_label = $TopBar/HBoxContainer/NodeLabel
 @onready var action_queue_list = $UnitActionQueuePanel/MarginContainer/ScrollContainer/ActionQueueList
 @onready var command_input = $BottomBar/HBoxContainer/CommandInput
-@onready var spawn_scout_button = $BottomBar/HBoxContainer/SpawnButtons/SpawnScout
-@onready var spawn_tank_button = $BottomBar/HBoxContainer/SpawnButtons/SpawnTank
-@onready var spawn_sniper_button = $BottomBar/HBoxContainer/SpawnButtons/SpawnSniper
-@onready var spawn_medic_button = $BottomBar/HBoxContainer/SpawnButtons/SpawnMedic
-@onready var spawn_engineer_button = $BottomBar/HBoxContainer/SpawnButtons/SpawnEngineer
+@onready var unit_status_panel = $BottomBar/HBoxContainer/UnitStatusPanel/MarginContainer/VBoxContainer/UnitList
 @onready var hover_tooltip = $HoverTooltip
 @onready var command_status_label = $CommandStatusPanel/MarginContainer/VBoxContainer/StatusLabel
 @onready var command_summary_label = $CommandStatusPanel/MarginContainer/VBoxContainer/SummaryLabel
@@ -24,7 +23,29 @@ var selection_system
 var audio_manager
 var ai_command_processor
 
+# Player units tracking
+var player_units: Dictionary = {}  # unit_id -> unit_data
+var unit_bars: Dictionary = {}     # unit_id -> UI control
+var is_refreshing_units: bool = false  # Prevent concurrent refreshes
+
+# Auto-refresh for behavior matrix display
+var behavior_refresh_timer: float = 0.0
+const BEHAVIOR_REFRESH_INTERVAL: float = 0.2  # Reduced from 0.2 to 1.0 - Update once per second instead of 5 times per second
+
+# Cached validator to avoid expensive instantiation
+var cached_action_validator = null
+
+# Cache for behavior matrix data to avoid unnecessary UI rebuilds
+var last_behavior_data_cache: Dictionary = {}  # unit_id -> last_known_action_scores
+
 func _ready() -> void:
+    # Add to group for easy discovery
+    add_to_group("game_hud")
+    
+    # Initialize cached validator to avoid expensive creation during gameplay
+    var validator_script = preload("res://scripts/ai/action_validator.gd")
+    cached_action_validator = validator_script.new()
+    
     # Get system references from DependencyContainer
     var dc = get_node_or_null("/root/DependencyContainer")
     if dc:
@@ -54,11 +75,7 @@ func _ready() -> void:
         ai_command_processor.command_failed.connect(_on_ai_command_failed) # This can still be used for local host feedback
     
     command_input.text_submitted.connect(_on_command_submitted)
-    spawn_scout_button.pressed.connect(func(): _on_spawn_pressed("scout"))
-    spawn_tank_button.pressed.connect(func(): _on_spawn_pressed("tank"))
-    spawn_sniper_button.pressed.connect(func(): _on_spawn_pressed("sniper"))
-    spawn_medic_button.pressed.connect(func(): _on_spawn_pressed("medic"))
-    spawn_engineer_button.pressed.connect(func(): _on_spawn_pressed("engineer"))
+    # Unit spawning is now handled via RPC commands, not direct buttons
     
     # Make command input active by default and capture keyboard input
     _setup_command_input()
@@ -120,9 +137,15 @@ func _unhandled_input(event: InputEvent):
             command_input.grab_focus()
             # Let the input be processed by the LineEdit
 
-func _physics_process(_delta):
+func _physics_process(delta):
     if hover_tooltip.visible:
         hover_tooltip.global_position = get_global_mouse_position() + Vector2(15, 15)
+    
+    # Auto-refresh behavior matrix display for selected units
+    behavior_refresh_timer += delta
+    if behavior_refresh_timer >= BEHAVIOR_REFRESH_INTERVAL:
+        behavior_refresh_timer = 0.0
+        _refresh_behavior_matrix_display()
 
 func _find_selection_system():
     # The selection system is added to a group, which is a robust way to find it
@@ -155,6 +178,8 @@ func _on_node_count_changed(team_id: int, new_count: int):
         _update_node_display(new_count)
 
 func _on_selection_changed(selected_units: Array):
+    # Clear behavior cache when selection changes to ensure fresh comparisons
+    last_behavior_data_cache.clear()
     _update_selection_display(selected_units)
 
 func _on_unit_hovered(unit: Unit):
@@ -214,15 +239,6 @@ func _on_command_submitted(text: String):
     command_input.clear()
     command_input.grab_focus()  # Immediately ready for next command
 
-func _on_spawn_pressed(archetype: String):
-    if audio_manager:
-        audio_manager.play_sound_2d("res://assets/audio/ui/click_01.wav")
-
-    if team_unit_spawner:
-        # Assuming client is team 1 for now
-        # In a real game, we'd get the client's actual team ID
-        team_unit_spawner.request_spawn_unit(1, archetype)
-
 func _update_energy_display(amount: int, rate: float):
     energy_label.text = "Energy: %d (+%.1f/s)" % [amount, rate]
 
@@ -275,28 +291,9 @@ func _update_selection_display(selected_units: Array):
             separator_mini.fit_content = true
             action_queue_list.add_child(separator_mini)
             
-            # Show detailed plan if available
-            var full_plan = []
-            if "full_plan" in unit and unit.full_plan is Array:
-                full_plan = unit.full_plan
-            
-            if not full_plan.is_empty():
-                var sequential_steps = full_plan.filter(func(s): return s.get("status") != "triggered")
+            # New: Show behavior matrix activations
+            _add_behavior_activations_display(unit)
 
-                if not sequential_steps.is_empty():
-                    _add_detailed_plan_display(sequential_steps)
-                else:
-                    var no_plan_label = RichTextLabel.new()
-                    no_plan_label.bbcode_enabled = true
-                    no_plan_label.text = "[i]No sequential plan.[/i]"
-                    no_plan_label.fit_content = true
-                    action_queue_list.add_child(no_plan_label)
-            else:
-                _add_simple_status_display(unit)
-            
-            # Show triggered actions from the new dictionary format
-            _add_triggered_actions_display(unit)
-            
             # Add separator between units if multiple selected
             if selected_units.size() > 1:
                 var separator = Label.new()
@@ -304,113 +301,91 @@ func _update_selection_display(selected_units: Array):
                 separator.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
                 action_queue_list.add_child(separator)
 
-
-
-func _add_detailed_plan_display(full_plan: Array) -> void:
-    """Add detailed plan display to the action queue panel"""
-    for i in range(full_plan.size()):
-        var step = full_plan[i]
-        var action = step.get("action", "Unknown")
-        var status = step.get("status", "pending")
-        var trigger = step.get("trigger", "")
-        if trigger == null:
-            trigger = ""
-        
-        # Status indicator
-        var status_icon = ""
-        var status_color = "white"
-        match status:
-            "completed":
-                status_icon = "✓"
-                status_color = "green"
-            "active":
-                status_icon = "►"
-                status_color = "yellow"
-            "pending":
-                status_icon = "○"
-                status_color = "gray"
-            "triggered":
-                status_icon = "⚡" # Lightning bolt for trigger
-                status_color = "orange"
-        
-        # Action color
-        var action_color = _get_action_color_hud(action)
-        
-        # Build step text
-        var step_text = "[font_size=16][color=%s]%s[/color] [color=%s]%s[/color]" % [status_color, status_icon, action_color, action]
-        
-        # Add trigger info if available and step is not completed
-        if not trigger.is_empty() and status != "completed":
-            var short_trigger = _shorten_trigger_hud(trigger)
-            step_text += " [color=lightgray][font_size=14](%s)[/font_size][/color]" % short_trigger
-        
-        step_text += "[/font_size]"
-        
-        var step_label = RichTextLabel.new()
-        step_label.bbcode_enabled = true
-        step_label.text = step_text
-        step_label.fit_content = true
-        action_queue_list.add_child(step_label)
-
-func _add_simple_status_display(unit: Node) -> void:
-    """Add simple status display for units without full plan data"""
-    var plan_summary = "Idle"
-    if "plan_summary" in unit:
-        plan_summary = unit.plan_summary
-    
-    var status_text = "[font_size=16][color=lightblue]%s[/color][/font_size]" % plan_summary
-    
-    var status_label = RichTextLabel.new()
-    status_label.bbcode_enabled = true
-    status_label.text = status_text
-    status_label.fit_content = true
-    action_queue_list.add_child(status_label)
-
-func _add_triggered_actions_display(unit: Node) -> void:
-    """Add triggered actions display for the new dictionary format"""
-    if not "triggered_actions" in unit:
+func _add_behavior_activations_display(unit: Node) -> void:
+    """Add a display for the unit's real-time action activation scores."""
+    var scores = unit.last_action_scores if "last_action_scores" in unit else {}
+    if scores.is_empty():
+        var no_data_label = RichTextLabel.new()
+        no_data_label.bbcode_enabled = true
+        no_data_label.text = "[i]No activation data available.[/i]"
+        no_data_label.fit_content = true
+        action_queue_list.add_child(no_data_label)
         return
-    
-    var triggered_actions = unit.triggered_actions
-    if not triggered_actions is Dictionary or triggered_actions.is_empty():
-        return
-    
+
+    # Filter actions to only show those valid for the unit's archetype
+    var unit_archetype = unit.archetype if "archetype" in unit else "general"
+    var valid_actions = cached_action_validator.get_valid_actions_for_archetype(unit_archetype)
+
     # Add separator and header
     var separator = RichTextLabel.new()
     separator.bbcode_enabled = true
-    separator.text = "\n[center][color=gray]─── Triggered Actions ───[/color][/center]"
+    separator.text = "\n[center][color=gray]─── Live Activations ───[/color][/center]"
     separator.fit_content = true
     action_queue_list.add_child(separator)
+
+    var sorted_scores = []
+    for action_name in scores:
+        # Only include actions valid for this unit's archetype
+        if action_name in valid_actions:
+            sorted_scores.append({"name": action_name, "score": scores[action_name]})
     
-    # Display each trigger-action pair
-    for trigger_name in triggered_actions:
-        var action = triggered_actions[trigger_name]
-        var trigger_display = _format_trigger_name(trigger_name)
-        var action_color = _get_action_color_hud(action)
+    sorted_scores.sort_custom(func(a, b): return a.score > b.score)
+
+    for item in sorted_scores:
+        var action_name = item.name
+        var score = item.score
         
-        var trigger_text = "[font_size=14][color=orange]⚡[/color] [color=lightgray]%s[/color] → [color=%s]%s[/color][/font_size]" % [trigger_display, action_color, action.capitalize().replace("_", " ")]
+        var action_display = action_name.capitalize().replace("_", " ")
+        var action_color = _get_action_color_hud(action_name)
+
+        var hbox = HBoxContainer.new()
+        hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+        var name_label = Label.new()
+        name_label.text = action_display
+        name_label.custom_minimum_size.x = 100
+        name_label.add_theme_color_override("font_color", action_color)
+        hbox.add_child(name_label)
         
-        var trigger_label = RichTextLabel.new()
-        trigger_label.bbcode_enabled = true
-        trigger_label.text = trigger_text
-        trigger_label.fit_content = true
-        action_queue_list.add_child(trigger_label)
+        var progress_bar = ProgressBar.new()
+        progress_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        progress_bar.min_value = -1.0
+        progress_bar.max_value = 1.0
+        progress_bar.value = score
+        progress_bar.show_percentage = false
+        
+        # Style the progress bar
+        var fill_style = StyleBoxFlat.new()
+        fill_style.bg_color = action_color
+        progress_bar.add_theme_stylebox_override("fill", fill_style)
+        
+        hbox.add_child(progress_bar)
+        
+        var score_label = Label.new()
+        score_label.text = "%.2f" % score
+        score_label.custom_minimum_size.x = 40
+        score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+        hbox.add_child(score_label)
+        
+        action_queue_list.add_child(hbox)
 
 func _format_trigger_name(trigger_name: String) -> String:
     """Format trigger name for display"""
     match trigger_name:
+        "on_enemy_in_range":
+            return "Enemy in Range"
         "on_enemy_sighted":
-            return "Enemy in range"
+            return "Enemy Sighted"
         "on_under_attack":
-            return "Taking damage"
+            return "Under Attack"
         "on_health_low":
-            return "Health < 50%"
+            return "Low Health"
         "on_health_critical":
-            return "Health < 25%"
+            return "Critical Health"
         "on_ally_health_low":
-            return "Ally needs help"
+            return "Ally Injured"
         _:
-            return trigger_name.replace("_", " ").capitalize()
+            return trigger_name.replace("_", " ").replace("on ", "").capitalize()
 
 func _get_action_color_hud(action: String) -> String:
     """Get color for action type in HUD display"""
@@ -535,6 +510,57 @@ func update_ai_command_feedback(summary_text: String, status_text: String) -> vo
     # This function is now the end point, not starting a new timer here.
     pass
 
+func _refresh_behavior_matrix_display() -> void:
+    """Refresh only the behavior matrix display for currently selected units"""
+    if not selection_system:
+        return
+    
+    var selected_units = selection_system.get_selected_units()
+    if selected_units.is_empty():
+        last_behavior_data_cache.clear()  # Clear cache when no units selected
+        return
+    
+    # Check if any selected unit has actually changed behavior matrix data
+    var has_changes = false
+    for unit in selected_units:
+        if not is_instance_valid(unit):
+            continue
+        
+        var unit_id = unit.unit_id if "unit_id" in unit else ""
+        if unit_id.is_empty():
+            continue
+            
+        var current_scores = unit.last_action_scores if "last_action_scores" in unit else {}
+        var cached_scores = last_behavior_data_cache.get(unit_id, {})
+        
+        # Compare current scores with cached scores
+        if not _dictionaries_equal(current_scores, cached_scores):
+            has_changes = true
+            last_behavior_data_cache[unit_id] = current_scores.duplicate() if current_scores else {}
+    
+    # Only do expensive UI rebuild if data actually changed
+    if has_changes:
+        _update_selection_display(selected_units)
+
+func _dictionaries_equal(dict1: Dictionary, dict2: Dictionary) -> bool:
+    """Compare two dictionaries for equality (including nested values)"""
+    if dict1.size() != dict2.size():
+        return false
+    
+    for key in dict1:
+        if not dict2.has(key):
+            return false
+        # Use small epsilon for float comparison
+        var val1 = dict1[key]
+        var val2 = dict2[key]
+        if typeof(val1) == TYPE_FLOAT and typeof(val2) == TYPE_FLOAT:
+            if abs(val1 - val2) > 0.001:  # Small epsilon for float comparison
+                return false
+        elif val1 != val2:
+            return false
+    
+    return true
+
 
 func _find_selection_system_old():
     """Find the selection system using multiple approaches"""
@@ -555,3 +581,178 @@ func _find_selection_system_old():
         return
 
     print("GameHUD: Warning - Could not find selection system")
+
+# ========== Unit Status Panel Methods ==========
+
+func update_player_units(units_data: Array, player_peer_id: int = -1) -> void:
+    """Update the display of units controlled by this player"""
+    # Clear previous data
+    player_units.clear()
+    
+    # If no peer ID provided, try to get local player's peer ID  
+    if player_peer_id == -1:
+        player_peer_id = multiplayer.get_unique_id()
+    
+    # Find units that belong to this player's team
+    var player_team_id = _get_player_team_id(player_peer_id)
+    if player_team_id == -1:
+        return
+    
+    # Filter units by team (units_data is now an Array of unit dictionaries)
+    for unit_data in units_data:
+        if unit_data.has("team_id") and unit_data.team_id == player_team_id:
+            var unit_id = unit_data.get("id", "")
+            if not unit_id.is_empty():
+                player_units[unit_id] = unit_data
+    
+    # Update the UI (call async method safely)
+    _refresh_unit_status_display()
+
+func _get_player_team_id(peer_id: int) -> int:
+    """Get the team ID for a given peer ID"""
+    # Try to get session manager to find player's team
+    var session_manager = get_node_or_null("/root/DependencyContainer/SessionManager")
+    if not session_manager:
+        return _get_team_id_from_unified_main()
+        
+    var session_id = session_manager.get_player_session(peer_id)
+    if session_id.is_empty():
+        return _get_team_id_from_unified_main()
+        
+    var session = session_manager.get_session(session_id)
+    if not session:
+        return _get_team_id_from_unified_main()
+    
+    # Find player in session
+    for player_id in session.players:
+        var player = session.players[player_id]
+        if player.peer_id == peer_id:
+            return player.team_id
+    
+    return _get_team_id_from_unified_main()
+
+func _get_team_id_from_unified_main() -> int:
+    """Get team ID from UnifiedMain as backup when SessionManager fails"""
+    var unified_main = get_node_or_null("/root/UnifiedMain")
+    if not unified_main:
+        return -1
+    
+    if "client_team_id" in unified_main:
+        return unified_main.client_team_id
+    
+    return -1
+
+func _refresh_unit_status_display() -> void:
+    """Refresh the unit status panel with current player units"""
+    if not unit_status_panel:
+        return
+    
+    # Only refresh if not already refreshing
+    if is_refreshing_units:
+        return
+    is_refreshing_units = true
+
+    # Clear existing bars properly
+    for bar_data in unit_bars.values():
+        if bar_data.has("container") and is_instance_valid(bar_data["container"]):
+            bar_data["container"].queue_free()
+    unit_bars.clear()
+    
+    # Also clear all children directly from the panel to ensure immediate cleanup
+    for child in unit_status_panel.get_children():
+        child.queue_free()
+    
+    # Wait a frame to ensure cleanup is complete before creating new bars
+    await get_tree().process_frame
+    
+    # Create bars for each player unit
+    for unit_id in player_units:
+        var unit_data = player_units[unit_id]
+        _create_unit_bar(unit_id, unit_data)
+    
+    is_refreshing_units = false
+
+func _create_unit_bar(unit_id: String, unit_data: Dictionary) -> void:
+    """Create a health/respawn bar for a unit"""
+    var bar_container = HBoxContainer.new()
+    unit_status_panel.add_child(bar_container)
+    
+    # Unit ID label
+    var id_label = Label.new()
+    id_label.text = unit_id
+    id_label.custom_minimum_size.x = 80
+    id_label.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+    bar_container.add_child(id_label)
+    
+    # Health/Respawn bar
+    var progress_bar = ProgressBar.new()
+    progress_bar.custom_minimum_size = Vector2(100, 20)
+    progress_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    progress_bar.show_percentage = false
+    bar_container.add_child(progress_bar)
+    
+    # Status label (health/respawn time)
+    var status_label = Label.new()
+    status_label.custom_minimum_size.x = 60
+    status_label.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+    bar_container.add_child(status_label)
+    
+    # Store references
+    unit_bars[unit_id] = {
+        "container": bar_container,
+        "progress_bar": progress_bar,
+        "status_label": status_label,
+        "id_label": id_label
+    }
+    
+    # Update the bar with current data
+    _update_unit_bar(unit_id, unit_data)
+
+func _update_unit_bar(unit_id: String, unit_data: Dictionary) -> void:
+    """Update a specific unit's health/respawn bar"""
+    if not unit_bars.has(unit_id):
+        return
+    
+    var bar_elements = unit_bars[unit_id]
+    var progress_bar = bar_elements.progress_bar
+    var status_label = bar_elements.status_label
+    
+    var is_dead = unit_data.get("is_dead", false)
+    var is_respawning = unit_data.get("is_respawning", false)
+    var respawn_timer = unit_data.get("respawn_timer", 0.0)
+    var current_health = unit_data.get("current_health", 100.0)
+    var max_health = unit_data.get("max_health", 100.0)
+    
+    if is_dead and is_respawning:
+        # Show respawn timer
+        progress_bar.max_value = GameConstants.UNIT_RESPAWN_TIME
+        progress_bar.value = GameConstants.UNIT_RESPAWN_TIME - respawn_timer
+        progress_bar.modulate = Color.YELLOW
+        status_label.text = "%ds" % int(respawn_timer)
+    elif is_dead:
+        # Dead but not respawning yet
+        progress_bar.max_value = 1.0
+        progress_bar.value = 0.0
+        progress_bar.modulate = Color.RED
+        status_label.text = "DEAD"
+    else:
+        # Show health
+        progress_bar.max_value = max_health
+        progress_bar.value = current_health
+        var health_pct = current_health / max_health if max_health > 0 else 0.0
+        
+        # Color based on health percentage
+        if health_pct > 0.7:
+            progress_bar.modulate = Color.GREEN
+        elif health_pct > 0.3:
+            progress_bar.modulate = Color.YELLOW
+        else:
+            progress_bar.modulate = Color.RED
+            
+        status_label.text = "%d/%d" % [int(current_health), int(max_health)]
+
+func update_unit_data(unit_id: String, unit_data: Dictionary) -> void:
+    """Update data for a specific unit and refresh its bar"""
+    if player_units.has(unit_id):
+        player_units[unit_id] = unit_data
+        _update_unit_bar(unit_id, unit_data)

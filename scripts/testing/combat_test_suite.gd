@@ -183,7 +183,7 @@ func _test_abilities(archetype: String):
             if is_instance_valid(injured_ally):
                 injured_ally.take_damage(50)
                 await get_tree().create_timer(0.5).timeout
-                _execute_action(unit, "heal_target", {"target_id": injured_ally.unit_id})
+                _execute_action(unit, "heal_ally", {"target_id": injured_ally.unit_id})
         "engineer":
             _execute_action(unit, "lay_mines", {})
             await get_tree().create_timer(6.0).timeout

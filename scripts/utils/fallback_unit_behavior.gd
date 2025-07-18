@@ -15,6 +15,14 @@ var is_dead: bool = false
 # Navigation
 var navigation_agent: NavigationAgent3D
 
+# Map boundaries (prevent units from falling off the edge)
+const MAP_BOUNDS = {
+    "min_x": -45.0,
+    "max_x": 45.0,
+    "min_z": -45.0,
+    "max_z": 45.0
+}
+
 # Selection state
 var is_selected: bool = false
 var selection_highlight: Node3D = null
@@ -83,8 +91,18 @@ func connect_death_signal(callback: Callable) -> void:
 
 func move_to(target_position: Vector3) -> void:
 	if navigation_agent and not is_dead:
-		navigation_agent.target_position = target_position
-		print("FallbackUnit %s moving to %s" % [unit_id, target_position])
+		# Clamp target position to map boundaries
+		var clamped_position = _clamp_to_map_bounds(target_position)
+		navigation_agent.target_position = clamped_position
+		print("FallbackUnit %s moving to %s" % [unit_id, clamped_position])
+
+func _clamp_to_map_bounds(position: Vector3) -> Vector3:
+	"""Clamp a position to stay within map boundaries"""
+	return Vector3(
+		clamp(position.x, MAP_BOUNDS.min_x, MAP_BOUNDS.max_x),
+		position.y,  # Don't clamp Y axis
+		clamp(position.z, MAP_BOUNDS.min_z, MAP_BOUNDS.max_z)
+	)
 
 func get_health_percentage() -> float:
 	return current_health / max_health if max_health > 0 else 0.0

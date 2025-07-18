@@ -8,6 +8,9 @@ const GameConstants = preload("res://scripts/shared/constants/game_constants.gd"
 const UnitStatusBarScene = preload("res://scenes/units/UnitStatusBar.tscn")
 const UnitHealthBarScene = preload("res://scenes/units/UnitHealthBar.tscn")
 const UnitRangeVisualizationScene = preload("res://scenes/units/UnitRangeVisualization.tscn")
+const ActionValidator = preload("res://scripts/ai/action_validator.gd")
+
+const KITING_DISTANCE_BUFFER: float = 2.0
 
 const TRIGGER_PRIORITIES = {
     "on_health_critical": 5,
@@ -63,17 +66,34 @@ var invulnerable: bool = false
 var invulnerability_timer: float = 0.0
 
 # New action state variables
-var current_action: Dictionary = {}
+var current_action: Dictionary = {} # For legacy actions, will be phased out
 var action_complete: bool = true
 var _old_action_complete: bool = true # To detect changes
-var triggered_actions: Dictionary = {}
-var trigger_last_states: Dictionary = {}
-var step_timer: float = 0.0
-var current_action_trigger: String = "" # The trigger that caused the current action
-var current_active_triggers: Array = [] # Currently active triggers for UI display
+var step_timer: float = 0.0  # Timer for current action step
+var current_action_trigger: String = ""  # Current trigger being processed
+
+# --- New Behavior Engine Properties ---
+var behavior_matrix: Dictionary = {}
+var control_point_attack_sequence: Array = []
+var current_attack_sequence_index: int = 0
+var current_reactive_state: String = "defend" # Default state
+var behavior_start_delay: float = 0.1 # Reduced from 2.0 - quick start for UI feedback
+var _behavior_timer: float = 0.0
+var last_action_scores: Dictionary = {} # For debugging and UI
+var last_state_variables: Dictionary = {} # For debugging and UI
+const REACTIVE_BEHAVIOR_THRESHOLD: float = 0.1 # Min activation to consider a state change
+const INDEPENDENT_ACTION_THRESHOLD: float = 0.6 # Min activation to fire an ability
 
 # Movement
 var navigation_agent: NavigationAgent3D
+
+# Map boundaries (prevent units from falling off the edge)
+const MAP_BOUNDS = {
+    "min_x": -45.0,
+    "max_x": 45.0,
+    "min_z": -45.0,
+    "max_z": 45.0
+}
 
 signal health_changed(new_health: float, max_health: float)
 signal unit_died(unit_id: String)
@@ -96,6 +116,10 @@ func _ready() -> void:
     # This is critical for the EnhancedSelectionSystem to detect units.
     set_collision_layer_value(1, true)
     
+    # Set collision mask to include buildings (Layer 2) so units can collide with them
+    #set_collision_mask_value(1, true)   # Collide with other units 
+    set_collision_mask_value(2, true)   # Collide with buildings
+    
     # Ensure a collision shape exists for physics queries
     var collision = get_node_or_null("CollisionShape3D")
     if not collision:
@@ -114,8 +138,23 @@ func _ready() -> void:
     
     _load_archetype_stats()
     
-    # Set default triggered actions from game constants
-    _set_default_triggered_actions()
+    # Initialize with a default behavior matrix.
+    # This will be overwritten when a plan is received from the AI.
+    behavior_matrix = _get_default_behavior_matrix()
+    
+    # Also set default triggered actions for immediate UI feedback
+    if behavior_matrix.is_empty():
+        print("DEBUG: Unit %s - default behavior matrix is empty, calling _set_default_triggered_actions" % unit_id)
+        _set_default_triggered_actions()
+    else:
+        print("DEBUG: Unit %s - initialized with default behavior matrix, %d actions (server: %s)" % [unit_id, behavior_matrix.size(), multiplayer.is_server()])
+    
+    # Start behavior processing immediately for UI feedback (server only)
+    if multiplayer.is_server():
+        _behavior_timer = behavior_start_delay
+        print("DEBUG: Unit %s - server-side behavior engine enabled" % unit_id)
+    else:
+        print("DEBUG: Unit %s - client-side unit, behavior engine disabled (will display server data)" % unit_id)
     
     # Configure NavigationAgent3D after movement_speed is set
     if navigation_agent:
@@ -123,8 +162,9 @@ func _ready() -> void:
         navigation_agent.max_speed = movement_speed
         navigation_agent.avoidance_enabled = true # Ensure avoidance is enabled
         # Path postprocessing will use default settings
-        # Units are on layer 1 for selection, use this layer for dynamic avoidance
-        navigation_agent.set_navigation_layers(1) # Units avoid other units on the same layer
+        # CRITICAL: Use default layer (1) for navigation - keep NavigationAgent3D on layer 1
+        # NavigationObstacle3D will work automatically with navigation mesh rebaking
+        navigation_agent.set_navigation_layers(1)
 
         navigation_agent.velocity_computed.connect(Callable(self, "_on_navigation_velocity_computed"))
     
@@ -137,7 +177,37 @@ func _ready() -> void:
     # Store original spawn position for respawning
     original_spawn_position = global_position
     
+    # CRITICAL FIX: Set initial facing direction toward enemy base
+    # This ensures newly spawned units face the correct direction from the start
+    call_deferred("_set_initial_facing_direction")
+    
     set_physics_process(true)
+
+func _set_initial_facing_direction() -> void:
+    """Set the unit's facing direction toward the enemy base (used for both initial spawn and respawn)"""
+    # Only run on server to maintain server-authoritative transforms
+    if not multiplayer.is_server():
+        return
+        
+    var home_base_manager = get_tree().get_first_node_in_group("home_base_managers")
+    if home_base_manager:
+        var my_base_pos = home_base_manager.get_home_base_position(team_id)
+        var enemy_team_id = 2 if team_id == 1 else 1
+        var enemy_base_pos = home_base_manager.get_home_base_position(enemy_team_id)
+        
+        if my_base_pos != Vector3.ZERO and enemy_base_pos != Vector3.ZERO:
+            # Calculate direction toward enemy base
+            var forward_direction = (enemy_base_pos - my_base_pos).normalized()
+            
+            # Set transform to face the enemy base
+            # This ensures units face the correct direction when they start moving
+            transform.basis = Basis.looking_at(forward_direction, Vector3.UP)
+            
+            print("DEBUG: Unit %s initial facing direction set toward enemy base" % unit_id)
+        else:
+            print("DEBUG: Unit %s could not determine home base positions for initial facing direction" % unit_id)
+    else:
+        print("DEBUG: Unit %s home base manager not found for initial facing direction" % unit_id)
 
 func _generate_meaningful_unit_id() -> String:
     """Generate a meaningful unit ID like 'tank_t1_01' instead of random numbers"""
@@ -182,23 +252,29 @@ func _load_archetype_stats() -> void:
         call_deferred("refresh_range_visualization")
 
 func _set_default_triggered_actions() -> void:
-    """Set default triggered actions from game constants based on unit archetype"""
-    var default_actions = GameConstants.get_default_triggered_actions(archetype)
-    if not default_actions.is_empty():
-        triggered_actions = default_actions.duplicate()
-        print("Unit %s (%s): Set default triggered actions: %s" % [unit_id, archetype, str(triggered_actions.keys())])
+    """Set default behavior matrix from game constants based on unit archetype"""
+    var default_matrix = GameConstants.get_default_behavior_matrix(archetype)
+    if not default_matrix.is_empty():
+        behavior_matrix = default_matrix.duplicate()
+        print("DEBUG: Unit %s (%s): Set default behavior matrix with actions: %s" % [unit_id, archetype, str(behavior_matrix.keys())])
     else:
-        print("Unit %s (%s): No default triggered actions found for archetype" % [unit_id, archetype])
+        print("DEBUG: Unit %s (%s): No default behavior matrix found for archetype, using fallback" % [unit_id, archetype])
+        # Use the internal _get_default_behavior_matrix as fallback
+        behavior_matrix = _get_default_behavior_matrix()
+        if not behavior_matrix.is_empty():
+            print("DEBUG: Unit %s (%s): Used internal fallback matrix with %d actions" % [unit_id, archetype, behavior_matrix.size()])
 
 func _physics_process(delta: float) -> void:
     # Handle respawn timer
     if is_dead and is_respawning:
+        var old_timer = respawn_timer
         respawn_timer -= delta
         
-        # Debug respawn countdown every 5 seconds
-        var seconds_remaining = int(respawn_timer)
-        if seconds_remaining > 0 and seconds_remaining % 5 == 0 and respawn_timer - delta > seconds_remaining - 1:
-            print("DEBUG: Unit %s respawn countdown: %d seconds remaining" % [unit_id, seconds_remaining])
+        # Debug respawn countdown every 5 seconds (using cleaner logic)
+        var old_seconds = int(old_timer)
+        var new_seconds = int(respawn_timer)
+        if old_seconds != new_seconds and new_seconds > 0 and new_seconds % 5 == 0:
+            print("DEBUG: Unit %s respawn countdown: %d seconds remaining" % [unit_id, new_seconds])
         
         if respawn_timer <= 0.0:
             print("DEBUG: Unit %s respawn timer expired, calling _handle_respawn()" % unit_id)
@@ -227,108 +303,10 @@ func _physics_process(delta: float) -> void:
     if not is_on_floor():
         velocity.y += get_gravity().y * delta
 
-    # State machine logic
-    match current_state:
-        GameEnums.UnitState.MOVING:
-            if navigation_agent.is_navigation_finished():
-                current_state = GameEnums.UnitState.IDLE
-                action_complete = true
-        
-        GameEnums.UnitState.ATTACKING:
-            if not is_instance_valid(target_unit) or target_unit.is_dead:
-                print("DEBUG: Unit %s stopping attack - target invalid or dead" % unit_id)
-                current_state = GameEnums.UnitState.IDLE
-                action_complete = true # The attack action is complete because the target is gone.
-            else:
-                var distance = global_position.distance_to(target_unit.global_position)
-                if distance > attack_range:
-                    # Target is out of range, move closer but stay in ATTACKING state.
-                    if navigation_agent:
-                        navigation_agent.target_position = target_unit.global_position
-                else:
-                    # Target is in range. Stop moving and attack.
-                    if navigation_agent:
-                        navigation_agent.target_position = global_position # Stop moving
-
-                    look_at(target_unit.global_position, Vector3.UP)
-                    var current_time = Time.get_ticks_msec() / 1000.0
-                    if current_time - last_attack_time >= attack_cooldown:
-                        print("DEBUG: Unit %s attempting to fire at target %s" % [unit_id, target_unit.unit_id])
-                        var attack_successful = false
-                        
-                        var shot_fired = false
-                        # Try weapon attachment first
-                        if weapon_attachment and weapon_attachment.has_method("fire"):
-                            if weapon_attachment.can_fire():
-                                print("DEBUG: Unit %s firing weapon at target %s" % [unit_id, target_unit.unit_id])
-                                var fire_result = weapon_attachment.fire()
-                                if not fire_result.is_empty():
-                                    shot_fired = true
-                                    print("DEBUG: Weapon fire result: %s" % str(fire_result))
-                            else:
-                                # Weapon on cooldown or out of ammo, do nothing this frame.
-                                print("DEBUG: Unit %s weapon cannot fire (on cooldown or out of ammo)" % unit_id)
-                        else:
-                            # No weapon attachment, use fallback direct damage.
-                            print("DEBUG: Unit %s using fallback direct damage (no weapon)" % unit_id)
-                            target_unit.take_damage(attack_damage)
-                            print("DEBUG: Unit %s dealt %f direct damage to %s" % [unit_id, attack_damage, target_unit.unit_id])
-                            shot_fired = true
-                        
-                        if shot_fired:
-                            last_attack_time = current_time
-                            print("DEBUG: Unit %s attack action successful" % unit_id)
-        
-        GameEnums.UnitState.HEALING:
-            if not is_instance_valid(target_unit) or target_unit.is_dead or target_unit.get_health_percentage() >= 1.0:
-                current_state = GameEnums.UnitState.IDLE
-                action_complete = true
-            else:
-                var distance = global_position.distance_to(target_unit.global_position)
-                if distance > attack_range: # Use attack_range as heal_range for simplicity
-                    navigation_agent.target_position = target_unit.global_position
-                else:
-                    # In range, perform healing
-                    navigation_agent.target_position = global_position # Stop moving
-                    look_at(target_unit.global_position, Vector3.UP)
-                    if "heal_rate" in self:
-                        target_unit.receive_healing(self.get("heal_rate") * delta)
-        
-        GameEnums.UnitState.CONSTRUCTING, GameEnums.UnitState.REPAIRING:
-            if not is_instance_valid(target_building):
-                current_state = GameEnums.UnitState.IDLE
-                action_complete = true
-            else:
-                var distance = global_position.distance_to(target_building.global_position)
-                if distance > attack_range: # Use attack_range as build_range
-                    navigation_agent.target_position = target_building.global_position
-                else:
-                    navigation_agent.target_position = global_position # Stop moving
-                    if target_building.has_method("add_construction_progress"):
-                        var build_rate = self.build_rate if "build_rate" in self else 0.1
-                        target_building.add_construction_progress(build_rate * delta)
-                    if target_building.is_operational:
-                        current_state = GameEnums.UnitState.IDLE
-                        target_building = null
-                        action_complete = true
-        
-        GameEnums.UnitState.LAYING_MINES:
-            # Completion is handled by the EngineerUnit script, which will set action_complete = true
-            velocity.x = 0
-            velocity.z = 0
-    
-        _: # Default case for IDLE, FOLLOWING etc.
-            if current_state == GameEnums.UnitState.FOLLOWING:
-                if not is_instance_valid(follow_target) or follow_target.is_dead:
-                    current_state = GameEnums.UnitState.IDLE
-                    follow_target = null
-                    action_complete = true
-                else:
-                    var distance_to_follow_target = global_position.distance_to(follow_target.global_position)
-                    if distance_to_follow_target > FOLLOW_DISTANCE:
-                        navigation_agent.target_position = follow_target.global_position
-                    else:
-                        navigation_agent.target_position = global_position # Stop
+    # --- New Behavior Engine Loop ---
+    _evaluate_reactive_behavior()
+    _execute_current_state(delta)
+    # --- End New Behavior Engine Loop ---
 
     # Calculate desired velocity for NavigationAgent3D for path following and local avoidance
     if can_move and navigation_agent:
@@ -340,41 +318,36 @@ func _physics_process(delta: float) -> void:
             # If navigation is finished, stop horizontal movement
             velocity.x = 0
             velocity.z = 0
-            if current_state == GameEnums.UnitState.MOVING: # Only if explicitly moving to a point
-                current_state = GameEnums.UnitState.IDLE # Return to idle once path is finished
-                action_complete = true # Also signal completion
     else:
         # If can_move is false or no navigation agent, ensure no horizontal movement from pathfinding
         velocity.x = 0
         velocity.z = 0
 
-    # Rotate the unit to face its movement direction.
-    # This is skipped if horizontal velocity is zero (e.g., when attacking in range and stopped).
-    var horizontal_velocity = velocity
-    horizontal_velocity.y = 0
-    if horizontal_velocity.length_squared() > 0.01:
-        var new_transform = transform.looking_at(global_position + horizontal_velocity, Vector3.UP)
-        transform.basis = transform.basis.slerp(new_transform.basis, delta * 10.0)
+    # Rotate the unit to face its movement direction or its target.
+    var look_at_position: Vector3
+    var should_look = false
 
-    # NEW: Check for trigger interruptions AFTER state machine has potentially updated the state to IDLE.
-    if _check_triggers():
-        return # A trigger fired and set a new action. The new action will be processed next frame.
+    # Priority 1: If in an attack or retreat state with a valid target, always look at the target.
+    if (current_reactive_state == "attack" or current_reactive_state == "retreat") and is_instance_valid(target_unit):
+        var direction_to_target = (target_unit.global_position - global_position)
+        direction_to_target.y = 0 # Don't tilt up/down
+        if direction_to_target.length_squared() > 0.01:
+            look_at_position = global_position + direction_to_target
+            should_look = true
+    # Priority 2: If not in combat but moving, look in the direction of movement.
+    elif velocity.length_squared() > 0.01:
+        var horizontal_velocity = velocity
+        horizontal_velocity.y = 0
+        if horizontal_velocity.length_squared() > 0.01:
+            look_at_position = global_position + horizontal_velocity
+            should_look = true
+    
+    if should_look:
+        var new_transform = transform.looking_at(look_at_position, Vector3.UP)
+        transform.basis = transform.basis.slerp(new_transform.basis, delta * 10.0)
 
     # Always call move_and_slide to apply physics and update velocity
     move_and_slide()
-
-    # Check if the unit just finished an action
-    if not _old_action_complete and action_complete:
-        # The action has just been completed on this frame.
-        # Check if this unit has a sequential plan.
-        var plan_executor = get_node("/root/DependencyContainer").get_node_or_null("PlanExecutor")
-        if plan_executor and not plan_executor.active_plans.has(unit_id):
-            # This unit just finished an action (must have been a triggered one)
-            # and it does not have a sequential plan waiting. It is now truly idle.
-            # We need to tell the system to consider giving it a new plan.
-            plan_executor.unit_became_idle.emit(unit_id)
-            
-    _old_action_complete = action_complete
 
 # New function to receive velocity computed by NavigationAgent3D (including RVO avoidance)
 func _on_navigation_velocity_computed(safe_velocity: Vector3) -> void:
@@ -386,9 +359,11 @@ func _on_navigation_velocity_computed(safe_velocity: Vector3) -> void:
 func move_to(target_position: Vector3) -> void:
     current_state = GameEnums.UnitState.MOVING
     if navigation_agent:
-        navigation_agent.target_position = target_position
+        # Clamp target position to map boundaries
+        var clamped_position = _clamp_to_map_bounds(target_position)
+        navigation_agent.target_position = clamped_position
         # Provide an initial desired velocity to the agent when setting a new target
-        var desired_initial_velocity = (target_position - global_position).normalized() * movement_speed
+        var desired_initial_velocity = (clamped_position - global_position).normalized() * movement_speed
         navigation_agent.set_velocity(desired_initial_velocity)
 
 func attack_target(target: Unit) -> void:
@@ -469,25 +444,12 @@ func get_team_id() -> int:
     return team_id
 
 func get_current_active_triggers() -> Array:
-    """Get the currently active triggers for UI display"""
-    return current_active_triggers
+    # OBSOLETE: This is now handled by the behavior matrix activations.
+    return []
 
 func get_all_trigger_info() -> Dictionary:
-    """Get complete trigger information: all triggers with their status and assigned actions"""
-    var trigger_info = {}
-    
-    # Get all possible triggers from the triggered_actions dictionary
-    for trigger_name in triggered_actions.keys():
-        var is_active = trigger_name in current_active_triggers
-        var assigned_action = triggered_actions[trigger_name]
-        
-        trigger_info[trigger_name] = {
-            "active": is_active,
-            "action": assigned_action,
-            "priority": TRIGGER_PRIORITIES.get(trigger_name, 0)
-        }
-    
-    return trigger_info
+    # OBSOLETE: This is now handled by the behavior matrix activations.
+    return {}
 
 func get_unit_info() -> Dictionary:
     # This provides the detailed "unit_state" portion of the AI context.
@@ -775,227 +737,582 @@ func get_attack_capability_debug() -> String:
     info.append("Last attack: %.1fs ago" % ((Time.get_ticks_msec() / 1000.0) - last_attack_time))
     return "\n".join(info)
 
-# --- New Action & Trigger System ---
+# --- New Behavior Engine Implementation ---
 
-func set_current_action(action: Dictionary, p_is_triggered: bool = false, trigger_name: String = ""):
-    current_action = action
-    action_complete = false
-    step_timer = 0.0
+func set_behavior_plan(matrix: Dictionary, sequence: Array):
+    """Called by the PlanExecutor to set the unit's personality and goals."""
+    self.behavior_matrix = matrix
+    self.control_point_attack_sequence = sequence
+    self.current_attack_sequence_index = 0
+    print("Unit %s received new behavior plan." % unit_id)
 
-    if p_is_triggered and not trigger_name.is_empty():
-        current_action_trigger = trigger_name
-    else:
-        # This is a planned action from PlanExecutor or an idle command.
-        # It has no trigger priority and can be interrupted by any trigger.
-        current_action_trigger = ""
+func _evaluate_reactive_behavior() -> void:
+    """The main 'brain' function for the unit, called every physics frame."""
+    # CRITICAL: Only run behavior calculations on the server
+    # Client units should display server-calculated activation data only
+    if not multiplayer.is_server():
+        return
+    
+    if behavior_matrix.is_empty():
+        print("DEBUG: Unit %s - behavior matrix is empty, cannot evaluate" % unit_id)
+        return
+    
+    if _behavior_timer < behavior_start_delay:
+        return
+
+    var state_vars = _gather_state_variables()
+    if state_vars.is_empty():
+        print("DEBUG: Unit %s - state variables empty, using fallback basic state" % unit_id)
+        # Fallback to basic state variables for UI display
+        state_vars = _get_fallback_state_variables()
         
-    _execute_action(action)
-
-func set_triggered_actions(actions: Dictionary):
-    triggered_actions = actions
-    trigger_last_states.clear()
-
-func _execute_action(step: Dictionary):
-    var action = step.get("action")
-    var params = step.get("params", {})
-    if params == null: params = {}
-    params = params.duplicate() # Avoid modifying the original
+    var activation_levels = _calculate_activation_levels(state_vars)
     
-    # Debug logging for ally targeting
-    if params.has("ally_id"):
-        print("DEBUG: Unit %s executing action '%s' targeting ally %s" % [unit_id, action, params.ally_id])
+    # For debugging and UI - always store these for display
+    last_state_variables = state_vars
+    last_action_scores = activation_levels
     
-    match action:
-        "move_to":
-            if params.has("ally_id") and params.ally_id != null:
-                # Move to ally position (for on_ally_health_low trigger)
-                var game_state = get_node("/root/DependencyContainer").get_game_state()
-                var ally = game_state.units.get(params.ally_id)
-                if is_instance_valid(ally):
-                    move_to(ally.global_position)
-                else:
-                    action_complete = true
-            elif params.has("position") and params.position != null:
-                var pos_arr = params.position
-                var relative_pos = Vector3(pos_arr[0], pos_arr[1], pos_arr[2])
-                var team_transform = _get_team_transform()
-                var world_pos = team_transform * relative_pos
-                move_to(world_pos)
+    # Only execute actions if we have valid state
+    if not state_vars.is_empty():
+        _decide_and_execute_actions(activation_levels)
+    
+    # Debug output every few seconds
+    if int(Time.get_ticks_msec() / 1000.0) % 5 == 0 and activation_levels.size() > 0:
+        var top_action = ""
+        var max_score = -999.0
+        for action in activation_levels:
+            if activation_levels[action] > max_score:
+                max_score = activation_levels[action]
+                top_action = action
+        if not top_action.is_empty():
+            print("DEBUG: SERVER Unit %s top activation: %s (%.2f) - will sync to clients" % [unit_id, top_action, max_score])
+
+func _gather_state_variables() -> Dictionary:
+    """Collects real-time data about the unit's environment and normalizes it."""
+    var state = {}
+    
+    # Try to get dependencies from DependencyContainer
+    var dependency_container = get_node_or_null("/root/DependencyContainer")
+    if not dependency_container:
+        return {}
+    
+    var game_state = dependency_container.get_game_state()
+    var node_system = dependency_container.get_node_capture_system()
+    
+    if not game_state:
+        return {}
+        
+    if not node_system:
+        return {}
+
+    # Get nearby units
+    var enemies = game_state.get_units_in_radius(global_position, attack_range, team_id)
+    var allies = game_state.get_units_in_radius(global_position, vision_range, -1, team_id)
+    
+    state["enemies_in_range"] = clamp(float(enemies.size()) / 5.0, 0.0, 1.0) # Normalize by typical squad size
+    state["current_health"] = get_health_percentage()
+    state["under_attack"] = 1.0 if (Time.get_ticks_msec() / 1000.0 - _last_damage_time < 1.5) else 0.0
+    state["allies_in_range"] = clamp(float(allies.size()) / 5.0, 0.0, 1.0)
+    
+    var max_ally_missing_health = 0.0
+    for ally in allies:
+        if is_instance_valid(ally) and not ally.is_dead:
+            var missing_health = 1.0 - ally.get_health_percentage()
+            max_ally_missing_health = max(max_ally_missing_health, missing_health)
+    state["ally_low_health"] = max_ally_missing_health
+    
+    var node_counts = node_system.get_team_control_counts()
+    var total_nodes = float(node_system.control_points.size())
+    if total_nodes > 0:
+        state["ally_nodes_controlled"] = node_counts.get(team_id, 0) / total_nodes
+        var enemy_team_id = 2 if team_id == 1 else 1
+        state["enemy_nodes_controlled"] = node_counts.get(enemy_team_id, 0) / total_nodes
+    else:
+        state["ally_nodes_controlled"] = 0.0
+        state["enemy_nodes_controlled"] = 0.0
+        
+    state["bias"] = 1.0 # Constant bias term
+    
+    return state
+
+func _calculate_activation_levels(state_vars: Dictionary) -> Dictionary:
+    """Calculates the activation level for each possible action using the behavior matrix."""
+    var activations = {}
+    if behavior_matrix.is_empty(): return activations
+
+    for action_name in behavior_matrix:
+        var weights = behavior_matrix[action_name]
+        var score = 0.0
+        for var_name in state_vars:
+            score += state_vars[var_name] * weights.get(var_name, 0.0)
+        activations[action_name] = score # Raw score, can be > 1 or < -1
+    return activations
+
+func _decide_and_execute_actions(activations: Dictionary) -> void:
+    """Decides which actions to take based on activation levels."""
+    if activations.is_empty(): return
+        
+    # --- 1. Process Independent Ability Actions ---
+    var validator = ActionValidator.new()
+    var valid_actions = validator.get_valid_actions_for_archetype(archetype)
+    
+    var independent_actions = validator.INDEPENDENT_REACTIVE_ACTIONS
+    for action_name in independent_actions:
+        # Only consider actions valid for this archetype
+        if action_name not in valid_actions:
+            continue
+            
+        if activations.get(action_name, 0.0) > INDEPENDENT_ACTION_THRESHOLD:
+            # Check if we can execute this ability (e.g., not on cooldown)
+            if has_method(action_name):
+                # Abilities are context-sensitive, so we need to find a target if required
+                var params = _get_context_for_action(action_name)
+                call(action_name, params)
+
+    # --- 2. Process Mutually Exclusive State Actions ---
+    var exclusive_actions = validator.MUTUALLY_EXCLUSIVE_REACTIVE_ACTIONS
+    var best_action = ""
+    var max_score = -INF
+
+    for action_name in exclusive_actions:
+        # Only consider actions valid for this archetype
+        if action_name not in valid_actions:
+            continue
+            
+        var score = activations.get(action_name, 0.0)
+        if score > max_score:
+            max_score = score
+            best_action = action_name
+    
+    # Only switch state if the best action is above threshold and is different from the current one
+    if max_score > REACTIVE_BEHAVIOR_THRESHOLD and best_action != current_reactive_state:
+        current_reactive_state = best_action
+        
+        # If we switch to attack, reset the sequence index
+        if best_action == "attack":
+            current_attack_sequence_index = 0
+
+func _execute_attack_state():
+    var game_state = get_node("/root/DependencyContainer").get_game_state()
+    if not game_state: return
+
+    # 1. Target Acquisition (in vision range)
+    var enemies_in_vision = game_state.get_units_in_radius(global_position, vision_range, team_id)
+    var current_target = _get_closest_valid_enemy(enemies_in_vision)
+    target_unit = current_target # Update the unit's main target
+
+    if not is_instance_valid(current_target):
+        # 2. No enemies in vision: Move to objective
+        _move_to_next_objective()
+        return
+
+    # 3. Enemies found: Engage
+    var distance_to_target = global_position.distance_to(current_target.global_position)
+    var my_range = self.attack_range
+    var target_range = current_target.attack_range
+
+    # 4. Movement Decision
+    if my_range > target_range:
+        # Kiting Logic: try to maintain an optimal distance.
+        var safe_distance = target_range + KITING_DISTANCE_BUFFER
+        # The "sweet spot" is halfway between the edge of the enemy's range and our max range.
+        var sweet_spot_distance = (safe_distance + my_range) / 2.0
+        var tolerance = 1.0 # A 1-meter tolerance band to prevent jittering.
+
+        # Only adjust position if we are outside the tolerance band around the sweet spot.
+        if abs(distance_to_target - sweet_spot_distance) > tolerance:
+            # Calculate the ideal position at the sweet spot distance from the enemy.
+            var direction_from_enemy = (global_position - current_target.global_position).normalized()
+            # If direction is zero (somehow on top of target), create a fallback direction
+            if direction_from_enemy.length_squared() < 0.01:
+                direction_from_enemy = Vector3.FORWARD
+            navigation_agent.target_position = current_target.global_position + direction_from_enemy * sweet_spot_distance
+        else:
+            # We are in the sweet spot, stop moving to fire.
+            navigation_agent.target_position = global_position
+    else:
+        # Standard Engagement
+        if distance_to_target > my_range:
+            # Out of range, move closer
+            navigation_agent.target_position = current_target.global_position
+        else:
+            # In range, stop moving
+            navigation_agent.target_position = global_position
+    
+    # 5. Execute Attack
+    _attempt_attack_target(current_target)
+
+func _move_to_next_objective():
+    var node_system = get_node("/root/DependencyContainer").get_node_capture_system()
+    if not node_system: return
+    
+    var target_node = null
+    
+    # Try to get next node from sequence
+    if not control_point_attack_sequence.is_empty() and current_attack_sequence_index < control_point_attack_sequence.size():
+        var target_node_id = control_point_attack_sequence[current_attack_sequence_index]
+        target_node = node_system.get_control_point_by_id(target_node_id)
+        
+        # Check if this node is already controlled by our team
+        if is_instance_valid(target_node) and target_node.has_method("get_controlling_team"):
+            if target_node.get_controlling_team() == team_id:
+                # Node already controlled, advance to next
+                current_attack_sequence_index += 1
+                target_node = null # Invalidate to find a new one
+    
+    # If no valid target from sequence, find nearest uncontrolled node
+    if not is_instance_valid(target_node):
+        target_node = _find_nearest_uncontrolled_node(node_system)
+    
+    if is_instance_valid(target_node):
+        navigation_agent.target_position = _clamp_to_map_bounds(target_node.global_position)
+        # Check if we're close enough to the target
+        if global_position.distance_to(target_node.global_position) < 5.0:
+            # If this was from the sequence, advance to next
+            if not control_point_attack_sequence.is_empty() and current_attack_sequence_index < control_point_attack_sequence.size():
+                current_attack_sequence_index += 1
+    else:
+        # No uncontrolled nodes found, act like defend
+        _execute_defend_state()
+
+func _execute_retreat_state():
+    var game_state = get_node("/root/DependencyContainer").get_game_state()
+    if not game_state: return
+
+    # 1. Maintain Retreat Movement
+    var enemies_in_vision = game_state.get_units_in_radius(global_position, vision_range, team_id)
+    if not enemies_in_vision.is_empty():
+        # Move away from the average position of enemies
+        var avg_enemy_pos = Vector3.ZERO
+        for enemy in enemies_in_vision:
+            avg_enemy_pos += enemy.global_position
+        avg_enemy_pos /= enemies_in_vision.size()
+        
+        var retreat_direction = (global_position - avg_enemy_pos).normalized()
+        var retreat_position = global_position + retreat_direction * 20.0
+        navigation_agent.target_position = _clamp_to_map_bounds(retreat_position)
+    else:
+        # No enemies nearby, move towards home base
+        var home_base_manager = get_tree().get_first_node_in_group("home_base_managers")
+        if home_base_manager:
+            var home_position = home_base_manager.get_home_base_position(team_id)
+            navigation_agent.target_position = _clamp_to_map_bounds(home_position)
+            
+    # 2. Fire While Retreating
+    var enemies_in_attack_range = game_state.get_units_in_radius(global_position, attack_range, team_id)
+    if not enemies_in_attack_range.is_empty():
+        var closest_enemy = _get_closest_valid_enemy(enemies_in_attack_range)
+        if closest_enemy:
+            target_unit = closest_enemy # Update target for aiming
+            _attempt_attack_target(closest_enemy)
+
+func _execute_current_state(delta: float):
+    """The new state machine, driven by the `current_reactive_state` string."""
+    # CRITICAL: Only execute behavior states on the server
+    # Client units should only display server-calculated data, not execute logic
+    if not multiplayer.is_server():
+        return
+    
+    # Wait for behavior delay before processing
+    if _behavior_timer < behavior_start_delay:
+        _behavior_timer += delta
+        return
+        
+    # Debug output every few seconds to see which state units are in
+    if int(Time.get_ticks_msec() / 1000.0) % 10 == 0:
+        print("DEBUG: Unit %s in state '%s' - executing actions" % [unit_id, current_reactive_state])
+    
+    match current_reactive_state:
         "attack":
-            if params.has("target_id") and params.target_id != null:
-                var game_state = get_node("/root/DependencyContainer").get_game_state()
-                var target = game_state.units.get(params.target_id)
-                # Safety check: don't attack allies
-                if is_instance_valid(target) and target.team_id == team_id:
-                    print("ERROR: Unit %s prevented from attacking ally %s (same team %d)" % [unit_id, target.unit_id, team_id])
-                    action_complete = true
-                    return
-                attack_target(target)
+            _execute_attack_state()
+
         "retreat":
-            retreat()
-        "patrol":
-            current_state = GameEnums.UnitState.MOVING # Patrol is essentially moving
-            action_complete = true # Patrol is conceptual, for AI; for execution it's just a move. The AI can issue another patrol if it wants. Or we can implement it as a sequence of moves. For now, it's a single action.
+            _execute_retreat_state()
+
+        "defend":
+            _execute_defend_state()
+            
+            # Also check for enemies while defending and attack if found
+            var game_state = get_node("/root/DependencyContainer").get_game_state()
+            if game_state:
+                var enemies_in_range = game_state.get_units_in_radius(global_position, attack_range, team_id)
+                if not enemies_in_range.is_empty():
+                    var closest_enemy = _get_closest_valid_enemy(enemies_in_range)
+                    if closest_enemy:
+                        target_unit = closest_enemy
+                        current_state = GameEnums.UnitState.ATTACKING
+                        _attempt_attack_target(closest_enemy)
+        
         "follow":
-            var target_id_to_use = params.get("target_id") or params.get("ally_id")
-            if target_id_to_use != null:
-                var target = get_node("/root/DependencyContainer").get_game_state().units.get(target_id_to_use)
-                follow(target)
-        "activate_stealth":
-            if has_method("activate_stealth"): activate_stealth(params)
-        "activate_shield":
-            if has_method("activate_shield"): activate_shield(params)
-        "taunt_enemies":
-            if has_method("taunt_enemies"): taunt_enemies(params)
-        "charge_shot":
-            if has_method("charge_shot"): charge_shot(params)
-        "find_cover":
-            if has_method("find_cover"): find_cover(params)
-        "heal_target":
-            if has_method("heal_target"): 
-                # Convert ally_id to target_id for heal_target method
-                if params.has("ally_id") and params.ally_id != null:
-                    params["target_id"] = params.ally_id
-                heal_target(params)
-        "construct":
-            if has_method("construct"): construct(params)
-        "repair":
-            if has_method("repair"): repair(params)
-        "lay_mines":
-            if has_method("lay_mines"): lay_mines(params)
-        "idle":
-            current_state = GameEnums.UnitState.IDLE
-            action_complete = true
-        _:
-            action_complete = true # Unknown action, complete immediately
+            _execute_follow_state()
 
-func _check_triggers() -> bool:
-    if triggered_actions.is_empty():
-        return false
-
-    var active_triggers = []
+func _execute_defend_state():
+    """Logic for the defend state: capture uncontrolled nodes, then patrol around friendly nodes."""
+    var node_system = get_node("/root/DependencyContainer").get_node_capture_system()
     
-    # --- Evaluate all trigger conditions ---
-    # Health triggers
-    if get_health_percentage() < 0.25:
-        active_triggers.append("on_health_critical")
-    elif get_health_percentage() < 0.5:
-        active_triggers.append("on_health_low")
-        
-    # Under attack trigger
-    var time_since_damage = Time.get_ticks_msec() / 1000.0 - _last_damage_time
-    if time_since_damage < 1.0: # Attacked within the last second
-        active_triggers.append("on_under_attack")
-
-    # Ally health triggers
-    var lowest_ally = _get_lowest_health_ally_in_vision()
-    if is_instance_valid(lowest_ally):
-        if lowest_ally.get_health_percentage() < 0.5:
-            active_triggers.append("on_ally_health_low")
-
-    # --- New Enemy Trigger Logic ---
-    var closest_enemy_in_vision = _get_closest_enemy_in_vision()
-
-    # on_enemy_in_range: An enemy is within my direct attack range.
-    if is_instance_valid(closest_enemy_in_vision) and closest_enemy_in_vision.global_position.distance_to(global_position) <= attack_range:
-        active_triggers.append("on_enemy_in_range")
-
-    # on_enemy_sighted: An enemy is visible to me OR a nearby ally.
-    var enemy_sighted_by_team = false
-    if is_instance_valid(closest_enemy_in_vision):
-        enemy_sighted_by_team = true
+    print("DEBUG: Unit %s _execute_defend_state() called, node_system: %s" % [unit_id, str(node_system)])
+    
+    # First priority: Capture uncontrolled nodes if available
+    var uncontrolled_node = _find_nearest_uncontrolled_node(node_system)
+    if is_instance_valid(uncontrolled_node):
+        # Move to the nearest uncontrolled node to capture it
+        var target_pos = _clamp_to_map_bounds(uncontrolled_node.global_position)
+        navigation_agent.target_position = target_pos
+        print("DEBUG: Unit %s moving to capture uncontrolled node at %s" % [unit_id, target_pos])
+        return
+    
+    # Second priority: Patrol around the nearest friendly node
+    var closest_friendly_node = node_system.get_closest_friendly_node(global_position, team_id) if node_system else null
+    if is_instance_valid(closest_friendly_node):
+        # Patrol in a radius around the friendly node
+        if navigation_agent.is_navigation_finished() or navigation_agent.target_position.distance_to(global_position) < 2.0:
+            var patrol_radius = 15.0
+            var random_angle = randf() * TAU
+            var offset = Vector3(cos(random_angle), 0, sin(random_angle)) * patrol_radius
+            var patrol_position = closest_friendly_node.global_position + offset
+            var target_pos = _clamp_to_map_bounds(patrol_position)
+            navigation_agent.target_position = target_pos
+            print("DEBUG: Unit %s patrolling around friendly node, target: %s" % [unit_id, target_pos])
     else:
-        # Check allies' vision
-        var visible_allies = _get_visible_entities("units").filter(func(u): return u.team_id == self.team_id)
-        for ally in visible_allies:
-            if is_instance_valid(ally) and ally.has_method("_get_closest_enemy_in_vision"):
-                if is_instance_valid(ally._get_closest_enemy_in_vision()):
-                    enemy_sighted_by_team = true
-                    break
+        # Third priority: No friendly nodes, patrol around home base
+        var home_base_manager = get_tree().get_first_node_in_group("home_base_managers")
+        if home_base_manager:
+             if navigation_agent.is_navigation_finished() or navigation_agent.target_position.distance_to(global_position) < 2.0:
+                var patrol_radius = 20.0
+                var random_angle = randf() * TAU
+                var offset = Vector3(cos(random_angle), 0, sin(random_angle)) * patrol_radius
+                var home_patrol_position = home_base_manager.get_home_base_position(team_id) + offset
+                var target_pos = _clamp_to_map_bounds(home_patrol_position)
+                navigation_agent.target_position = target_pos
+                print("DEBUG: Unit %s patrolling around home base, target: %s" % [unit_id, target_pos])
+        else:
+            print("DEBUG: Unit %s - no movement targets found (no nodes, no home base)" % unit_id)
+
+func _execute_follow_state():
+    """Logic for the follow state: follow nearest ally in range, with mutual following resolution."""
+    var game_state = get_node("/root/DependencyContainer").get_game_state()
+    if not game_state:
+        return
     
-    if enemy_sighted_by_team:
-        active_triggers.append("on_enemy_sighted")
+    # Get allies in range  
+    var allies = game_state.get_units_in_radius(global_position, vision_range, -1, team_id)
+    if allies.is_empty():
+        # No allies in range, fall back to next highest activation state
+        _fallback_to_next_best_state()
+        return
     
-    # Store active triggers for UI display (always update, even if empty)
-    current_active_triggers = active_triggers
-
-    # --- Find the highest priority active trigger ---
-    var best_trigger_name: String = ""
-    var max_priority: int = -1
-
-    for trigger_name in active_triggers:
-        var priority = TRIGGER_PRIORITIES.get(trigger_name, 0)
-        if priority > max_priority:
-            max_priority = priority
-            best_trigger_name = trigger_name
-            
-    # If no trigger is active, we're done with this part.
-    if best_trigger_name.is_empty():
-        _reset_inactive_triggers(active_triggers)
-        return false
-
-    # --- Decide if the new trigger should interrupt the current action ---
-    # A planned action has no trigger, so its priority is -1. Any trigger can interrupt it.
-    var current_trigger_priority = TRIGGER_PRIORITIES.get(current_action_trigger, -1)
+    # Find the nearest ally
+    var nearest_ally = _get_nearest_ally(allies)
+    if not is_instance_valid(nearest_ally):
+        _fallback_to_next_best_state()
+        return
     
-    # A new trigger can interrupt if it has a higher priority than the current action's trigger.
-    var can_interrupt = (max_priority > current_trigger_priority)
-
-    if can_interrupt:
-        var context = {}
-        # Pass target_id for enemy triggers if we have a direct line of sight.
-        if (best_trigger_name == "on_enemy_in_range" or best_trigger_name == "on_enemy_sighted") and is_instance_valid(closest_enemy_in_vision):
-            context["target_id"] = closest_enemy_in_vision.unit_id
-            
-        if best_trigger_name == "on_ally_health_low" and is_instance_valid(lowest_ally):
-            # Use ally_id instead of target_id to prevent accidental attacks on allies
-            context["ally_id"] = lowest_ally.unit_id
-
-        # _fire_trigger will check if this is a new event (rising edge) or refireable.
-        if _fire_trigger(best_trigger_name, context):
-             _reset_inactive_triggers(active_triggers)
-             return true # A trigger fired, interrupt handled.
-
-    _reset_inactive_triggers(active_triggers)
-    return false
-
-func _fire_trigger(trigger_name: String, context: Dictionary = {}) -> bool:
-    if not triggered_actions.has(trigger_name):
-        return false
-        
-    var last_state = trigger_last_states.get(trigger_name, false)
+    # Check for mutual following and resolve it
+    var resolved_follow_target = _resolve_mutual_following(nearest_ally)
+    if not is_instance_valid(resolved_follow_target):
+        # This unit should not follow, fall back to next state
+        _fallback_to_next_best_state()
+        return
     
-    # Allow critical triggers to re-fire if the unit becomes idle again,
-    # ensuring it doesn't stay passive in a dangerous situation.
-    # This is a level-triggered check for idle units for persistent conditions.
-    var can_refire_when_idle = (trigger_name == "on_enemy_sighted" or trigger_name == "on_enemy_in_range" or trigger_name == "on_ally_health_low")
-    var is_idle = (current_state == GameEnums.UnitState.IDLE)
+    # Set the follow target and update state
+    follow_target = resolved_follow_target
+    target_unit = null  # Clear attack target
+    current_state = GameEnums.UnitState.FOLLOWING
+    
+    # Move to follow position (maintain distance)
+    var follow_distance = FOLLOW_DISTANCE
+    var direction_to_ally = (global_position - follow_target.global_position).normalized()
+    var follow_position = follow_target.global_position + direction_to_ally * follow_distance
+    navigation_agent.target_position = _clamp_to_map_bounds(follow_position)
+    
+    print("Unit %s (follow): Following ally %s" % [unit_id, follow_target.unit_id])
 
-    # Only fire on rising edge, or if it's a refireable trigger and the unit is idle.
-    if not last_state or (can_refire_when_idle and is_idle):
-        trigger_last_states[trigger_name] = true # Mark as active
+func _fallback_to_next_best_state():
+    """Fall back to the next highest activation state when follow is not viable."""
+    # Get current activation levels
+    if last_action_scores.is_empty():
+        current_reactive_state = "defend"  # Safe fallback
+        return
+    
+    # Find the next best state (excluding follow)
+    var validator = ActionValidator.new()
+    var exclusive_actions = validator.MUTUALLY_EXCLUSIVE_REACTIVE_ACTIONS
+    var best_action = "defend"  # Default fallback
+    var max_score = -INF
+    
+    for action_name in exclusive_actions:
+        if action_name == "follow":
+            continue  # Skip follow state
         
-        var action_name = triggered_actions[trigger_name]
-        var action_to_execute = {"action": action_name, "params": context}
-        
-        # Interrupt current plan execution
-        var plan_executor = get_node("/root/DependencyContainer").get_node_or_null("PlanExecutor")
-        if plan_executor:
-            plan_executor.interrupt_plan(unit_id, "Trigger fired: %s" % trigger_name, true)
-            plan_executor.trigger_evaluated.emit(unit_id, trigger_name, true)
+        var score = last_action_scores.get(action_name, 0.0)
+        if score > max_score:
+            max_score = score
+            best_action = action_name
+    
+    current_reactive_state = best_action
+    print("Unit %s: Follow fallback to %s (score: %.2f)" % [unit_id, best_action, max_score])
 
-        # Execute the triggered action and record which trigger caused it
-        call_deferred("set_current_action", action_to_execute, true, trigger_name)
+func _get_nearest_ally(allies: Array) -> Unit:
+    """Get the nearest ally from a list of allies."""
+    var nearest_ally = null
+    var nearest_distance = INF
+    
+    for ally in allies:
+        if not is_instance_valid(ally) or ally == self or ally.is_dead:
+            continue
         
-        return true
-        
-    return false
+        var distance = global_position.distance_to(ally.global_position)
+        if distance < nearest_distance:
+            nearest_distance = distance
+            nearest_ally = ally
+    
+    return nearest_ally
 
-func _reset_inactive_triggers(active_triggers: Array) -> void:
-    # Reset triggers that are no longer active to allow them to fire again
-    for trigger_name in trigger_last_states.keys():
-        if trigger_last_states[trigger_name] and not trigger_name in active_triggers:
-            trigger_last_states[trigger_name] = false
+func _resolve_mutual_following(target_ally: Unit) -> Unit:
+    """Resolve mutual following between two units. Returns the unit this should follow, or null if this unit should not follow."""
+    # Check if the target ally is also trying to follow this unit
+    if not is_instance_valid(target_ally):
+        return target_ally
+    
+    # Check if target ally is in follow state and targeting this unit
+    var ally_following_this = false
+    if "current_reactive_state" in target_ally and target_ally.current_reactive_state == "follow":
+        if "follow_target" in target_ally and target_ally.follow_target == self:
+            ally_following_this = true
+    
+    if not ally_following_this:
+        # No mutual following, safe to follow
+        return target_ally
+    
+    # Mutual following detected - resolve by comparing follow activation levels
+    var my_follow_score = last_action_scores.get("follow", 0.0)
+    var ally_follow_score = 0.0
+    
+    if "last_action_scores" in target_ally and target_ally.last_action_scores.has("follow"):
+        ally_follow_score = target_ally.last_action_scores.follow
+    
+    if my_follow_score > ally_follow_score:
+        # This unit has higher follow activation, it gets to follow
+        print("Unit %s: Mutual follow resolved - this unit follows %s (%.2f > %.2f)" % [unit_id, target_ally.unit_id, my_follow_score, ally_follow_score])
+        return target_ally
+    else:
+        # Target ally has higher (or equal) follow activation, this unit should not follow
+        print("Unit %s: Mutual follow resolved - %s gets priority (%.2f >= %.2f)" % [unit_id, target_ally.unit_id, ally_follow_score, my_follow_score])
+        return null
+
+func _get_closest_valid_enemy(enemies: Array) -> Unit:
+    """Get the closest valid enemy from a list of enemies"""
+    var closest_enemy = null
+    var closest_distance = INF
+    for enemy in enemies:
+        if is_instance_valid(enemy) and not enemy.is_dead:
+            var distance = global_position.distance_to(enemy.global_position)
+            if distance < closest_distance:
+                closest_distance = distance
+                closest_enemy = enemy
+    return closest_enemy
+
+func _clamp_to_map_bounds(position: Vector3) -> Vector3:
+    """Clamp a position to stay within map boundaries"""
+    return Vector3(
+        clamp(position.x, MAP_BOUNDS.min_x, MAP_BOUNDS.max_x),
+        position.y,  # Don't clamp Y axis
+        clamp(position.z, MAP_BOUNDS.min_z, MAP_BOUNDS.max_z)
+    )
+
+func _find_nearest_uncontrolled_node(node_system) -> Node:
+    """Find the nearest control point that is not controlled by our team"""
+    if not node_system or not node_system.has_method("get_control_points"):
+        return null
+    
+    var control_points = node_system.get_control_points()
+    var nearest_node = null
+    var nearest_distance = INF
+    
+    for control_point in control_points:
+        if not is_instance_valid(control_point):
+            continue
+        
+        # Check if this node is controlled by our team
+        var controller_team = -1
+        if control_point.has_method("get_controlling_team"):
+            controller_team = control_point.get_controlling_team()
+        
+        # Skip if already controlled by our team
+        if controller_team == team_id:
+            continue
+        
+        # Calculate distance to this node
+        var distance = global_position.distance_to(control_point.global_position)
+        if distance < nearest_distance:
+            nearest_distance = distance
+            nearest_node = control_point
+    
+    return nearest_node
+
+func _attempt_attack_target(target: Unit) -> void:
+    """Attempt to attack a target using weapons or fallback damage"""
+    if not is_instance_valid(target) or target.is_dead:
+        return
+    
+    # Check attack cooldown
+    var current_time = Time.get_ticks_msec() / 1000.0
+    if current_time - last_attack_time < attack_cooldown:
+        return
+    
+    # Check if target is in range
+    var distance = global_position.distance_to(target.global_position)
+    if distance > attack_range:
+        return
+    
+    print("DEBUG: Unit %s attempting to attack target %s" % [unit_id, target.unit_id])
+    
+    # Try to fire weapon
+    var weapon_fired = false
+    if weapon_attachment and weapon_attachment.has_method("can_fire") and weapon_attachment.has_method("fire"):
+        if weapon_attachment.can_fire():
+            print("DEBUG: Unit %s firing weapon at target %s" % [unit_id, target.unit_id])
+            var fire_result = weapon_attachment.fire()
+            if not fire_result.is_empty():
+                weapon_fired = true
+                last_attack_time = current_time
+                
+                # Play attack animation if available
+                if has_method("play_animation"):
+                    call("play_animation", "Attack")
+        else:
+            print("DEBUG: Unit %s weapon cannot fire (cooldown or ammo)" % unit_id)
+    
+    # Fallback to direct damage if weapon failed
+    if not weapon_fired:
+        print("DEBUG: Unit %s using fallback direct damage against %s" % [unit_id, target.unit_id])
+        target.take_damage(attack_damage)
+        last_attack_time = current_time
+        
+        # Create damage indicator
+        target._create_damage_indicator(attack_damage)
+        
+        # Play attack animation if available
+        if has_method("play_animation"):
+            call("play_animation", "Attack")
+
+func _get_context_for_action(action_name: String) -> Dictionary:
+    """Gets context-sensitive parameters for an action, e.g., a target for 'heal_ally'."""
+    var params = {}
+    var game_state = get_node("/root/DependencyContainer").get_game_state()
+    if not game_state: return params
+
+    match action_name:
+        "heal_ally":
+            var lowest_ally = _get_lowest_health_ally_in_vision()
+            if is_instance_valid(lowest_ally):
+                params["target_id"] = lowest_ally.unit_id
+        "charge_shot", "attack":
+            var closest_enemy = _get_closest_enemy_in_vision()
+            if is_instance_valid(closest_enemy):
+                params["target_id"] = closest_enemy.unit_id
+    
+    return params
 
 func _get_visible_entities(group_name: String) -> Array:
     var visible_entities = []
@@ -1060,7 +1377,7 @@ func activate_shield(_params: Dictionary): pass
 func taunt_enemies(_params: Dictionary): pass
 func charge_shot(_params: Dictionary): pass
 func find_cover(_params: Dictionary): pass
-func heal_target(_params: Dictionary): pass
+func heal_ally(_params: Dictionary): pass
 func construct(_params: Dictionary): pass
 func repair(_params: Dictionary): pass
 func lay_mines(_params: Dictionary): pass
@@ -1105,9 +1422,16 @@ func _handle_respawn() -> void:
     # Move to spawn position
     global_position = spawn_position
     
+    # CRITICAL FIX: Reset facing direction to face toward enemy base
+    # This prevents units from walking in the wrong direction after respawn
+    _set_initial_facing_direction()
+    
     # Re-enable physics and collision
     set_physics_process(true)
     set_collision_layer_value(1, true)  # Re-enable selection
+    
+    # Ensure unit is visible
+    visible = true
     
     # Trigger respawn effects if this is an animated unit
     if has_method("trigger_respawn_sequence"):
@@ -1119,26 +1443,92 @@ func _handle_respawn() -> void:
     print("DEBUG: Unit %s respawned at %s with %d health (invulnerable for %.1f seconds)" % [
         unit_id, spawn_position, current_health, invulnerability_timer
     ])
+    print("DEBUG: Unit %s respawn state - is_dead: %s, is_respawning: %s, physics_processing: %s" % [
+        unit_id, is_dead, is_respawning, is_physics_processing()
+    ])
 
 func _get_respawn_position() -> Vector3:
-    """Get the respawn position for this unit"""
+    """Get the respawn position for this unit with bounds checking"""
     var home_base_manager = get_tree().get_first_node_in_group("home_base_managers")
     if home_base_manager:
-        var base_spawn = home_base_manager.get_team_spawn_position(team_id)
-        if base_spawn != Vector3.ZERO:
-            # Add random offset within respawn radius to prevent units spawning on top of each other
-            var angle = randf() * 2 * PI
-            var radius = randf() * GameConstants.RESPAWN_OFFSET_RADIUS
-            var offset = Vector3(
-                cos(angle) * radius,
-                0,
-                sin(angle) * radius
-            )
-            return base_spawn + offset
+        # Use the home base manager's safe spawn positioning
+        return home_base_manager.get_spawn_position_with_offset(team_id)
     
-    # Fallback to original spawn position with offset
-    return original_spawn_position + Vector3(randf() * 2.0 - 1.0, 0, randf() * 2.0 - 1.0)
+    # Fallback to original spawn position with bounds checking
+    var fallback_offset = Vector3(randf() * 2.0 - 1.0, 0, randf() * 2.0 - 1.0)
+    var fallback_position = original_spawn_position + fallback_offset
+    
+    # Clamp to map bounds
+    return _clamp_to_map_bounds(fallback_position)
 
 func get_respawn_time_remaining() -> float:
     """Get remaining respawn time (for UI display)"""
     return respawn_timer if is_respawning else 0.0
+
+func _get_default_behavior_matrix() -> Dictionary:
+    var validator = ActionValidator.new()
+    var valid_actions = validator.get_valid_actions_for_archetype(archetype)
+    var matrix = {}
+
+    # Default weights for a balanced, generic unit
+    var default_weights = {
+        # --- Mutually Exclusive States ---
+        "attack": {
+            "enemies_in_range": 0.8, "current_health": 0.2, "under_attack": 0.1,
+            "allies_in_range": 0.3, "ally_low_health": 0.1, "enemy_nodes_controlled": 0.4,
+            "ally_nodes_controlled": -0.2, "bias": -0.2
+        },
+        "retreat": {
+            "enemies_in_range": 0.4, "current_health": -0.9, "under_attack": 0.8,
+            "allies_in_range": -0.3, "ally_low_health": -0.5, "enemy_nodes_controlled": 0.1,
+            "ally_nodes_controlled": 0.0, "bias": -0.8
+        },
+        "defend": {
+            "enemies_in_range": -0.5, "current_health": 0.5, "under_attack": -0.6,
+            "allies_in_range": 0.2, "ally_low_health": 0.2, "enemy_nodes_controlled": -0.3,
+            "ally_nodes_controlled": 0.5, "bias": -0.6
+        },
+        "follow": {
+            "enemies_in_range": -0.3, "current_health": 0.0, "under_attack": -0.4,
+            "allies_in_range": 0.7, "ally_low_health": 0.3, "enemy_nodes_controlled": 0.0,
+            "ally_nodes_controlled": 0.0, "bias": -0.6
+        },
+        # --- Independent Abilities (generally off by default or context-sensitive) ---
+        "activate_stealth": {"bias": -1.0},
+        "activate_shield": {
+            "enemies_in_range": 0.5, "current_health": -0.6, "under_attack": 0.9, "bias": -0.7
+        },
+        "taunt_enemies": {
+            "enemies_in_range": 0.8, "current_health": 0.8, "allies_in_range": 0.5, "bias": -1.0
+        },
+        "charge_shot": {"bias": -1.0},
+        "heal_ally": {
+            "allies_in_range": 0.8, "ally_low_health": 0.9, "bias": -0.3
+        },
+        "lay_mines": {"bias": -1.0}, "construct": {"bias": -1.0}, "repair": {"bias": -1.0},
+        "find_cover": {
+            "under_attack": 0.7, "current_health": -0.5, "bias": -0.6
+        }
+    }
+
+    # Populate the matrix, ensuring only valid actions for this archetype are included
+    for action in valid_actions:
+        matrix[action] = {}
+        var template = default_weights.get(action, {})
+        for state_var in validator.DEFINED_STATE_VARIABLES:
+            matrix[action][state_var] = template.get(state_var, 0.0)
+    
+    return matrix
+
+func _get_fallback_state_variables() -> Dictionary:
+    """Provide basic fallback state variables when dependencies aren't available"""
+    return {
+        "enemies_in_range": 0.0,  # No enemies detected
+        "current_health": get_health_percentage(),
+        "under_attack": 0.0,  # Not under attack
+        "allies_in_range": 0.0,  # No allies detected  
+        "ally_low_health": 0.0,  # No low health allies
+        "ally_nodes_controlled": 0.5,  # Neutral assumption
+        "enemy_nodes_controlled": 0.5,  # Neutral assumption
+        "bias": 1.0
+    }

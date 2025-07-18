@@ -75,53 +75,70 @@ The system now uses OpenAI's structured outputs with strict JSON schemas instead
 var schema = AIResponseSchemas.get_schema_for_command(is_group, ["scout", "engineer"])
 ```
 
-4.3 LLM Response Schema (OpenAI Structured)
+4.3 LLM Response Schema (Behavior Matrix)
 ```json
 {
-  "type": "multi_step_plan",
   "plans": [{
-    "unit_id": "scout_01",
-    "goal": "Secure northern sector with stealth reconnaissance",
-    "steps": [
-      {
-        "action": "move_to",
-        "params": {"position": [100, 0, 50]},
-        "speech": "Moving to overwatch position"
+    "unit_id": "tank_t1_01",
+    "goal": "Lead the assault on the central control point.",
+    "control_point_attack_sequence": ["Node5", "Node8", "Node9"],
+    "behavior_matrix": {
+      "attack": {
+        "enemies_in_range": 0.7,
+        "current_health": 0.2,
+        "under_attack": 0.4,
+        "allies_in_range": 0.5,
+        "ally_low_health": 0.1,
+        "enemy_nodes_controlled": 0.6,
+        "ally_nodes_controlled": -0.3,
+        "bias": 0.1
       },
-      {
-        "action": "activate_stealth", 
-        "params": {},
-        "speech": "Going dark"
+      "retreat": {
+        "enemies_in_range": 0.3,
+        "current_health": -0.9,
+        "under_attack": 0.8,
+        "allies_in_range": -0.4,
+        "ally_low_health": -0.5,
+        "enemy_nodes_controlled": 0.1,
+        "ally_nodes_controlled": 0.2,
+        "bias": -0.5
+      },
+      "defend": {
+        "enemies_in_range": -0.5,
+        "current_health": 0.5,
+        "under_attack": -0.6,
+        "allies_in_range": 0.6,
+        "ally_low_health": 0.4,
+        "enemy_nodes_controlled": -0.2,
+        "ally_nodes_controlled": 0.8,
+        "bias": 0.2
+      },
+      "activate_shield": {
+        "enemies_in_range": 0.6,
+        "current_health": -0.5,
+        "under_attack": 0.9,
+        "allies_in_range": 0.2,
+        "ally_low_health": 0.0,
+        "enemy_nodes_controlled": 0.1,
+        "ally_nodes_controlled": 0.0,
+        "bias": 0.0
       }
-    ],
-    "triggered_actions": {
-      "on_enemy_sighted": "attack",
-      "on_under_attack": "find_cover",
-      "on_health_low": "retreat",
-      "on_health_critical": "retreat",
-      "on_ally_health_low": "move_to"
     }
   }],
-  "message": "Scout deploying for reconnaissance mission",
-  "summary": "Stealth approach with defensive fallbacks"
+  "message": "Tank unit configured for aggressive frontline assault.",
+  "summary": "Aggressive tank with defensive shield use."
 }
 ```
 
-**Triggered Actions:** This is a dictionary of pre-defined trigger slots. The LLM must provide a valid action for each key. The game engine determines when these triggers are met.
-
--   `on_enemy_sighted`: An enemy is within the unit's weapon range.
--   `on_under_attack`: The unit has recently taken damage.
--   `on_health_low`: The unit's health is below 50%.
--   `on_health_critical`: The unit's health is below 25%.
--   `on_ally_health_low`: (For Medics) A visible ally's health is below 50%.
+**Behavior Matrix:** Instead of triggers, the LLM now defines a unit's personality by assigning weights to a matrix. Each key is a possible action, and its value is a dictionary of weights corresponding to the unit's real-time state variables. The game engine uses this matrix every frame to calculate an "activation level" for each action, then executes the action with the highest score.
 
 **Action Enums by Archetype:**
 - **General**: `move_to`, `attack`, `retreat`, `patrol`, `stance`, `follow`
 - **Scout**: `+activate_stealth` 
 - **Tank**: `+activate_shield`, `+taunt_enemies`
 - **Sniper**: `+charge_shot`, `+find_cover`
-- **Medic**: `+heal_target`
-- **Engineer**: `+construct`, `+repair`, `+lay_mines`
+- **Medic**: `+heal_ally`
+- **Engineer**: `+construct_turret`, `+repair`, `+lay_mines`
 4.4 Node & Building
 node_id, controller, vision_radius, build_slot;
 building_id, type:{spire|tower|relay}, hp, construction_progress.
@@ -131,22 +148,35 @@ mermaid
 Copy
 Edit
 sequenceDiagram
-Player->>Server: Prompt
-Server->>LLMBridge: Build batch prompt
-LLMBridge->>OpenAI: /chat/completions
-OpenAI-->>LLMBridge: Plan JSON
-LLMBridge->>ActionValidator: validate plan
-ActionValidator-->>MatchServer: approved plan
-MatchServer->>PlanExecutor: push plan
-PlanExecutor->>FiniteStateMachine: dispatch step 1
-FiniteStateMachine->>PathPlanner: sub-goal
-PathPlanner->>Physics60Hz: velocities / projectiles
-Note over PlanExecutor: 30 Hz checks duration_ms or trigger;<br/>activates next step and speech bubble
+    participant Player
+    participant Server
+    participant AICommandProcessor
+    participant OpenAI
+    participant PlanExecutor
+    participant Unit
+
+    Player->>Server: "Tanks, be aggressive and capture the center"
+    Server->>AICommandProcessor: Build prompt with game context
+    AICommandProcessor->>OpenAI: /chat/completions (requesting behavior_matrix)
+    OpenAI-->>AICommandProcessor: Behavior Plan JSON
+    AICommandProcessor->>ActionValidator: Validate plan
+    ActionValidator-->>AICommandProcessor: Approved plan
+    AICommandProcessor->>PlanExecutor: Push behavior plan to units
+    PlanExecutor->>Unit: set_behavior_plan(matrix, sequence)
+
+    loop Every Physics Frame (60 Hz)
+        Unit->>Unit: _gather_state_variables()
+        Unit->>Unit: _calculate_activation_levels()
+        Unit->>Unit: _decide_and_execute_actions()
+        Unit->>PathPlanner: navigation_agent.target_position
+    end
+Note over Unit: The Unit is now autonomous.<br/>It makes its own decisions based on the<br/>LLM-provided behavior matrix.
+
 Module	Role
-ActionValidator.gd	Verifies plan schema, verb whitelist, param bounds, cost, speech profanity; rejects > 3 steps or > 6 s cumulative duration.
-PlanExecutor.gd	Stores the sequential plan for each unit. Monitors the unit's `action_complete` flag to advance the plan to the next step. No longer evaluates triggers.
-FiniteStateMachine.gd	The core state machine within each `Unit.gd` script. Executes actions from `PlanExecutor` or triggered actions. Evaluates all triggers autonomously and can interrupt the `PlanExecutor`'s plan.
-PathPlanner.gd	60 Hz A* pathing & local avoidance; resolves cover id to waypoint.
+ActionValidator.gd	Validates the `behavior_matrix` and `control_point_attack_sequence` from the LLM. Ensures all required actions and state variables have weights between -1.0 and 1.0.
+PlanExecutor.gd	A simple "goal setter". It receives the validated plan from the AI processor and passes the behavior matrix and attack sequence to the target unit(s). It no longer manages steps or triggers.
+Unit.gd	The new core of the AI. Contains the real-time decision loop. Every physics frame, it gathers its state, calculates activation scores for all actions using its behavior matrix, and executes the highest-scoring state (`attack`, `retreat`, `defend`, `follow`).
+PathPlanner.gd	(Now integrated into `Unit.gd` via `NavigationAgent3D`) Handles 60 Hz pathfinding and local avoidance.
 SpeechBubble.tscn	Billboard UI; fades after 2 s.
 
 6 Expanded Action & Sensing Space

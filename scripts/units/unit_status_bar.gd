@@ -20,6 +20,12 @@ var parent_unit: Unit
 var is_ai_processing: bool = false
 var processing_animation_time: float = 0.0
 
+# Auto-update tracking for behavior matrix changes
+var last_known_action_scores: Dictionary = {}
+var last_known_reactive_state: String = ""
+var auto_update_timer: float = 0.0
+const AUTO_UPDATE_INTERVAL: float = 0.05  # Update 20 times per second for more responsive display
+
 # Material for the quad
 var status_material: StandardMaterial3D
 
@@ -41,6 +47,29 @@ func _ready() -> void:
 	status_panel = $StatusQuad/SubViewport/StatusPanel
 	status_label = $StatusQuad/SubViewport/StatusPanel/StatusLabel
 	
+	# Expand viewport size to accommodate all triggers and content (larger for complete trigger display)
+	if status_viewport:
+		status_viewport.size = Vector2i(800, 600)  # Increased to fit all triggers
+	
+	# Expand panel size to match viewport
+	if status_panel:
+		status_panel.custom_minimum_size = Vector2(800, 600)
+		status_panel.size = Vector2(800, 600)
+		# Set panel anchors to fill the viewport
+		status_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	
+	# Expand and configure the status label to use full area
+	if status_label:
+		status_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		status_label.custom_minimum_size = Vector2(780, 580)  # Leave some margin
+		status_label.size = Vector2(780, 580)
+		status_label.vertical_alignment = VERTICAL_ALIGNMENT_TOP  # Align content to top
+		status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART  # Enable text wrapping
+	
+	# Expand status quad size to match the larger viewport
+	if status_quad:
+		status_quad.scale = Vector3(8.0, 6.0, 1.0)  # Scale to match the larger viewport size
+	
 	# Set up the material for the quad
 	_setup_material()
 	
@@ -55,6 +84,9 @@ func _ready() -> void:
 	
 	# Position the status bar
 	position.y = offset_height
+	
+	# Connect to parent unit's signal for immediate behavior matrix updates if available
+	call_deferred("_connect_to_parent_signals")
 
 func _setup_material() -> void:
 	"""Setup the material for the status quad"""
@@ -129,6 +161,12 @@ func _physics_process(delta: float) -> void:
 	if is_ai_processing:
 		processing_animation_time += delta
 		_update_processing_animation()
+	
+	# Auto-update behavior matrix display
+	auto_update_timer += delta
+	if auto_update_timer >= AUTO_UPDATE_INTERVAL:
+		auto_update_timer = 0.0
+		_check_and_update_behavior_display()
 
 func _update_visibility() -> void:
 	"""Update visibility based on distance to camera"""
@@ -160,16 +198,20 @@ func update_status(new_status: String) -> void:
 	var goal_text = ""
 	if parent_unit and "strategic_goal" in parent_unit and not parent_unit.strategic_goal.is_empty():
 		var short_goal = _shorten_goal(parent_unit.strategic_goal)
-		goal_text = "[color=lightgreen][font_size=40][b]%s[/b][/font_size][/color]\n" % short_goal
+		goal_text = "[color=lightgreen][font_size=50][b]%s[/b][/font_size][/color]\n" % short_goal
 	
 	# Add AI processing indicator if needed
 	var processing_text = ""
 	if is_ai_processing:
-		processing_text = "[color=yellow][font_size=44]🤖 Processing...[/font_size][/color]\n"
+		processing_text = "[color=yellow][font_size=52]🤖 Processing...[/font_size][/color]\n"
+	
+	# Add active triggers display
+	var active_triggers_text = _get_active_triggers_display()
 	
 	# Format the status with color coding
 	var formatted_status = _format_status(new_status)
-	status_label.text = "[center]%s%s[font_size=48]%s[/font_size][/center]" % [goal_text, processing_text, formatted_status]
+	# Use larger font sizes for better readability in expanded box
+	status_label.text = "[center]%s%s%s[font_size=56]%s[/font_size][/center]" % [goal_text, processing_text, active_triggers_text, formatted_status]
 
 func update_full_plan(plan_data: Array) -> void:
 	"""Update the status bar with full action plan"""
@@ -184,12 +226,15 @@ func update_full_plan(plan_data: Array) -> void:
 	var goal_text = ""
 	if parent_unit and "strategic_goal" in parent_unit and not parent_unit.strategic_goal.is_empty():
 		var short_goal = _shorten_goal(parent_unit.strategic_goal)
-		goal_text = "[color=lightgreen][font_size=40][b]%s[/b][/font_size][/color]\n" % short_goal
+		goal_text = "[color=lightgreen][font_size=50][b]%s[/b][/font_size][/color]\n" % short_goal
 	
 	# Add AI processing indicator if needed (above the plan)
 	var processing_text = ""
 	if is_ai_processing:
-		processing_text = "[color=yellow][font_size=44]🤖 Processing...[/font_size][/color]\n"
+		processing_text = "[color=yellow][font_size=52]🤖 Processing...[/font_size][/color]\n"
+	
+	# Add active triggers display
+	var active_triggers_text = _get_active_triggers_display()
 	
 	# Build formatted plan display
 	var plan_text = ""
@@ -223,13 +268,14 @@ func update_full_plan(plan_data: Array) -> void:
 		# Add trigger info if available and step is not completed
 		if not trigger.is_empty() and status != "completed":
 			var short_trigger = _shorten_trigger(trigger)
-			plan_text += " [color=lightgray][font_size=40](%s)[/font_size][/color]" % short_trigger
+			plan_text += " [color=lightgray][font_size=46](%s)[/font_size][/color]" % short_trigger
 		
 		# Add newline if not last item
 		if i < plan_data.size() - 1:
 			plan_text += "\n"
 	
-	status_label.text = "[center]%s%s[font_size=44]%s[/font_size][/center]" % [goal_text, processing_text, plan_text]
+	# Use larger font sizes for better readability in expanded box
+	status_label.text = "[center]%s%s%s[font_size=52]%s[/font_size][/center]" % [goal_text, processing_text, active_triggers_text, plan_text]
 
 func _format_status(status: String) -> String:
 	"""Format status text with appropriate colors"""
@@ -343,6 +389,18 @@ func set_ai_processing(processing: bool) -> void:
 		# Refresh display when processing ends
 		call_deferred("_refresh_current_display")
 
+func force_refresh() -> void:
+	"""Manually force a refresh of the status bar display"""
+	if parent_unit:
+		# Force update of behavior matrix tracking variables to trigger refresh
+		last_known_action_scores.clear()
+		last_known_reactive_state = ""
+		
+		if not parent_unit.full_plan.is_empty():
+			update_full_plan(parent_unit.full_plan)
+		else:
+			update_status(parent_unit.plan_summary)
+
 func _update_processing_animation() -> void:
 	"""Update the processing animation visual effects"""
 	if not status_label:
@@ -366,6 +424,57 @@ func _refresh_current_display() -> void:
 		else:
 			update_status(parent_unit.plan_summary)
 
+func _check_and_update_behavior_display() -> void:
+	"""Check if behavior matrix data has changed and update display if needed"""
+	if not parent_unit or not status_label:
+		return
+	
+	# Get current behavior matrix data
+	var current_action_scores = {}
+	var current_reactive_state = ""
+	
+	if "last_action_scores" in parent_unit and parent_unit.last_action_scores != null:
+		current_action_scores = parent_unit.last_action_scores
+	
+	if "current_reactive_state" in parent_unit:
+		current_reactive_state = parent_unit.current_reactive_state
+	
+	# Check if data has changed
+	var scores_changed = not _dictionaries_equal(current_action_scores, last_known_action_scores)
+	var state_changed = current_reactive_state != last_known_reactive_state
+	
+	if scores_changed or state_changed:
+		# Update our tracking
+		last_known_action_scores = current_action_scores.duplicate()
+		last_known_reactive_state = current_reactive_state
+		
+		# Refresh the display
+		if not parent_unit.full_plan.is_empty():
+			update_full_plan(parent_unit.full_plan)
+		else:
+			update_status(parent_unit.plan_summary)
+
+func _dictionaries_equal(dict1: Dictionary, dict2: Dictionary) -> bool:
+	"""Compare two dictionaries for equality (including nested values)"""
+	if dict1.is_empty() and dict2.is_empty():
+		return true
+	if dict1.size() != dict2.size():
+		return false
+	
+	for key in dict1:
+		if not dict2.has(key):
+			return false
+		# Use small epsilon for float comparison
+		var val1 = dict1[key]
+		var val2 = dict2[key]
+		if typeof(val1) == TYPE_FLOAT and typeof(val2) == TYPE_FLOAT:
+			if abs(val1 - val2) > 0.001:  # Small epsilon for float comparison
+				return false
+		elif val1 != val2:
+			return false
+	
+	return true
+
 func update_team_border(team_id: int) -> void:
 	"""Update the border color for a different team (if needed)"""
 	if not status_panel:
@@ -377,6 +486,144 @@ func update_team_border(team_id: int) -> void:
 	if current_style is StyleBoxFlat:
 		current_style.border_color = border_color
 
+func _connect_to_parent_signals() -> void:
+	"""Connect to parent unit signals for immediate updates"""
+	if not parent_unit:
+		return
+	
+	# If the parent unit has a behavior matrix update signal, connect to it
+	# For now, we'll rely on the timer-based approach and client sync
+	# This method is here for future extensibility if we add dedicated signals
+
 # Called when parent unit's plan_summary changes
 func _on_plan_summary_changed(new_summary: String) -> void:
-	update_status(new_summary) 
+	update_status(new_summary)
+
+func _get_active_triggers_display() -> String:
+	"""Get formatted display text for behavior matrix activations and current state"""
+	if not parent_unit:
+		return ""
+	
+	# Get behavior matrix activation scores from the unit
+	var action_scores = {}
+	var current_state = ""
+	
+	if "last_action_scores" in parent_unit and parent_unit.last_action_scores != null:
+		action_scores = parent_unit.last_action_scores
+	
+	if "current_reactive_state" in parent_unit:
+		current_state = parent_unit.current_reactive_state
+	
+	if action_scores.is_empty():
+		return ""
+	
+	# Get ActionValidator constants for categorization
+	var validator_script = preload("res://scripts/ai/action_validator.gd")
+	var validator = validator_script.new()
+	
+	# Filter actions to only include those valid for this unit's archetype
+	var unit_archetype = parent_unit.archetype if "archetype" in parent_unit else "general"
+	var valid_actions = validator.get_valid_actions_for_archetype(unit_archetype)
+	
+	var exclusive_actions = []
+	for action in validator.MUTUALLY_EXCLUSIVE_REACTIVE_ACTIONS:
+		if action in valid_actions:
+			exclusive_actions.append(action)
+	
+	var independent_actions = []
+	for action in validator.INDEPENDENT_REACTIVE_ACTIONS:
+		if action in valid_actions:
+			independent_actions.append(action)
+	
+	var display_lines = []
+	
+	# Show current reactive state first
+	if not current_state.is_empty():
+		var state_color = _get_action_color(current_state)
+		var line = "[color=%s]★ Current State: %s[/color]" % [state_color, current_state.capitalize()]
+		display_lines.append(line)
+		display_lines.append("") # Empty line for spacing
+	
+	# Show mutually exclusive actions (sorted by activation level)
+	var exclusive_scores = []
+	for action in exclusive_actions:
+		if action in action_scores:
+			exclusive_scores.append({"action": action, "score": action_scores[action]})
+	
+	exclusive_scores.sort_custom(func(a, b): return a.score > b.score)
+	
+	if not exclusive_scores.is_empty():
+		display_lines.append("[color=white][b]Primary States:[/b][/color]")
+		for item in exclusive_scores:
+			var action = item.action
+			var score = item.score
+			var is_current = (action == current_state)
+			var activation_bar = _create_activation_bar(score)
+			var action_color = _get_action_color(action)
+			var state_indicator = "►" if is_current else "○"
+			
+			var line = "[color=%s]%s %s[/color] %s [color=gray]%.2f[/color]" % [
+				action_color, state_indicator, action.capitalize(), activation_bar, score
+			]
+			display_lines.append(line)
+	
+	# Show independent actions that are above threshold
+	var independent_threshold = 0.6  # Match the threshold from unit.gd
+	var active_independent = []
+	
+	for action in independent_actions:
+		if action in action_scores and action_scores[action] > independent_threshold:
+			active_independent.append({"action": action, "score": action_scores[action]})
+	
+	if not active_independent.is_empty():
+		active_independent.sort_custom(func(a, b): return a.score > b.score)
+		display_lines.append("") # Empty line for spacing
+		display_lines.append("[color=yellow][b]Active Abilities:[/b][/color]")
+		
+		for item in active_independent:
+			var action = item.action
+			var score = item.score
+			var activation_bar = _create_activation_bar(score)
+			var action_color = _get_action_color(action)
+			
+			var line = "[color=%s]⚡ %s[/color] %s [color=gray]%.2f[/color]" % [
+				action_color, action.replace("_", " ").capitalize(), activation_bar, score
+			]
+			display_lines.append(line)
+	
+	if display_lines.is_empty():
+		return "[color=gray]No active behaviors[/color]\n"
+	
+	return "[font_size=44]%s[/font_size]\n" % "\n".join(display_lines)
+
+func _create_activation_bar(score: float) -> String:
+	"""Create a visual bar representing activation level"""
+	var bar_length = 8
+	var filled_length = int(clamp(abs(score) * bar_length, 0, bar_length))
+	var empty_length = bar_length - filled_length
+	
+	var color = "green" if score > 0 else "red"
+	var filled_bar = "█".repeat(filled_length)
+	var empty_bar = "░".repeat(empty_length)
+	
+	return "[color=%s]%s[/color][color=gray]%s[/color]" % [color, filled_bar, empty_bar]
+
+func _format_trigger_name(trigger_name: String) -> String:
+	"""Convert action name to user-friendly display format (updated for behavior matrix)"""
+	# Convert underscores to spaces and capitalize
+	var display_name = trigger_name.replace("_", " ").capitalize()
+	
+	# Specific action name improvements
+	match trigger_name:
+		"activate_stealth": return "Stealth Mode"
+		"activate_shield": return "Shield Up"
+		"taunt_enemies": return "Taunt"
+		"charge_shot": return "Charge Shot"
+		"heal_ally": return "Heal Ally"
+		"lay_mines": return "Deploy Mines"
+		"find_cover": return "Take Cover"
+		_: return display_name
+
+func _get_trigger_color(trigger_name: String) -> String:
+	"""Get color for action type highlighting (updated for behavior matrix actions)"""
+	return _get_action_color(trigger_name) 

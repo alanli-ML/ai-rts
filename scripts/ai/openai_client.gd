@@ -38,7 +38,7 @@ signal rate_limit_exceeded()
 func _ready() -> void:
 	http_request = HTTPRequest.new()
 	http_request.name = "HTTPRequest"
-	http_request.timeout = 30.0
+	http_request.timeout = 60.0
 	add_child(http_request)
 	http_request.request_completed.connect(_on_request_completed)
 	_load_api_key()
@@ -114,7 +114,8 @@ func _process_queue() -> void:
 
 func _send_request(request_info: Dictionary) -> void:
 	active_requests += 1
-	request_timestamps.append(Time.get_ticks_msec() / 1000.0)
+	var request_start_time = Time.get_ticks_msec() / 1000.0
+	request_timestamps.append(request_start_time)
 	
 	var headers = [
 		"Content-Type: application/json",
@@ -123,7 +124,9 @@ func _send_request(request_info: Dictionary) -> void:
 	
 	var json_data = JSON.stringify(request_info.data)
 	http_request.set_meta("callback", request_info.callback)
+	http_request.set_meta("start_time", request_start_time)
 	
+	print("OpenAI: Sending HTTP request at %f" % request_start_time)
 	var error = http_request.request(request_info.url, headers, HTTPClient.METHOD_POST, json_data)
 	if error != OK:
 		active_requests -= 1
@@ -144,9 +147,14 @@ func _send_request(request_info: Dictionary) -> void:
 		_process_queue()
 
 func _on_request_completed(result: int, response_code: int, headers: PackedStringArray, body: PackedByteArray) -> void:
+	var end_time = Time.get_ticks_msec() / 1000.0
+	var start_time = http_request.get_meta("start_time", 0.0)
+	var duration = end_time - start_time if start_time > 0 else 0.0
+	
 	print("=== OpenAI HTTP Response ===")
 	print("Result code: %d" % result)
 	print("Response code: %d" % response_code) 
+	print("Duration: %.2f seconds" % duration)
 	print("Headers: %s" % headers)
 	
 	active_requests -= 1

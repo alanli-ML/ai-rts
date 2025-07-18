@@ -20,6 +20,10 @@ func _physics_process(delta: float):
 			look_at(target_unit.global_position, Vector3.UP)
 			charge_timer -= delta
 			if charge_timer <= 0:
+				# Play enhanced visual effects before firing
+				if has_method("play_charged_shot_effect"):
+					play_charged_shot_effect()
+				
 				if weapon_attachment and weapon_attachment.has_method("fire"):
 					# Fire with bonus damage
 					var original_damage = weapon_attachment.damage
@@ -32,6 +36,13 @@ func _physics_process(delta: float):
 		can_move = true
 
 	super._physics_process(delta)
+
+func get_charge_progress() -> float:
+	"""Return the current charge progress (0.0 to 1.0) for visual effects"""
+	if current_state != GameEnums.UnitState.CHARGING_SHOT or charge_time <= 0:
+		return 0.0
+	
+	return 1.0 - (charge_timer / charge_time)
 
 # --- Action Placeholders ---
 
@@ -53,9 +64,19 @@ func charge_shot(params: Dictionary):
 		current_state = GameEnums.UnitState.CHARGING_SHOT
 		charge_timer = charge_time
 		print("%s is charging a precision shot against %s." % [unit_id, str(target_id)])
+		
+		# Play charging sound effect
+		_play_charging_sound()
 	else:
 		print("Sniper %s: Invalid target for charge_shot: %s" % [unit_id, str(target_id)])
 		action_complete = true
+
+func _play_charging_sound():
+	"""Play sound effect when starting to charge a shot"""
+	var audio_manager = get_node_or_null("/root/DependencyContainer/AudioManager")
+	if audio_manager and audio_manager.has_method("play_sound_3d"):
+		# Try to play charging sound - audio manager should handle fallbacks
+		audio_manager.play_sound_3d("res://assets/audio/sfx/charge_start.wav", global_position)
 
 func find_cover(_params: Dictionary):
 	print("%s is finding a high-ground cover position." % unit_id)

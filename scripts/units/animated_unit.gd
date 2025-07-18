@@ -7,7 +7,8 @@ const MODEL_PATHS = {
 	"tank": "res://assets/kenney/kenney_blocky-characters_20/Models/GLB format/character-h.glb",
 	"sniper": "res://assets/kenney/kenney_blocky-characters_20/Models/GLB format/character-d.glb",
 	"medic": "res://assets/kenney/kenney_blocky-characters_20/Models/GLB format/character-p.glb",
-	"engineer": "res://assets/kenney/kenney_blocky-characters_20/Models/GLB format/character-o.glb"
+	"engineer": "res://assets/kenney/kenney_blocky-characters_20/Models/GLB format/character-o.glb",
+	"turret": "res://assets/kenney/kenney_blocky-characters_20/Models/GLB format/character-h.glb" # Placeholder model
 }
 
 var animation_player: AnimationPlayer
@@ -505,19 +506,33 @@ func trigger_respawn_sequence():
 	"""Called when unit respawns - visual effects for revival"""
 	print("DEBUG: AnimatedUnit %s (%s) starting respawn sequence" % [unit_id, archetype])
 	
+	# CRITICAL: This method is called AFTER _set_initial_facing_direction() in the base Unit class
+	# The Unit transform is correctly rotated toward the enemy base, but we need to ensure
+	# the model_container maintains its 180° Y rotation for proper forward-facing orientation
+	
 	# Make unit visible again and reset visual state
 	visible = true
 	
-	# Reset modulate if available
-	if has_method("set_modulate") or "modulate" in self:
+	# Reset modulate if available (try model container first, then self)
+	var modulate_reset = false
+	if model_container and "modulate" in model_container:
+		model_container.modulate = Color.WHITE
+		modulate_reset = true
+	elif "modulate" in self:
 		self.modulate = Color.WHITE
-	else:
+		modulate_reset = true
+	elif has_method("set_modulate"):
+		self.modulate = Color.WHITE
+		modulate_reset = true
+	
+	if not modulate_reset:
 		print("DEBUG: Modulate not available for unit %s, skipping color reset" % unit_id)
 	
-	# Reset model container
+	# Reset model container (preserve 180° Y rotation for proper forward facing)
 	if model_container:
 		model_container.scale = Vector3.ONE
-		model_container.rotation_degrees = Vector3.ZERO
+		model_container.rotation_degrees = Vector3(0, 180, 0)  # Maintain proper forward orientation
+		print("DEBUG: Unit %s model container rotation reset to proper forward orientation (0, 180, 0)" % unit_id)
 	
 	# Enable collision again
 	set_collision_layer_value(1, true)
@@ -544,11 +559,22 @@ func _apply_respawn_effects():
 		# Scale back to normal
 		respawn_tween.tween_property(model_container, "scale", Vector3.ONE, 0.5)
 		
-		# Add a brief glow effect (if modulate is available)
-		if has_method("set_modulate") or "modulate" in self:
+		# Add a brief glow effect (try model container first, then self)
+		var glow_applied = false
+		if model_container and "modulate" in model_container:
+			respawn_tween.tween_property(model_container, "modulate", Color(1.2, 1.2, 1.2, 1.0), 0.2)
+			respawn_tween.tween_property(model_container, "modulate", Color.WHITE, 0.3)
+			glow_applied = true
+		elif "modulate" in self:
 			respawn_tween.tween_property(self, "modulate", Color(1.2, 1.2, 1.2, 1.0), 0.2)
 			respawn_tween.tween_property(self, "modulate", Color.WHITE, 0.3)
-		else:
+			glow_applied = true
+		elif has_method("set_modulate"):
+			respawn_tween.tween_property(self, "modulate", Color(1.2, 1.2, 1.2, 1.0), 0.2)
+			respawn_tween.tween_property(self, "modulate", Color.WHITE, 0.3)
+			glow_applied = true
+		
+		if not glow_applied:
 			print("DEBUG: Skipping glow effect for unit %s (modulate not available)" % unit_id)
 
 func debug_list_available_animations() -> void:

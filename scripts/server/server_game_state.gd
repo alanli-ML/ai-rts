@@ -108,48 +108,10 @@ func _gather_game_state() -> Dictionary:
             var plan_summary = "Idle"
             var full_plan_data = []
 
-            if plan_executor:
-                # 1. Process sequential plan for UI
-                var active_plan = plan_executor.active_plans.get(unit_id, [])
-                var current_step_index = plan_executor.current_step_indices.get(unit_id, -1)
-                var current_step = null
-                if current_step_index >= 0 and current_step_index < active_plan.size():
-                    current_step = active_plan[current_step_index]
-
-                for i in range(active_plan.size()):
-                    var step = active_plan[i]
-                    var action = step.get("action", "unknown")
-                    var params = step.get("params", {})
-                    if params == null: params = {}
-                    var action_display = action.capitalize().replace("_", " ")
-                    if params.has("target_id") and params.target_id != null:
-                        action_display += " " + str(params.target_id).right(4)
-                    elif params.has("position") and params.position != null and params.position is Array and params.position.size() >= 3:
-                        action_display += " (%d, %d)" % [int(params.position[0]), int(params.position[2])]
-
-                    var step_status = "pending"
-                    if i < current_step_index:
-                        step_status = "completed"
-                    elif i == current_step_index:
-                        step_status = "active"
-                    
-                    full_plan_data.append({"action": action_display, "status": step_status, "trigger": ""})
-                
-                # Set plan summary from current sequential step
-                if current_step:
-                    plan_summary = full_plan_data[current_step_index].action
-
-                # 2. Process triggered actions for UI
-                var triggered_actions = unit.triggered_actions if "triggered_actions" in unit else {}
-                for trigger_name in triggered_actions:
-                    var action = triggered_actions[trigger_name]
-                    
-                    # Convert trigger name to human-readable format
-                    var trigger_display = trigger_name.replace("_", " ").capitalize()
-                    
-                    var action_display = action.capitalize().replace("_", " ")
-                    
-                    full_plan_data.append({"action": action_display, "status": "triggered", "trigger": trigger_display})
+            # The new behavior matrix system doesn't use sequential plans anymore
+            # Plan summary comes from the unit's current reactive state
+            if "current_reactive_state" in unit:
+                plan_summary = unit.current_reactive_state.capitalize()
 
             var unit_data = {
                 "id": unit.unit_id,
@@ -164,6 +126,11 @@ func _gather_game_state() -> Dictionary:
                 },
                 "current_state": unit.current_state,
                 "health": unit.current_health,
+                "current_health": unit.current_health,
+                "max_health": unit.max_health,
+                "is_dead": unit.is_dead,
+                "is_respawning": unit.is_respawning,
+                "respawn_timer": unit.respawn_timer if "respawn_timer" in unit else 0.0,
                 "is_stealthed": unit.is_stealthed if "is_stealthed" in unit else false,
                 "shield_active": false,
                 "shield_pct": 0.0,
@@ -171,8 +138,13 @@ func _gather_game_state() -> Dictionary:
                 "full_plan": full_plan_data,
                 "strategic_goal": unit.strategic_goal,
                 "waiting_for_ai": unit.unit_id in units_waiting_for_ai,
-                "active_triggers": unit.get_current_active_triggers() if unit.has_method("get_current_active_triggers") else [],
-                "all_triggers": unit.get_all_trigger_info() if unit.has_method("get_all_trigger_info") else {}
+                "active_triggers": [],  # Deprecated - use behavior matrix data instead
+                "all_triggers": {},     # Deprecated - use behavior matrix data instead
+                # New behavior data for UI
+                "behavior_matrix": unit.behavior_matrix if "behavior_matrix" in unit else {},
+                "last_action_scores": unit.last_action_scores if "last_action_scores" in unit else {},
+                "last_state_variables": unit.last_state_variables if "last_state_variables" in unit else {},
+                "current_reactive_state": unit.current_reactive_state if "current_reactive_state" in unit else "defend"
             }
             
             # Add charge shot data for sniper units
@@ -195,6 +167,24 @@ func _gather_game_state() -> Dictionary:
                     "capture_value": cp.capture_value
                 })
     return state
+
+func get_units_in_radius(p_position: Vector3, p_radius: float, p_team_to_exclude: int = -1, p_team_to_find: int = -1) -> Array[Unit]:
+    var units_in_range: Array[Unit] = []
+    var radius_sq = p_radius * p_radius
+    for unit_id in units:
+        var unit = units[unit_id]
+        if not is_instance_valid(unit) or unit.is_dead:
+            continue
+        
+        if p_team_to_exclude != -1 and unit.team_id == p_team_to_exclude:
+            continue
+            
+        if p_team_to_find != -1 and unit.team_id != p_team_to_find:
+            continue
+            
+        if unit.global_position.distance_squared_to(p_position) < radius_sq:
+            units_in_range.append(unit)
+    return units_in_range
 
 func _broadcast_game_state() -> void:
     var session_manager = get_node("/root/DependencyContainer").get_node("SessionManager")
@@ -591,9 +581,16 @@ func spawn_unit(archetype: String, team_id: int, position: Vector3, owner_id: St
 
 func _on_unit_died(unit_id: String):
     if units.has(unit_id):
-        _log_info("ServerGameState", "Unit %s died and will remain in scene." % unit_id)
-        # The unit's 'is_dead' flag is now true and will be broadcast in the next state update.
-        # No need to remove it from the 'units' dictionary.
+        var unit = units[unit_id]
+        # Turrets are destroyed permanently and do not respawn.
+        if is_instance_valid(unit) and unit.archetype == "turret":
+            _log_info("ServerGameState", "Turret %s destroyed permanently." % unit_id)
+            units.erase(unit_id) # Remove from state, it won't respawn
+        else:
+            _log_info("ServerGameState", "Unit %s died and will remain in scene for respawning." % unit_id)
+            # The unit's 'is_dead' flag is now true and will be broadcast in the next state update.
+            # No need to remove it from the 'units' dictionary for respawning units.
+        
         unit_destroyed.emit(unit_id)
 
 func _on_unit_respawned(unit_id: String):
@@ -900,26 +897,16 @@ func get_context_for_ai(unit: Unit) -> Dictionary:
 
 func _get_plan_info_for_unit(unit_id: String) -> Dictionary:
     """Helper method to extract current plan information for a unit for the AI context."""
-    if not plan_executor:
+    var unit = units.get(unit_id)
+    if not unit:
         return {}
 
+    # In the new behavior matrix system, return the current reactive state and goal
     var plan_context = {
-        "steps": [],
-        "triggered_actions": []
+        "current_reactive_state": unit.current_reactive_state if "current_reactive_state" in unit else "defend",
+        "strategic_goal": unit.strategic_goal if "strategic_goal" in unit else "",
+        "control_point_attack_sequence": unit.control_point_attack_sequence if "control_point_attack_sequence" in unit else []
     }
-
-    # Get sequential plan
-    var active_plan = plan_executor.active_plans.get(unit_id, [])
-    for step in active_plan:
-        plan_context.steps.append(step)
-
-    # Get triggered actions
-    var unit = units.get(unit_id)
-    var triggered_actions = []
-    if unit and "triggered_actions" in unit:
-        triggered_actions = unit.triggered_actions
-    for step in triggered_actions:
-        plan_context.triggered_actions.append(step)
 
     return plan_context
 
@@ -928,12 +915,17 @@ func _on_ai_think_timer_timeout():
         return
 
     # The timer now acts as a fallback check for any idle units that might have been missed.
+    # In the new behavior matrix system, units are autonomous, so this is mainly for units without goals
     for unit_id in units:
         var unit = units[unit_id]
         if not is_instance_valid(unit) or unit.is_dead:
             continue
             
-        var is_idle = not plan_executor.active_plans.has(unit_id) or plan_executor.active_plans.get(unit_id, []).is_empty()
+        # Check if unit has an empty behavior matrix or no strategic goal
+        var has_behavior_matrix = "behavior_matrix" in unit and not unit.behavior_matrix.is_empty()
+        var has_goal = "strategic_goal" in unit and not unit.strategic_goal.is_empty()
+        
+        var is_idle = not has_behavior_matrix or not has_goal
         
         if is_idle:
             # This will respect all cooldowns defined in the function.

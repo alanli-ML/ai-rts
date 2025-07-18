@@ -86,10 +86,19 @@ const UNIT_CONFIGS: Dictionary = {
         "vision": 12.0,
         "cost": 80,
         "build_time": 10.0
+    },
+    "turret": {
+        "health": 150,
+        "speed": 0.0,
+        "damage": 15,
+        "range": 15.0,
+        "vision": 15.0,
+        "cost": 100,
+        "build_time": 15.0
     }
 }
 
-# Default triggered actions by unit archetype
+# Default triggered actions by unit archetype (DEPRECATED - use DEFAULT_BEHAVIOR_MATRICES)
 const DEFAULT_TRIGGERED_ACTIONS: Dictionary = {
     "scout": {
         "on_enemy_in_range": "attack",
@@ -121,7 +130,7 @@ const DEFAULT_TRIGGERED_ACTIONS: Dictionary = {
         "on_under_attack": "find_cover",
         "on_health_low": "find_cover",
         "on_health_critical": "retreat",
-        "on_ally_health_low": "heal_target"
+        "on_ally_health_low": "heal_ally"
     },
     "engineer": {
         "on_enemy_in_range": "attack",
@@ -138,6 +147,213 @@ const DEFAULT_TRIGGERED_ACTIONS: Dictionary = {
         "on_health_low": "retreat",
         "on_health_critical": "retreat",
         "on_ally_health_low": "move_to"
+    }
+}
+
+# Default behavior matrices by unit archetype (NEW SYSTEM)
+# Uses correct variable names from ActionValidator.DEFINED_STATE_VARIABLES
+const DEFAULT_BEHAVIOR_MATRICES: Dictionary = {
+    "scout": {
+        "attack": {
+            "enemies_in_range": 0.8, "current_health": 0.3, "under_attack": -0.2,
+            "allies_in_range": 0.2, "ally_low_health": 0.0, "enemy_nodes_controlled": 0.4,
+            "ally_nodes_controlled": -0.2, "bias": -0.3
+        },
+        "retreat": {
+            "enemies_in_range": 0.4, "current_health": -0.7, "under_attack": 0.9,
+            "allies_in_range": -0.3, "ally_low_health": -0.2, "enemy_nodes_controlled": 0.2,
+            "ally_nodes_controlled": 0.0, "bias": -0.7
+        },
+        "defend": {
+            "enemies_in_range": -0.3, "current_health": 0.2, "under_attack": -0.4,
+            "allies_in_range": 0.3, "ally_low_health": 0.1, "enemy_nodes_controlled": -0.4,
+            "ally_nodes_controlled": 0.6, "bias": -0.5
+        },
+        "follow": {
+            "enemies_in_range": -0.2, "current_health": -0.1, "under_attack": -0.3,
+            "allies_in_range": 0.6, "ally_low_health": 0.2, "enemy_nodes_controlled": 0.0,
+            "ally_nodes_controlled": 0.0, "bias": -0.6
+        },
+        "activate_stealth": {
+            "enemies_in_range": 0.5, "current_health": -0.4, "under_attack": 0.8,
+            "allies_in_range": -0.2, "ally_low_health": 0.0, "enemy_nodes_controlled": 0.0,
+            "ally_nodes_controlled": 0.0, "bias": -0.8
+        },
+        "find_cover": {
+            "enemies_in_range": 0.3, "current_health": -0.5, "under_attack": 0.7,
+            "allies_in_range": 0.0, "ally_low_health": 0.0, "enemy_nodes_controlled": 0.0,
+            "ally_nodes_controlled": 0.0, "bias": -0.7
+        }
+    },
+    "tank": {
+        "attack": {
+            "enemies_in_range": 0.9, "current_health": 0.2, "under_attack": 0.1,
+            "allies_in_range": 0.3, "ally_low_health": 0.1, "enemy_nodes_controlled": 0.5,
+            "ally_nodes_controlled": -0.2, "bias": -0.1
+        },
+        "retreat": {
+            "enemies_in_range": 0.2, "current_health": -0.8, "under_attack": 0.3,
+            "allies_in_range": -0.2, "ally_low_health": -0.3, "enemy_nodes_controlled": 0.1,
+            "ally_nodes_controlled": 0.0, "bias": -0.8
+        },
+        "defend": {
+            "enemies_in_range": -0.2, "current_health": 0.3, "under_attack": -0.3,
+            "allies_in_range": 0.4, "ally_low_health": 0.2, "enemy_nodes_controlled": -0.5,
+            "ally_nodes_controlled": 0.7, "bias": -0.4
+        },
+        "follow": {
+            "enemies_in_range": -0.1, "current_health": -0.3, "under_attack": -0.2,
+            "allies_in_range": 0.5, "ally_low_health": 0.3, "enemy_nodes_controlled": 0.0,
+            "ally_nodes_controlled": 0.0, "bias": -0.6
+        },
+        "activate_shield": {
+            "enemies_in_range": 0.3, "current_health": -0.5, "under_attack": 0.6,
+            "allies_in_range": 0.0, "ally_low_health": 0.0, "enemy_nodes_controlled": 0.0,
+            "ally_nodes_controlled": 0.0, "bias": -0.7
+        },
+        "taunt_enemies": {
+            "enemies_in_range": 0.7, "current_health": 0.5, "under_attack": 0.2,
+            "allies_in_range": 0.5, "ally_low_health": 0.4, "enemy_nodes_controlled": 0.0,
+            "ally_nodes_controlled": 0.0, "bias": -0.8
+        },
+        "find_cover": {
+            "enemies_in_range": 0.2, "current_health": -0.6, "under_attack": 0.5,
+            "allies_in_range": 0.0, "ally_low_health": 0.0, "enemy_nodes_controlled": 0.0,
+            "ally_nodes_controlled": 0.0, "bias": -0.8
+        }
+    },
+    "sniper": {
+        "attack": {
+            "enemies_in_range": 0.3, "current_health": 0.5, "under_attack": -0.6,
+            "allies_in_range": 0.1, "ally_low_health": 0.0, "enemy_nodes_controlled": 0.3,
+            "ally_nodes_controlled": -0.1, "bias": -0.4
+        },
+        "retreat": {
+            "enemies_in_range": 0.8, "current_health": -0.6, "under_attack": 0.9,
+            "allies_in_range": -0.4, "ally_low_health": -0.2, "enemy_nodes_controlled": 0.2,
+            "ally_nodes_controlled": 0.0, "bias": -0.6
+        },
+        "defend": {
+            "enemies_in_range": -0.4, "current_health": 0.2, "under_attack": -0.5,
+            "allies_in_range": 0.2, "ally_low_health": 0.1, "enemy_nodes_controlled": -0.3,
+            "ally_nodes_controlled": 0.5, "bias": -0.6
+        },
+        "follow": {
+            "enemies_in_range": -0.3, "current_health": -0.4, "under_attack": -0.4,
+            "allies_in_range": 0.4, "ally_low_health": 0.2, "enemy_nodes_controlled": 0.0,
+            "ally_nodes_controlled": 0.0, "bias": -0.7
+        },
+        "charge_shot": {
+            "enemies_in_range": 0.7, "current_health": 0.3, "under_attack": -0.4,
+            "allies_in_range": 0.0, "ally_low_health": 0.0, "enemy_nodes_controlled": 0.0,
+            "ally_nodes_controlled": 0.0, "bias": -0.6
+        },
+        "find_cover": {
+            "enemies_in_range": 0.6, "current_health": -0.5, "under_attack": 0.8,
+            "allies_in_range": 0.0, "ally_low_health": 0.0, "enemy_nodes_controlled": 0.0,
+            "ally_nodes_controlled": 0.0, "bias": -0.6
+        }
+    },
+    "medic": {
+        "attack": {
+            "enemies_in_range": 0.2, "current_health": 0.3, "under_attack": -0.3,
+            "allies_in_range": 0.3, "ally_low_health": -0.2, "enemy_nodes_controlled": 0.2,
+            "ally_nodes_controlled": -0.1, "bias": -0.6
+        },
+        "retreat": {
+            "enemies_in_range": 0.7, "current_health": -0.7, "under_attack": 0.9,
+            "allies_in_range": -0.4, "ally_low_health": -0.3, "enemy_nodes_controlled": 0.2,
+            "ally_nodes_controlled": 0.0, "bias": -0.5
+        },
+        "defend": {
+            "enemies_in_range": -0.4, "current_health": 0.2, "under_attack": -0.4,
+            "allies_in_range": 0.6, "ally_low_health": 0.3, "enemy_nodes_controlled": -0.2,
+            "ally_nodes_controlled": 0.4, "bias": -0.6
+        },
+        "follow": {
+            "enemies_in_range": -0.2, "current_health": -0.2, "under_attack": -0.3,
+            "allies_in_range": 0.8, "ally_low_health": 0.5, "enemy_nodes_controlled": 0.0,
+            "ally_nodes_controlled": 0.0, "bias": -0.4
+        },
+        "heal_ally": {
+            "enemies_in_range": -0.3, "current_health": 0.2, "under_attack": -0.2,
+            "allies_in_range": 0.7, "ally_low_health": 0.9, "enemy_nodes_controlled": 0.0,
+            "ally_nodes_controlled": 0.0, "bias": -0.3
+        },
+        "find_cover": {
+            "enemies_in_range": 0.6, "current_health": -0.4, "under_attack": 0.8,
+            "allies_in_range": 0.0, "ally_low_health": 0.0, "enemy_nodes_controlled": 0.0,
+            "ally_nodes_controlled": 0.0, "bias": -0.7
+        }
+    },
+    "engineer": {
+        "attack": {
+            "enemies_in_range": 0.6, "current_health": 0.4, "under_attack": -0.2,
+            "allies_in_range": 0.2, "ally_low_health": 0.0, "enemy_nodes_controlled": 0.3,
+            "ally_nodes_controlled": -0.1, "bias": -0.4
+        },
+        "retreat": {
+            "enemies_in_range": 0.5, "current_health": -0.7, "under_attack": 0.8,
+            "allies_in_range": -0.3, "ally_low_health": -0.2, "enemy_nodes_controlled": 0.1,
+            "ally_nodes_controlled": 0.0, "bias": -0.6
+        },
+        "defend": {
+            "enemies_in_range": -0.3, "current_health": 0.3, "under_attack": -0.4,
+            "allies_in_range": 0.4, "ally_low_health": 0.2, "enemy_nodes_controlled": -0.6,
+            "ally_nodes_controlled": 0.8, "bias": -0.3
+        },
+        "follow": {
+            "enemies_in_range": -0.2, "current_health": -0.2, "under_attack": -0.4,
+            "allies_in_range": 0.5, "ally_low_health": 0.3, "enemy_nodes_controlled": 0.0,
+            "ally_nodes_controlled": 0.0, "bias": -0.6
+        },
+        "construct_turret": {
+            "enemies_in_range": -0.7, "current_health": 0.2, "under_attack": -0.5,
+            "allies_in_range": 0.3, "ally_low_health": 0.0, "enemy_nodes_controlled": 0.0,
+            "ally_nodes_controlled": 0.5, "bias": -0.6
+        },
+        "repair": {
+            "enemies_in_range": -0.4, "current_health": 0.0, "under_attack": -0.3,
+            "allies_in_range": 0.5, "ally_low_health": 0.0, "enemy_nodes_controlled": 0.0,
+            "ally_nodes_controlled": 0.2, "bias": -0.7
+        },
+        "lay_mines": {
+            "enemies_in_range": -0.5, "current_health": 0.0, "under_attack": -0.3,
+            "allies_in_range": 0.0, "ally_low_health": 0.0, "enemy_nodes_controlled": 0.3,
+            "ally_nodes_controlled": 0.4, "bias": -0.8
+        },
+        "find_cover": {
+            "enemies_in_range": 0.4, "current_health": -0.5, "under_attack": 0.7,
+            "allies_in_range": 0.0, "ally_low_health": 0.0, "enemy_nodes_controlled": 0.0,
+            "ally_nodes_controlled": 0.0, "bias": -0.7
+        }
+    },
+    "general": {
+        "attack": {
+            "enemies_in_range": 0.7, "current_health": 0.3, "under_attack": 0.0,
+            "allies_in_range": 0.2, "ally_low_health": 0.0, "enemy_nodes_controlled": 0.3,
+            "ally_nodes_controlled": -0.1, "bias": -0.3
+        },
+        "retreat": {
+            "enemies_in_range": 0.4, "current_health": -0.6, "under_attack": 0.8,
+            "allies_in_range": -0.3, "ally_low_health": -0.2, "enemy_nodes_controlled": 0.1,
+            "ally_nodes_controlled": 0.0, "bias": -0.6
+        },
+        "defend": {
+            "enemies_in_range": -0.3, "current_health": 0.2, "under_attack": -0.3,
+            "allies_in_range": 0.3, "ally_low_health": 0.1, "enemy_nodes_controlled": -0.3,
+            "ally_nodes_controlled": 0.6, "bias": -0.4
+        },
+        "follow": {
+            "enemies_in_range": -0.2, "current_health": -0.2, "under_attack": -0.3,
+            "allies_in_range": 0.5, "ally_low_health": 0.2, "enemy_nodes_controlled": 0.0,
+            "ally_nodes_controlled": 0.0, "bias": -0.6
+        },
+        "find_cover": {
+            "enemies_in_range": 0.3, "current_health": -0.4, "under_attack": 0.6,
+            "allies_in_range": 0.0, "ally_low_health": 0.0, "enemy_nodes_controlled": 0.0,
+            "ally_nodes_controlled": 0.0, "bias": -0.7
+        }
     }
 }
 
@@ -237,5 +453,8 @@ static func is_valid_building_type(building_type: String) -> bool:
 static func get_default_triggered_actions(unit_archetype: String) -> Dictionary:
     return DEFAULT_TRIGGERED_ACTIONS.get(unit_archetype, DEFAULT_TRIGGERED_ACTIONS.get("general", {}))
 
+static func get_default_behavior_matrix(unit_archetype: String) -> Dictionary:
+    return DEFAULT_BEHAVIOR_MATRICES.get(unit_archetype, DEFAULT_BEHAVIOR_MATRICES.get("general", {}))
+
 static func get_all_unit_archetypes() -> Array:
-    return DEFAULT_TRIGGERED_ACTIONS.keys() 
+    return DEFAULT_BEHAVIOR_MATRICES.keys() 

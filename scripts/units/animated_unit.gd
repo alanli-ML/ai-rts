@@ -20,6 +20,11 @@ var weapon_db = WeaponDatabase.new()
 var charge_effect_node: Node3D = null
 var charge_intensity: float = 0.0
 
+# Attack animation timing
+var attack_animation_timer: float = 0.0
+var attack_animation_duration: float = 0.5  # Duration to show attack animation before allowing override
+var is_playing_attack_animation: bool = false
+
 func _ready() -> void:
 	super._ready()
 	
@@ -128,16 +133,24 @@ func update_client_visuals(server_velocity: Vector3, _delta: float) -> void:
 	if is_dead:
 		return
 	
+	# Don't override attack animations while they're playing
+	if is_playing_attack_animation:
+		return
+	
 	# The parent (AnimatedUnit) is now rotated by ClientDisplayManager.
 	# We just need to play the correct animation based on velocity and state.
 	if server_velocity.length_squared() > 0.01:
-		play_animation("Run")
+		# Check if we should play attack-while-moving animation
+		if current_state == GameEnums.UnitState.ATTACKING:
+			_play_attack_while_moving_animation()
+		else:
+			play_animation("Run")
 	else:
 		if current_state == GameEnums.UnitState.CHARGING_SHOT:
 			_handle_charging_shot_animation()
 		elif current_state == GameEnums.UnitState.ATTACKING:
-			print("DEBUG: AnimatedUnit %s in ATTACKING state, playing Attack animation" % unit_id)
-			play_animation("Attack")
+			# Don't continuously play attack animation - it will be triggered by weapon_fired signal
+			play_animation("Idle")
 		else:
 			play_animation("Idle")
 
@@ -154,18 +167,30 @@ func _physics_process(delta: float):
 
 	# Handle charge shot visual effects
 	_update_charge_effects(delta)
+	
+	# Handle attack animation timing
+	if is_playing_attack_animation:
+		attack_animation_timer -= delta
+		if attack_animation_timer <= 0.0:
+			is_playing_attack_animation = false
 
 	# If we are the server but not headless, we are the host. Animate ourselves.
 	# Pure clients will have their visuals updated by ClientDisplayManager.
 	if multiplayer.is_server() and DisplayServer.get_name() != "headless":
 		# The parent Unit node is now rotated by the new logic in unit.gd.
 		# The model_container is rotated 180 degrees at load time to face forward.
+		# Don't override attack animations while they're playing
+		if is_playing_attack_animation:
+			return
+			
 		# This host-only logic just needs to manage animations based on state and velocity.
 		if current_state == GameEnums.UnitState.CHARGING_SHOT:
 			_handle_charging_shot_animation()
+		elif current_state == GameEnums.UnitState.ATTACKING and velocity.length_squared() > 0.01:
+			_play_attack_while_moving_animation()
 		elif current_state == GameEnums.UnitState.ATTACKING:
-			print("DEBUG: AnimatedUnit %s in ATTACKING state, playing Attack animation" % unit_id)
-			play_animation("Attack")
+			# Don't continuously play attack animation - it will be triggered by weapon_fired signal
+			play_animation("Idle")
 		elif velocity.length_squared() > 0.01:
 			play_animation("Run")
 		else:
@@ -376,8 +401,23 @@ func _attach_weapon():
 				weapon_attachment = null
 		else:
 			print("DEBUG: AnimatedUnit._attach_weapon() - Successfully attached weapon %s to unit %s" % [weapon_type, unit_id])
+			
+			# Connect weapon signals to trigger attack animations
+			if weapon_attachment.has_signal("weapon_fired"):
+				weapon_attachment.weapon_fired.connect(_on_weapon_fired)
+				print("DEBUG: Connected weapon_fired signal for unit %s" % unit_id)
 	else:
 		print("DEBUG: AnimatedUnit._attach_weapon() - weapon attachment already exists")
+
+func _on_weapon_fired(weapon_type: String, damage: float):
+	"""Handle weapon fired signal to trigger attack animation"""
+	print("DEBUG: Unit %s weapon fired signal received, playing attack animation" % unit_id)
+	
+	# Set attack animation timer to prevent movement overrides
+	is_playing_attack_animation = true
+	attack_animation_timer = attack_animation_duration
+	
+	play_animation("Attack")
 
 func trigger_death_sequence():
 	# Allow death sequence to run even if already marked as dead
@@ -540,14 +580,10 @@ func trigger_respawn_sequence():
 		self.modulate = Color.WHITE
 		modulate_reset = true
 	
-	if not modulate_reset:
-		print("DEBUG: Modulate not available for unit %s, skipping color reset" % unit_id)
-	
 	# Reset model container (preserve 180° Y rotation for proper forward facing)
 	if model_container:
 		model_container.scale = Vector3.ONE
 		model_container.rotation_degrees = Vector3(0, 180, 0)  # Maintain proper forward orientation
-		print("DEBUG: Unit %s model container rotation reset to proper forward orientation (0, 180, 0)" % unit_id)
 	
 	# NOTE: Collision restoration is now handled by the base Unit class in _handle_respawn()
 	# This ensures proper collision mask values for navigation (buildings and terrain)
@@ -590,8 +626,7 @@ func _apply_respawn_effects():
 			respawn_tween.tween_property(self, "modulate", Color.WHITE, 0.3)
 			glow_applied = true
 		
-		if not glow_applied:
-			print("DEBUG: Skipping glow effect for unit %s (modulate not available)" % unit_id)
+
 
 func debug_list_available_animations() -> void:
 	"""Debug method to list all available animations for this unit"""
@@ -613,3 +648,21 @@ func debug_list_available_animations() -> void:
 		print("DEBUG: Found death-related animations: %s" % found_death_anims)
 	else:
 		print("DEBUG: No death-related animations found - will use visual effects only")
+
+func _play_attack_while_moving_animation():
+	"""Play appropriate animation for attacking while moving"""
+	# Check if we have specific attack-while-moving animations
+	if animation_player:
+		# Try shooting animations that could work while moving
+		if animation_player.has_animation("holding-both-shoot"):
+			animation_player.play("holding-both-shoot")
+			return
+		elif animation_player.has_animation("holding-left-shoot"):
+			animation_player.play("holding-left-shoot")
+			return
+		elif animation_player.has_animation("holding-right-shoot"):
+			animation_player.play("holding-right-shoot")
+			return
+	
+	# Fallback to run animation if no specific attack-while-moving animation exists
+	play_animation("Run")

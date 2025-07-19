@@ -73,6 +73,13 @@ var _old_action_complete: bool = true # To detect changes
 var step_timer: float = 0.0  # Timer for current action step
 var current_action_trigger: String = ""  # Current trigger being processed
 
+# --- Player Override System ---
+var player_override_active: bool = false  # Flag when player has direct control
+var player_override_target: Vector3 = Vector3.ZERO  # Player-specified target position
+var player_override_action: String = ""  # Player-specified action type
+var player_override_timer: float = 0.0  # Time since player override started
+const PLAYER_OVERRIDE_TIMEOUT: float = 30.0  # Max time before reverting to AI (safety)
+
 # --- New Behavior Engine Properties ---
 var behavior_matrix: Dictionary = {}
 var control_point_attack_sequence: Array = []
@@ -361,22 +368,12 @@ func _physics_process(delta: float) -> void:
         var old_timer = respawn_timer
         respawn_timer -= delta
         
-        # Debug respawn countdown every 5 seconds (using cleaner logic)
-        var old_seconds = int(old_timer)
-        var new_seconds = int(respawn_timer)
-        if old_seconds != new_seconds and new_seconds > 0 and new_seconds % 5 == 0:
-            print("DEBUG: Unit %s respawn countdown: %d seconds remaining" % [unit_id, new_seconds])
-        
         if respawn_timer <= 0.0:
-            print("DEBUG: Unit %s respawn timer expired, calling _handle_respawn()" % unit_id)
             _handle_respawn()
         return
     
     # Skip processing if dead but not respawning yet
     if is_dead: 
-        # Debug why respawn isn't starting
-        if not is_respawning:
-            print("DEBUG: Unit %s is dead but not respawning (is_respawning=false)" % unit_id)
         return
     
     # Handle invulnerability after respawn
@@ -390,13 +387,46 @@ func _physics_process(delta: float) -> void:
     if not action_complete:
         step_timer += delta
 
+    # --- Player Override System Processing ---
+    if player_override_active:
+        player_override_timer += delta
+        
+        # Check if player override should timeout (safety mechanism)
+        if player_override_timer > PLAYER_OVERRIDE_TIMEOUT:
+            print("DEBUG: Unit %s player override timed out after %.1f seconds" % [unit_id, player_override_timer])
+            clear_player_override()
+        
+        # Check if player movement command is complete
+        elif player_override_action == "move_to" and navigation_agent:
+            var distance_to_target = global_position.distance_to(player_override_target)
+            if distance_to_target < 2.0 or navigation_agent.is_navigation_finished():
+                print("DEBUG: Unit %s reached player movement target, clearing override" % unit_id)
+                clear_player_override()
+        
+        # Check if player attack target is dead or invalid
+        elif player_override_action == "attack":
+            if not is_instance_valid(target_unit) or target_unit.is_dead:
+                print("DEBUG: Unit %s player attack target eliminated, clearing override" % unit_id)
+                clear_player_override()
+
     # Always apply gravity regardless of state
     if not is_on_floor():
         velocity.y += get_gravity().y * delta
 
     # --- New Behavior Engine Loop ---
-    _evaluate_reactive_behavior()
-    _execute_current_state(delta)
+    # Only run AI behavior if not under player override
+    if not player_override_active:
+        _evaluate_reactive_behavior()
+        _execute_current_state(delta)
+    else:
+        # Under player control - update strategic goal to reflect this
+        match player_override_action:
+            "move_to":
+                strategic_goal = "Following player movement command"
+            "attack":
+                strategic_goal = "Following player attack command"
+            _:
+                strategic_goal = "Following player command"
     # --- End New Behavior Engine Loop ---
 
     # Calculate desired velocity for NavigationAgent3D for path following and local avoidance
@@ -1401,9 +1431,7 @@ func _attempt_attack_target(target: Unit) -> void:
                 weapon_fired = true
                 last_attack_time = current_time
                 
-                # Play attack animation if available
-                if has_method("play_animation"):
-                    call("play_animation", "Attack")
+                # Attack animation will be triggered by weapon_fired signal
         else:
             print("DEBUG: Unit %s weapon cannot fire (cooldown or ammo)" % unit_id)
     
@@ -1416,7 +1444,7 @@ func _attempt_attack_target(target: Unit) -> void:
         # Create damage indicator
         target._create_damage_indicator(attack_damage)
         
-        # Play attack animation if available
+        # Play attack animation for fallback direct damage
         if has_method("play_animation"):
             call("play_animation", "Attack")
 
@@ -1667,3 +1695,94 @@ func _get_fallback_state_variables() -> Dictionary:
         "enemy_nodes_controlled": 0.5,  # Neutral assumption
         "bias": 1.0
     }
+
+# --- Player Override System Methods ---
+
+func set_current_action(action_data: Dictionary) -> void:
+    """Set a direct action from player input, overriding AI behavior"""
+    if not multiplayer.is_server():
+        return
+    
+    var action = action_data.get("action", "")
+    var params = action_data.get("params", {})
+    
+    print("DEBUG: Unit %s received direct action: %s with params: %s" % [unit_id, action, str(params)])
+    
+    # Activate player override
+    player_override_active = true
+    player_override_action = action
+    player_override_timer = 0.0
+    
+    # Execute the action based on type
+    match action:
+        "move_to":
+            var position_array = params.get("position", [])
+            if position_array.size() >= 3:
+                var target_pos = Vector3(position_array[0], position_array[1], position_array[2])
+                player_override_target = target_pos
+                _execute_player_move(target_pos)
+                print("DEBUG: Unit %s executing player move to %s" % [unit_id, target_pos])
+            else:
+                print("WARNING: Unit %s received invalid position data for move command" % unit_id)
+                player_override_active = false
+        
+        "attack":
+            var target_id = params.get("target_id", "")
+            if not target_id.is_empty():
+                _execute_player_attack(target_id)
+                print("DEBUG: Unit %s executing player attack on %s" % [unit_id, target_id])
+            else:
+                print("WARNING: Unit %s received invalid target for attack command" % unit_id)
+                player_override_active = false
+        
+        _:
+            print("WARNING: Unit %s received unknown direct action: %s" % [unit_id, action])
+            player_override_active = false
+
+func _execute_player_move(target_position: Vector3) -> void:
+    """Execute player-commanded movement"""
+    # Clear any AI targets
+    target_unit = null
+    follow_target = null
+    target_building = null
+    
+    # Set up navigation to player target
+    if navigation_agent:
+        var clamped_position = _clamp_to_map_bounds(target_position)
+        navigation_agent.target_position = clamped_position
+        current_state = GameEnums.UnitState.MOVING
+        print("DEBUG: Unit %s player movement target set to %s" % [unit_id, clamped_position])
+
+func _execute_player_attack(target_id: String) -> void:
+    """Execute player-commanded attack"""
+    var game_state = get_node("/root/DependencyContainer").get_game_state()
+    if not game_state:
+        print("WARNING: Unit %s cannot execute player attack - no game state" % unit_id)
+        player_override_active = false
+        return
+    
+    var target = game_state.units.get(target_id)
+    if is_instance_valid(target) and not target.is_dead:
+        # Clear other targets
+        follow_target = null
+        target_building = null
+        
+        # Set attack target
+        target_unit = target
+        current_state = GameEnums.UnitState.ATTACKING
+        print("DEBUG: Unit %s player attack target set to %s" % [unit_id, target_id])
+    else:
+        print("WARNING: Unit %s cannot attack invalid target %s" % [unit_id, target_id])
+        player_override_active = false
+
+func clear_player_override() -> void:
+    """Clear player override and return to AI control"""
+    if player_override_active:
+        print("DEBUG: Unit %s clearing player override, returning to AI control" % unit_id)
+        player_override_active = false
+        player_override_action = ""
+        player_override_target = Vector3.ZERO
+        player_override_timer = 0.0
+        
+        # Update strategic goal to reflect return to AI
+        strategic_goal = "Acting autonomously after completing player command"

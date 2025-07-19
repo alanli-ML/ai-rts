@@ -266,7 +266,30 @@ func _handle_right_click(screen_pos: Vector2):
 
     if not command_text.is_empty():
         print("EnhancedSelectionSystem: Sending DIRECT command to %d units: %s" % [unit_ids.size(), command_text])
-        get_node("/root/UnifiedMain").rpc("submit_direct_command_rpc", command_text, unit_ids)
+        
+        # Find the correct scene root that has the submit_direct_command_rpc method
+        var scene_root = get_tree().current_scene
+        if scene_root and scene_root.has_method("submit_direct_command_rpc"):
+            scene_root.rpc("submit_direct_command_rpc", command_text, unit_ids)
+        else:
+            # Fallback: try common scene root names
+            var possible_roots = [
+                get_node_or_null("/root/UnifiedMain"),
+                get_node_or_null("/root/Main"),
+                get_node_or_null("/root/TestMap"),
+                get_node_or_null("/root/CombatTestSuite")
+            ]
+            
+            var command_sent = false
+            for root in possible_roots:
+                if root and root.has_method("submit_direct_command_rpc"):
+                    print("EnhancedSelectionSystem: Found command handler at: %s" % root.get_path())
+                    root.rpc("submit_direct_command_rpc", command_text, unit_ids)
+                    command_sent = true
+                    break
+            
+            if not command_sent:
+                print("EnhancedSelectionSystem: ERROR - Could not find submit_direct_command_rpc method in scene")
     else:
         print("EnhancedSelectionSystem: No command generated for right-click at %s" % screen_pos)
 
@@ -279,18 +302,27 @@ func _screen_to_world_ground_pos(screen_pos: Vector2) -> Variant:
     var global_intersection = plane.intersects_ray(from, to)
     
     if global_intersection == null:
+        print("DEBUG: Screen raycast failed to intersect ground plane")
         return null
     
-    # Convert from global world coordinates to scene-local coordinates
-    # The CityMap scene has a transform that we need to account for
+    print("DEBUG: Global intersection: ", global_intersection)
+    
+    # Try to convert from global world coordinates to scene-local coordinates
     var city_map_node = _find_city_map_node()
     if city_map_node:
+        print("DEBUG: Found CityMap node: ", city_map_node.name)
+        # Check if the CityMap has a non-identity transform
         var scene_transform = city_map_node.global_transform
-        var local_position = scene_transform.affine_inverse() * global_intersection
-        print("EnhancedSelectionSystem: Global pos %s → Local pos %s (scene transform scale: %s)" % [global_intersection, local_position, scene_transform.basis.get_scale()])
-        return local_position
+        if not scene_transform.basis.is_equal_approx(Basis.IDENTITY) or not scene_transform.origin.is_zero_approx():
+            print("DEBUG: CityMap has transform - converting coordinates")
+            var local_position = scene_transform.affine_inverse() * global_intersection
+            print("DEBUG: Converted local position: ", local_position)
+            return local_position
+        else:
+            print("DEBUG: CityMap has identity transform - using global coordinates")
+            return global_intersection
     else:
-        print("EnhancedSelectionSystem: No CityMap node found, using global coordinates")
+        print("DEBUG: CityMap node not found - using global coordinates")
         return global_intersection
 
 func _find_city_map_node() -> Node3D:

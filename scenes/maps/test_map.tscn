@@ -36,6 +36,7 @@ shadow_enabled = true
 navigation_mesh = SubResource("NavigationMesh_1")
 
 [node name="Terrain" type="CSGBox3D" parent="Environment/NavigationRegion3D"]
+visible = false
 use_collision = true
 size = Vector3(200, 1, 200)
 
@@ -53,12 +54,12 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 0.5, -30)
 script = ExtResource("3_hbm")
 
 [node name="Team1Base" type="CSGBox3D" parent="HomeBases"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0, -40)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, -40)
 size = Vector3(20, 0.5, 20)
 material = SubResource("StandardMaterial3D_team1")
 
 [node name="Team2Base" type="CSGBox3D" parent="HomeBases"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0, 40)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, 40)
 size = Vector3(20, 0.5, 20)
 material = SubResource("StandardMaterial3D_team2")
 

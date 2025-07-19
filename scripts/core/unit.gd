@@ -88,6 +88,12 @@ const INDEPENDENT_ACTION_THRESHOLD: float = 0.6 # Min activation to fire an abil
 # Movement
 var navigation_agent: NavigationAgent3D
 
+# Stuck detection for elevation changes
+var last_position: Vector3 = Vector3.ZERO
+var stuck_timer: float = 0.0
+var stuck_threshold: float = 2.0  # Time before considering unit stuck
+var movement_threshold: float = 0.5  # Minimum movement distance per second
+
 # Map boundaries (prevent units from falling off the edge)
 const MAP_BOUNDS = {
     "min_x": -45.0,
@@ -160,13 +166,17 @@ func _ready() -> void:
     
     # Configure NavigationAgent3D after movement_speed is set
     if navigation_agent:
-        navigation_agent.radius = 1.2 # Match the navigation mesh agent radius
+        navigation_agent.radius = 0.8 # Match the navigation mesh agent radius
         navigation_agent.max_speed = movement_speed
         navigation_agent.avoidance_enabled = true # Ensure avoidance is enabled
         navigation_agent.neighbor_distance = 6.0 # Reduced search radius to avoid premature slowdown
         navigation_agent.time_horizon = 2.0 # Reduced planning time for more responsive movement
         navigation_agent.path_postprocessing = NavigationPathQueryParameters3D.PATH_POSTPROCESSING_EDGECENTERED
         navigation_agent.path_metadata_flags = NavigationPathQueryParameters3D.PATH_METADATA_INCLUDE_ALL
+        
+        # CRITICAL: Configure for elevation changes and slope handling
+        navigation_agent.height = 1.8  # Agent height for slope detection
+        navigation_agent.path_max_distance = 3.0  # Allow some deviation from path for elevation changes
         # CRITICAL: Use default layer (1) for navigation - keep NavigationAgent3D on layer 1
         # NavigationObstacle3D will work automatically with navigation mesh rebaking
         navigation_agent.set_navigation_layers(1)
@@ -200,8 +210,28 @@ func _setup_navigation_agent() -> void:
     if not navigation_agent:
         return
         
-    # Find the NavigationRegion3D in the scene
+    # Find the NavigationRegion3D in the scene - check multiple possible locations
     var nav_region = get_tree().get_first_node_in_group("navigation_regions")
+    
+    # If not found in group, try common paths for pre-configured scenes
+    if not nav_region:
+        # Check if we have a loaded city map with NavigationRegion3D
+        var map_nodes = get_tree().get_nodes_in_group("maps")
+        for map_node in map_nodes:
+            if map_node.has_method("get") and map_node.get("loaded_map_scene"):
+                var loaded_scene = map_node.get("loaded_map_scene")
+                nav_region = loaded_scene.get_node_or_null("NavigationRegion3D")
+                if nav_region:
+                    print("DEBUG: Unit %s - Found NavigationRegion3D in loaded map scene" % unit_id)
+                    break
+        
+        # Fallback: search for NavigationRegion3D anywhere in scene
+        if not nav_region:
+            var all_nav_regions = get_tree().get_nodes_in_group("NavigationRegion3D")
+            if all_nav_regions.size() > 0:
+                nav_region = all_nav_regions[0]
+                print("DEBUG: Unit %s - Found NavigationRegion3D via fallback search" % unit_id)
+    
     if not nav_region:
         print("DEBUG: Unit %s - No NavigationRegion3D found, navigation may not work" % unit_id)
         return
@@ -211,7 +241,15 @@ func _setup_navigation_agent() -> void:
     if nav_map.is_valid():
         # Link the NavigationAgent3D to the navigation map
         navigation_agent.set_navigation_map(nav_map)
-        print("DEBUG: Unit %s - NavigationAgent3D linked to navigation map" % unit_id)
+        print("DEBUG: Unit %s - NavigationAgent3D linked to navigation map from %s" % [unit_id, nav_region.get_path()])
+        
+        # CRITICAL: Ensure NavigationAgent3D settings match the pre-baked NavigationMesh
+        if nav_region.navigation_mesh:
+            var nav_mesh = nav_region.navigation_mesh
+            # Sync agent settings with pre-baked mesh configuration
+            navigation_agent.radius = nav_mesh.agent_radius
+            navigation_agent.height = nav_mesh.agent_height
+            print("DEBUG: Unit %s - Synced NavigationAgent3D settings with pre-baked mesh (radius: %.1f, height: %.1f)" % [unit_id, navigation_agent.radius, navigation_agent.height])
     else:
         print("DEBUG: Unit %s - Invalid navigation map, agent may not work properly" % unit_id)
 
@@ -393,9 +431,14 @@ func _physics_process(delta: float) -> void:
 # New function to receive velocity computed by NavigationAgent3D (including RVO avoidance)
 func _on_navigation_velocity_computed(safe_velocity: Vector3) -> void:
     # This is the velocity adjusted by NavigationAgent3D for local avoidance.
-    # Apply it to the unit's horizontal velocity component.
+    # Apply it to the unit's velocity, allowing for elevation changes
     velocity.x = safe_velocity.x
     velocity.z = safe_velocity.z
+    
+    # CRITICAL: Allow some Y-velocity for elevation changes on slopes
+    # This helps units navigate elevation transitions without getting stuck
+    if abs(safe_velocity.y) > 0.1:
+        velocity.y = safe_velocity.y * 0.5  # Moderate Y-velocity for slope climbing
 
 func move_to(target_position: Vector3) -> void:
     current_state = GameEnums.UnitState.MOVING

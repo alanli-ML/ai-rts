@@ -1,4 +1,4 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://jkpx7lwnudjv"]
 
 [node name="ExportedCityMap" type="Node3D"]
 

@@ -1,0 +1,1158 @@
+[gd_scene load_steps=17 format=3 uid="uid://cakfhy21jxcc6"]
+
+[ext_resource type="PackedScene" uid="uid://b4tgtg0j2dgh8" path="res://models/road-straight.glb" id="1_road_straight"]
+[ext_resource type="PackedScene" uid="uid://c4ccm2qr5wa58" path="res://models/road-corner.glb" id="3_road_corner"]
+[ext_resource type="PackedScene" uid="uid://mu30r6rmht07" path="res://models/road-split.glb" id="4_road_split"]
+[ext_resource type="PackedScene" uid="uid://euxdh7lkq0oj" path="res://models/road-intersection.glb" id="5_road_intersection"]
+[ext_resource type="PackedScene" uid="uid://cpv75mfsda1ml" path="res://models/pavement.glb" id="6_pavement"]
+[ext_resource type="PackedScene" uid="uid://6v0t536s83vb" path="res://models/pavement-fountain.glb" id="7_pavement_fountain"]
+[ext_resource type="PackedScene" uid="uid://cnycdi6t5tj01" path="res://models/building-small-a.glb" id="8_building_small_a"]
+[ext_resource type="PackedScene" uid="uid://d2h51qlls136h" path="res://models/building-small-b.glb" id="9_building_small_b"]
+[ext_resource type="PackedScene" uid="uid://m74mvao50wnm" path="res://models/building-small-c.glb" id="10_building_small_c"]
+[ext_resource type="PackedScene" uid="uid://h0vrvst3cumo" path="res://models/building-small-d.glb" id="11_building_small_d"]
+[ext_resource type="PackedScene" uid="uid://d0nnrx2y4px2v" path="res://models/building-garage.glb" id="12_building_garage"]
+[ext_resource type="PackedScene" uid="uid://cr3btp34bp3eg" path="res://models/grass.glb" id="13_grass"]
+[ext_resource type="PackedScene" uid="uid://b1711sieed2u6" path="res://models/grass-trees.glb" id="14_grass_trees"]
+[ext_resource type="PackedScene" uid="uid://dy26b1ba2j2v1" path="res://models/grass-trees-tall.glb" id="15_grass_trees_tall"]
+[ext_resource type="Script" uid="uid://chrqv87gg37mg" path="res://scripts/core/navigation_manager.gd" id="16_navigation_manager"]
+
+[sub_resource type="NavigationMesh" id="NavigationMesh_mjt0x"]
+vertices = PackedVector3Array(-5.2, 0.5, -1.7, -3.8, 0.5, -1.7, -3.8, 0.5, -2.5, -3.6, 0.5, -2.7, -2.5, 0.5, -2.7, -1.7, 0.5, -3.5, -1.7, 0.5, -4.5, -1.5, 0.5, -4.7, -4.76837e-07, 0.5, -4.7, 0.0999994, 0.5, -6.2, -5.2, 0.5, -6.2, 2.8, 0.5, -1.1, 3.2, 0.5, -1, 3.2, 0.5, -1.5, 2.8, 0.5, -2.5, 0.599999, 0.5, -3.2, -4.76837e-07, 0.5, -3.2, 0.0999994, 0.5, -2.7, 2.6, 0.5, -2.7, 6, 0.5, -1.7, 6.1, 0.5, -2.2, 5.5, 0.5, -2.2, 3.4, 0.5, -1.7, 5.2, 0.5, -2.5, 5.4, 0.5, -4.7, 6, 0.5, -4.7, 5.9, 0.5, -6.2, 0.599999, 0.5, -4.7, 5.2, 0.5, -4.5, 0.8, 0.5, -4.5, 0.8, 0.5, -3.4, 7.8, 0.5, -4.5, 7.8, 0.5, -3.7, 9.2, 0.5, -3.7, 7.6, 0.5, -4.7, 9.2, 0.5, -6.2, 6.6, 0.5, -1.7, 7.6, 0.5, -2.2, 7.6, 0.5, -0.7, 7.8, 0.5, -0.400001, 9.2, 0.5, -0.400001, 7.8, 0.5, -2.4, 6.8, 0.5, -1.5, 6.8, 0.5, -0.7, -0.5, 0.5, -2.7, -1.5, 0.5, -3.2, -2.4, 0.5, -0.2, -3, 0.5, -0.2, -3, 0.5, 0.3, -2.4, 0.5, 0.3, -0.7, 0.5, -2.5, -2.2, 0.5, -2.5, -2.2, 0.5, -0.400001, -0.7, 0.5, -1.4, -1.7, 0.5, 0.5, -1.5, 0.5, 0.3, -2.2, 0.5, 0.5, -2.2, 0.5, 1.1, -1.7, 0.5, 1.1, -4.76837e-07, 0.5, 0.3, -0.5, 0.5, -1.2, 0.0999994, 0.5, -1.2, -3.6, 0.5, 3.3, -3, 0.5, 3.3, -3.1, 0.5, 2.8, -4.6, 0.5, 2.8, -3.6, 0.5, 0.3, -3.6, 0.5, -0.2, -3.8, 0.5, -0.400001, -4.8, 0.5, 1.5, -4.6, 0.5, 1.3, -3.8, 0.5, 0.5, -5.2, 0.5, 4.5, -4.8, 0.5, 2.6, -3.8, 0.5, 3.5, -3.8, 0.5, 1.3, -3.8, 0.5, 4.5, 1.5, 0.5, 0.3, 2.1, 0.5, 0.3, 2.1, 0.5, -0.2, 1.5, 0.5, -0.2, 1.3, 0.5, -0.400001, 0.599999, 0.5, 0.3, 0.8, 0.5, 0.5, 1.3, 0.5, 0.5, 0.599999, 0.5, 1.8, -4.76837e-07, 0.5, 1.8, 0.0999994, 0.5, 3.3, 0.8, 0.5, 1.6, 1.3, 0.5, 3.4, 0.7, 0.5, 3.4, 1.3, 0.5, -1.2, 2.6, 0.5, 0.3, 2.6, 0.5, -0.2, 2.8, 0.5, 0.5, 2.8, 0.5, 2.1, 4.2, 0.5, 1.5, 4.4, 0.5, 1.3, 4.9, 0.5, -0.2, 3.4, 0.5, -0.2, 2.8, 0.5, -0.400001, 3.2, 0.5, -0.400001, 4.2, 0.5, 2.1, 5, 0.5, 1.3, 5.8, 0.5, 1.5, 5.8, 0.5, 2.1, 6.2, 0.5, 2.1, 6.2, 0.5, 1.5, 7.6, 0.5, 0.8, 6.5, 0.5, 0.8, 6.4, 0.5, 1.3, 9.2, 0.5, 1.3, 5.6, 0.5, 1.3, 6.2, 0.5, 0.5, 7.8, 0.5, 0.599999, 6.2, 0.5, -0.2, -1.7, 0.5, 1.6, -2.2, 0.5, 2.6, -2.4, 0.5, 2.8, -2.4, 0.5, 3.3, -2.2, 0.5, 3.5, -0.7, 0.5, 3.5, -0.5, 0.5, 3.3, -1.5, 0.5, 1.8, -2.2, 0.5, 4.1, -0.7, 0.5, 4.2, 6.2, 0.5, 2.6, 5.8, 0.5, 2.6, 4.6, 0.5, 5.2, 4.8, 0.5, 5.6, 6.2, 0.5, 5.5, 6.4, 0.5, 2.8, 5.6, 0.5, 2.8, 6.2, 0.5, 3.5, 6.4, 0.5, 3.3, 7, 0.5, 3.3, 7, 0.5, 2.8, 2.8, 0.5, 4.6, 2.8, 0.5, 5.2, 4.2, 0.5, 2.6, 4.4, 0.5, 2.8, 7.6, 0.5, 3.3, 9.2, 0.5, 2.8, 7.8, 0.5, 3.5, 7.8, 0.5, 5.5, 9.2, 0.5, 5.5, 2.6, 0.5, 4.8, 1.5, 0.5, 5.2, 1.5, 0.5, 4.8, 1.3, 0.5, 7.6, 1.3, 0.5, 5.4, 0.8, 0.5, 6.6, 1.3, 0.5, 4.6, 3.8, 0.5, 8.2, 2.6, 0.5, 7.8, 1.5, 0.5, 7.8, -0.400001, 0.5, 8.2, 3.8, 0.5, 6.8, 2.8, 0.5, 6.8, 2.8, 0.5, 7.6, 0.599999, 0.5, 6.8, -0.400001, 0.5, 6.8, -2.2, 0.5, 4.6, -0.7, 0.5, 6.6, -3.6, 0.5, 4.8, -5.2, 0.5, 8.2, -2.4, 0.5, 4.8, 4.6, 0.5, 6.8, 6.5, 0.5, 5.8, 4.8, 0.5, 6.6, 6.5, 0.5, 8.2, 7.6, 0.5, 5.8, 9.2, 0.5, 8.2)
+polygons = [PackedInt32Array(2, 1, 0), PackedInt32Array(3, 2, 0), PackedInt32Array(5, 4, 6), PackedInt32Array(6, 4, 3), PackedInt32Array(8, 7, 9), PackedInt32Array(9, 7, 10), PackedInt32Array(6, 3, 7), PackedInt32Array(7, 3, 0), PackedInt32Array(7, 0, 10), PackedInt32Array(12, 11, 13), PackedInt32Array(13, 11, 14), PackedInt32Array(16, 15, 17), PackedInt32Array(17, 15, 18), PackedInt32Array(20, 19, 21), PackedInt32Array(21, 19, 22), PackedInt32Array(21, 22, 23), PackedInt32Array(23, 22, 14), PackedInt32Array(22, 13, 14), PackedInt32Array(26, 25, 24), PackedInt32Array(27, 8, 9), PackedInt32Array(24, 28, 26), PackedInt32Array(26, 28, 18), PackedInt32Array(26, 18, 29), PackedInt32Array(26, 29, 9), PackedInt32Array(29, 27, 9), PackedInt32Array(18, 30, 29), PackedInt32Array(18, 15, 30), PackedInt32Array(14, 18, 23), PackedInt32Array(23, 18, 28), PackedInt32Array(33, 32, 31), PackedInt32Array(31, 34, 33), PackedInt32Array(33, 34, 35), PackedInt32Array(25, 26, 34), PackedInt32Array(34, 26, 35), PackedInt32Array(19, 20, 36), PackedInt32Array(36, 20, 37), PackedInt32Array(39, 38, 40), PackedInt32Array(40, 38, 37), PackedInt32Array(40, 37, 41), PackedInt32Array(40, 41, 33), PackedInt32Array(42, 36, 37), PackedInt32Array(43, 42, 38), PackedInt32Array(38, 42, 37), PackedInt32Array(41, 32, 33), PackedInt32Array(17, 44, 16), PackedInt32Array(16, 44, 45), PackedInt32Array(49, 48, 46), PackedInt32Array(46, 48, 47), PackedInt32Array(45, 50, 51), PackedInt32Array(51, 50, 53), PackedInt32Array(51, 53, 52), PackedInt32Array(56, 49, 54), PackedInt32Array(54, 49, 55), PackedInt32Array(55, 49, 46), PackedInt32Array(55, 46, 52), PackedInt32Array(54, 58, 56), PackedInt32Array(56, 58, 57), PackedInt32Array(60, 59, 53), PackedInt32Array(53, 59, 55), PackedInt32Array(53, 55, 52), PackedInt32Array(45, 44, 50), PackedInt32Array(51, 4, 45), PackedInt32Array(45, 4, 5), PackedInt32Array(60, 61, 59), PackedInt32Array(63, 62, 64), PackedInt32Array(64, 62, 65), PackedInt32Array(67, 47, 66), PackedInt32Array(66, 47, 48), PackedInt32Array(70, 69, 68), PackedInt32Array(68, 69, 1), PackedInt32Array(1, 69, 0), PackedInt32Array(71, 67, 66), PackedInt32Array(67, 71, 68), PackedInt32Array(68, 71, 70), PackedInt32Array(73, 65, 72), PackedInt32Array(65, 62, 74), PackedInt32Array(71, 75, 70), PackedInt32Array(74, 76, 65), PackedInt32Array(65, 76, 72), PackedInt32Array(73, 72, 69), PackedInt32Array(69, 72, 0), PackedInt32Array(80, 79, 77), PackedInt32Array(77, 79, 78), PackedInt32Array(77, 84, 80), PackedInt32Array(80, 84, 81), PackedInt32Array(81, 84, 83), PackedInt32Array(81, 83, 82), PackedInt32Array(87, 86, 85), PackedInt32Array(83, 84, 88), PackedInt32Array(88, 84, 89), PackedInt32Array(90, 87, 89), PackedInt32Array(89, 87, 85), PackedInt32Array(89, 85, 88), PackedInt32Array(82, 59, 81), PackedInt32Array(81, 59, 91), PackedInt32Array(91, 59, 61), PackedInt32Array(93, 92, 79), PackedInt32Array(79, 92, 78), PackedInt32Array(96, 95, 97), PackedInt32Array(97, 95, 94), PackedInt32Array(97, 94, 99), PackedInt32Array(97, 99, 98), PackedInt32Array(101, 100, 12), PackedInt32Array(12, 100, 11), PackedInt32Array(96, 102, 95), PackedInt32Array(100, 101, 93), PackedInt32Array(93, 101, 99), PackedInt32Array(93, 99, 92), PackedInt32Array(92, 99, 94), PackedInt32Array(98, 103, 97), PackedInt32Array(107, 106, 104), PackedInt32Array(104, 106, 105), PackedInt32Array(109, 108, 110), PackedInt32Array(110, 108, 111), PackedInt32Array(104, 112, 107), PackedInt32Array(107, 112, 110), PackedInt32Array(110, 112, 109), PackedInt32Array(109, 112, 113), PackedInt32Array(114, 111, 108), PackedInt32Array(112, 103, 113), PackedInt32Array(113, 103, 115), PackedInt32Array(115, 103, 98), PackedInt32Array(39, 40, 114), PackedInt32Array(114, 40, 111), PackedInt32Array(58, 116, 57), PackedInt32Array(57, 116, 117), PackedInt32Array(119, 63, 118), PackedInt32Array(118, 63, 64), PackedInt32Array(121, 120, 122), PackedInt32Array(122, 120, 117), PackedInt32Array(122, 117, 123), PackedInt32Array(122, 123, 86), PackedInt32Array(118, 117, 119), PackedInt32Array(119, 117, 120), PackedInt32Array(120, 121, 124), PackedInt32Array(124, 121, 125), PackedInt32Array(86, 87, 122), PackedInt32Array(117, 116, 123), PackedInt32Array(127, 105, 126), PackedInt32Array(126, 105, 106), PackedInt32Array(130, 129, 128), PackedInt32Array(127, 126, 132), PackedInt32Array(132, 126, 131), PackedInt32Array(132, 131, 134), PackedInt32Array(132, 134, 133), PackedInt32Array(131, 136, 134), PackedInt32Array(134, 136, 135), PackedInt32Array(128, 138, 137), PackedInt32Array(95, 102, 139), PackedInt32Array(139, 140, 95), PackedInt32Array(95, 140, 137), PackedInt32Array(132, 133, 140), PackedInt32Array(140, 133, 130), PackedInt32Array(140, 130, 128), PackedInt32Array(140, 128, 137), PackedInt32Array(135, 136, 141), PackedInt32Array(141, 136, 142), PackedInt32Array(144, 143, 145), PackedInt32Array(145, 143, 142), PackedInt32Array(143, 141, 142), PackedInt32Array(146, 137, 138), PackedInt32Array(148, 146, 147), PackedInt32Array(147, 146, 138), PackedInt32Array(151, 150, 149), PackedInt32Array(148, 147, 152), PackedInt32Array(152, 147, 150), PackedInt32Array(154, 153, 155), PackedInt32Array(155, 153, 156), PackedInt32Array(158, 157, 159), PackedInt32Array(159, 157, 153), PackedInt32Array(156, 149, 155), PackedInt32Array(153, 154, 159), PackedInt32Array(90, 89, 152), PackedInt32Array(156, 161, 160), PackedInt32Array(151, 149, 160), PackedInt32Array(160, 149, 156), PackedInt32Array(150, 151, 152), PackedInt32Array(152, 151, 90), PackedInt32Array(162, 124, 125), PackedInt32Array(161, 156, 163), PackedInt32Array(163, 156, 164), PackedInt32Array(164, 156, 72), PackedInt32Array(72, 156, 165), PackedInt32Array(72, 76, 164), PackedInt32Array(162, 125, 166), PackedInt32Array(166, 125, 163), PackedInt32Array(164, 166, 163), PackedInt32Array(153, 157, 167), PackedInt32Array(130, 168, 129), PackedInt32Array(129, 168, 169), PackedInt32Array(167, 169, 153), PackedInt32Array(153, 169, 170), PackedInt32Array(170, 169, 168), PackedInt32Array(144, 145, 171), PackedInt32Array(171, 145, 172), PackedInt32Array(171, 172, 170), PackedInt32Array(170, 168, 171)]
+geometry_parsed_geometry_type = 0
+cell_size = 0.1
+agent_radius = 0.3
+
+[node name="CityMap" type="Node3D"]
+transform = Transform3D(7, 0, 0, 0, 7, 0, 0, 0, 7, -20, 0.5, 0)
+
+[node name="NavigationRegion3D" type="NavigationRegion3D" parent="."]
+navigation_mesh = SubResource("NavigationMesh_mjt0x")
+
+[node name="Structure_0_0_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 0, 5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_0_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_1_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 0, 4)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_1_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_3_2_road-split" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -2, 0, 3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_3_2_road-split" instance=ExtResource("4_road_split")]
+
+[node name="Structure_1_3_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -2, 0, 2)
+
+[node name="Model" parent="NavigationRegion3D/Structure_1_3_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_4_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 0, 1)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_4_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_5_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -1, 0, 0)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_5_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_3_6_road-split" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -2, 0, 0)
+
+[node name="Model" parent="NavigationRegion3D/Structure_3_6_road-split" instance=ExtResource("4_road_split")]
+
+[node name="Structure_0_7_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 0, 0, 0)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_7_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_3_8_road-split" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0)
+
+[node name="Model" parent="NavigationRegion3D/Structure_3_8_road-split" instance=ExtResource("4_road_split")]
+
+[node name="Structure_0_9_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 2, 0, 0)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_9_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_4_10_road-intersection" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 3, 0, 0)
+
+[node name="Model" parent="NavigationRegion3D/Structure_4_10_road-intersection" instance=ExtResource("5_road_intersection")]
+
+[node name="Structure_0_11_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 4, 0, 0)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_11_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_1_12_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 5, 0, 0)
+
+[node name="Model" parent="NavigationRegion3D/Structure_1_12_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_13_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -3, 0, 3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_13_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_14_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -4, 0, 3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_14_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_15_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -5, 0, 3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_15_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_16_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -2, 0, -1)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_16_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_17_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -2, 0, -2)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_17_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_3_18_road-split" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -2, 0, -3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_3_18_road-split" instance=ExtResource("4_road_split")]
+
+[node name="Structure_0_19_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -2, 0, -4)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_19_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_20_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -2, 0, -5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_20_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_21_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -1, 0, -3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_21_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_22_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 0, 0, -3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_22_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_23_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 1, 0, -3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_23_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_24_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 2, 0, -3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_24_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_2_25_road-corner" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0, -3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_2_25_road-corner" instance=ExtResource("3_road_corner")]
+
+[node name="Structure_0_26_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0, -2)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_26_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_27_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0, -1)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_27_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_28_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 2)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_28_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_29_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_29_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_30_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_30_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_3_31_road-split" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 1, 0, 5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_3_31_road-split" instance=ExtResource("4_road_split")]
+
+[node name="Structure_0_32_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_32_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_2_33_road-corner" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 1, 0, 7)
+
+[node name="Model" parent="NavigationRegion3D/Structure_2_33_road-corner" instance=ExtResource("3_road_corner")]
+
+[node name="Structure_0_34_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 4)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_34_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_35_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 0, 0, 7)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_35_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_36_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -1, 0, 7)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_36_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_2_37_road-corner" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -2, 0, 7)
+
+[node name="Model" parent="NavigationRegion3D/Structure_2_37_road-corner" instance=ExtResource("3_road_corner")]
+
+[node name="Structure_0_38_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -2, 0, 6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_38_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_39_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 2, 0, 5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_39_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_3_40_road-split" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 3, 0, 5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_3_40_road-split" instance=ExtResource("4_road_split")]
+
+[node name="Structure_3_41_road-split" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 4, 0, 5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_3_41_road-split" instance=ExtResource("4_road_split")]
+
+[node name="Structure_0_42_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 5, 0, 5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_42_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_43_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 0, 4)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_43_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_4_44_road-intersection" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 6, 0, 3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_4_44_road-intersection" instance=ExtResource("5_road_intersection")]
+
+[node name="Structure_0_45_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 0, 2)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_45_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_46_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 0, 1)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_46_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_2_47_road-corner" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 0, 0)
+
+[node name="Model" parent="NavigationRegion3D/Structure_2_47_road-corner" instance=ExtResource("3_road_corner")]
+
+[node name="Structure_2_48_road-corner" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 6, 0, 5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_2_48_road-corner" instance=ExtResource("3_road_corner")]
+
+[node name="Structure_2_49_road-corner" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 4, 0, 3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_2_49_road-corner" instance=ExtResource("3_road_corner")]
+
+[node name="Structure_1_50_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 4, 0, 4)
+
+[node name="Model" parent="NavigationRegion3D/Structure_1_50_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_51_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 5, 0, 3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_51_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_52_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 7, 0, 3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_52_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_3_53_road-split" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0, 3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_3_53_road-split" instance=ExtResource("4_road_split")]
+
+[node name="Structure_0_54_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 9, 0, 3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_54_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_5_56_pavement" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -1, 0, 6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_5_56_pavement" instance=ExtResource("6_pavement")]
+
+[node name="Structure_5_57_pavement" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -1, 0, 5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_5_57_pavement" instance=ExtResource("6_pavement")]
+
+[node name="Structure_5_60_pavement" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_5_60_pavement" instance=ExtResource("6_pavement")]
+
+[node name="Structure_5_61_pavement" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 0, 0, 2)
+
+[node name="Model" parent="NavigationRegion3D/Structure_5_61_pavement" instance=ExtResource("6_pavement")]
+
+[node name="Structure_5_64_pavement" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -1, 0, 2)
+
+[node name="Model" parent="NavigationRegion3D/Structure_5_64_pavement" instance=ExtResource("6_pavement")]
+
+[node name="Structure_5_65_pavement" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -1, 0, 3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_5_65_pavement" instance=ExtResource("6_pavement")]
+
+[node name="Structure_5_66_pavement" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -1, 0, 4)
+
+[node name="Model" parent="NavigationRegion3D/Structure_5_66_pavement" instance=ExtResource("6_pavement")]
+
+[node name="Structure_0_69_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 3, 0, 4)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_69_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_70_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 3, 0, 3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_70_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_0_72_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 3, 0, 1)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_72_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_5_73_pavement" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0, 2)
+
+[node name="Model" parent="NavigationRegion3D/Structure_5_73_pavement" instance=ExtResource("6_pavement")]
+
+[node name="Structure_5_74_pavement" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 0, 1)
+
+[node name="Model" parent="NavigationRegion3D/Structure_5_74_pavement" instance=ExtResource("6_pavement")]
+
+[node name="Structure_5_75_pavement" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0, 1)
+
+[node name="Model" parent="NavigationRegion3D/Structure_5_75_pavement" instance=ExtResource("6_pavement")]
+
+[node name="Structure_0_77_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 3, 0, 2)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_77_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_6_79_pavement-fountain" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 5, 0, 4)
+
+[node name="Model" parent="NavigationRegion3D/Structure_6_79_pavement-fountain" instance=ExtResource("7_pavement_fountain")]
+
+[node name="Structure_12_83_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 1, 0, -4)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_83_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_2_92_road-corner" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 8, 0, 4)
+
+[node name="Model" parent="NavigationRegion3D/Structure_2_92_road-corner" instance=ExtResource("3_road_corner")]
+
+[node name="Structure_12_93_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -1, 0, -2)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_93_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_94_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -1, 0, -1)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_94_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_95_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 0, 0, -1)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_95_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_98_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 1, 0, -1)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_98_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_100_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 7, 0, -1)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_100_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_102_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 7, 0, 1)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_102_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_106_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 5, 0, 6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_106_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_109_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -3, 0, 5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_109_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_110_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -3, 0, 6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_110_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_111_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -3, 0, 7)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_111_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_112_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -4, 0, 4)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_112_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_114_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -5, 0, 2)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_114_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_115_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -3, 0, 0)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_115_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_120_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0, 8)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_120_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_121_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0, 4)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_121_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_122_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0, 7)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_122_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_123_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0, 6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_123_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_124_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0, 5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_124_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_125_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0, 1)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_125_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_126_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0, -1)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_126_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_127_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0, -2)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_127_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_128_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0, -3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_128_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_129_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 9, 0, 0)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_129_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_130_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 8, 0, 8)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_130_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_131_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 6, 0, 8)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_131_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_132_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 7, 0, 8)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_132_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_133_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 5, 0, 8)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_133_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_134_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 4, 0, 8)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_134_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_135_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 3, 0, 8)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_135_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_136_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 2, 0, 8)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_136_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_137_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 1, 0, 8)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_137_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_138_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, -5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_138_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_139_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, -4)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_139_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_140_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, -6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_140_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_141_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4, 0, -6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_141_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_142_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -3, 0, -6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_142_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_143_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -1, 0, -6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_143_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_144_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, -6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_144_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_145_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 2, 0, -6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_145_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_146_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 3, 0, -6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_146_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_147_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 4, 0, -6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_147_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_148_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 5, 0, -6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_148_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_149_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 6, 0, -6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_149_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_150_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 7, 0, -6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_150_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_151_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8, 0, -6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_151_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_152_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 9, 0, -6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_152_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_153_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 9, 0, -5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_153_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_154_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 9, 0, -4)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_154_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_155_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 1, 0, -6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_155_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_156_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, -3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_156_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_157_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, -2)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_157_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_158_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, 0)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_158_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_159_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, -1)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_159_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_160_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, 1)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_160_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_161_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, 4)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_161_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_162_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, 5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_162_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_163_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, 6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_163_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_164_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, 7)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_164_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_165_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, 8)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_165_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_166_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4, 0, 8)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_166_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_167_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -2, 0, 8)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_167_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_168_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 8)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_168_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_169_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -1, 0, 8)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_169_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_170_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -3, 0, 8)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_170_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_175_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8, 0, -5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_175_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_176_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4, 0, 5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_176_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_177_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4, 0, 6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_177_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_178_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4, 0, 7)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_178_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_179_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 3, 0, 7)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_179_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_180_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 4, 0, 7)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_180_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_181_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 5, 0, 7)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_181_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_182_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 6, 0, 7)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_182_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_183_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 7, 0, 7)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_183_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_184_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8, 0, 7)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_184_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_185_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8, 0, 6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_185_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_186_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8, 0, 5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_186_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_187_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 7, 0, 6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_187_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_188_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 6, 0, 6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_188_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_189_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8, 0, 1)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_189_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_190_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8, 0, 0)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_190_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_191_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8, 0, -1)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_191_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_192_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8, 0, -2)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_192_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_193_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8, 0, -4)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_193_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_194_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8, 0, -3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_194_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_195_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 7, 0, -2)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_195_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_196_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 7, 0, -5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_196_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_197_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 6, 0, -5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_197_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_198_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 5, 0, -4)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_198_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_199_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 5, 0, -5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_199_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_200_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 5, 0, -3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_200_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_201_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 6, 0, -2)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_201_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_202_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 4, 0, -3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_202_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_203_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -3, 0, -5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_203_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_204_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4, 0, -5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_204_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_205_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4, 0, 0)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_205_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_206_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4, 0, -1)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_206_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_207_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4, 0, -2)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_207_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_208_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4, 0, -3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_208_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_209_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4, 0, -4)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_209_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_210_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -3, 0, -4)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_210_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_211_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -3, 0, -3)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_211_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_212_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -1, 0, -5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_212_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_213_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, -5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_213_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_214_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 3, 0, -5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_214_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_215_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 4, 0, -5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_215_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_216_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 2, 0, -5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_216_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_217_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 1, 0, -5)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_217_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_218_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 2, 0, -4)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_218_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_219_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 3, 0, -4)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_219_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_220_grass" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 4, 0, -4)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_220_grass" instance=ExtResource("13_grass")]
+
+[node name="Structure_0_221_road-straight" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -2, 0, -6)
+
+[node name="Model" parent="NavigationRegion3D/Structure_0_221_road-straight" instance=ExtResource("1_road_straight")]
+
+[node name="Structure_12_201_grass2" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 5, 0, -2)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_201_grass2" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_201_grass3" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 4, 0, -2)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_201_grass3" instance=ExtResource("13_grass")]
+
+[node name="Structure_12_205_grass2" type="Node3D" parent="NavigationRegion3D"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4, 0, 1)
+
+[node name="Model" parent="NavigationRegion3D/Structure_12_205_grass2" instance=ExtResource("13_grass")]
+
+[node name="Structure_8_55_building-small-b" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 0, 0, 6)
+
+[node name="Model" parent="Structure_8_55_building-small-b" instance=ExtResource("9_building_small_b")]
+
+[node name="Structure_9_58_building-small-c" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 0, 0, 5)
+
+[node name="Model" parent="Structure_9_58_building-small-c" instance=ExtResource("10_building_small_c")]
+
+[node name="Structure_10_59_building-small-d" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 0, 0, 4)
+
+[node name="Model" parent="Structure_10_59_building-small-d" instance=ExtResource("11_building_small_d")]
+
+[node name="Structure_10_62_building-small-d" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 1)
+
+[node name="Model" parent="Structure_10_62_building-small-d" instance=ExtResource("11_building_small_d")]
+
+[node name="Structure_7_63_building-small-a" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -1, 0, 1)
+
+[node name="Model" parent="Structure_7_63_building-small-a" instance=ExtResource("8_building_small_a")]
+
+[node name="Structure_8_67_building-small-b" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 2, 0, 3)
+
+[node name="Model" parent="Structure_8_67_building-small-b" instance=ExtResource("9_building_small_b")]
+
+[node name="Structure_7_68_building-small-a" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 2, 0, 4)
+
+[node name="Model" parent="Structure_7_68_building-small-a" instance=ExtResource("8_building_small_a")]
+
+[node name="Structure_7_71_building-small-a" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 2, 0, 2)
+
+[node name="Model" parent="Structure_7_71_building-small-a" instance=ExtResource("8_building_small_a")]
+
+[node name="Structure_8_76_building-small-b" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 2, 0, 1)
+
+[node name="Model" parent="Structure_8_76_building-small-b" instance=ExtResource("9_building_small_b")]
+
+[node name="Structure_9_78_building-small-c" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 0, 2)
+
+[node name="Model" parent="Structure_9_78_building-small-c" instance=ExtResource("10_building_small_c")]
+
+[node name="Structure_10_80_building-small-d" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 0, -1)
+
+[node name="Model" parent="Structure_10_80_building-small-d" instance=ExtResource("11_building_small_d")]
+
+[node name="Structure_11_81_building-garage" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1, 0, -4)
+
+[node name="Model" parent="Structure_11_81_building-garage" instance=ExtResource("12_building_garage")]
+
+[node name="Structure_11_82_building-garage" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -4)
+
+[node name="Model" parent="Structure_11_82_building-garage" instance=ExtResource("12_building_garage")]
+
+[node name="Structure_11_84_building-garage" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -3, 0, 1)
+
+[node name="Model" parent="Structure_11_84_building-garage" instance=ExtResource("12_building_garage")]
+
+[node name="Structure_10_85_building-small-d" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0, 2)
+
+[node name="Model" parent="Structure_10_85_building-small-d" instance=ExtResource("11_building_small_d")]
+
+[node name="Structure_8_86_building-small-b" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0, -1)
+
+[node name="Model" parent="Structure_8_86_building-small-b" instance=ExtResource("9_building_small_b")]
+
+[node name="Structure_7_87_building-small-a" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 0, -1)
+
+[node name="Model" parent="Structure_7_87_building-small-a" instance=ExtResource("8_building_small_a")]
+
+[node name="Structure_9_88_building-small-c" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 0, -1)
+
+[node name="Model" parent="Structure_9_88_building-small-c" instance=ExtResource("10_building_small_c")]
+
+[node name="Structure_7_89_building-small-a" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7, 0, 2)
+
+[node name="Model" parent="Structure_7_89_building-small-a" instance=ExtResource("8_building_small_a")]
+
+[node name="Structure_8_90_building-small-b" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0, 2)
+
+[node name="Model" parent="Structure_8_90_building-small-b" instance=ExtResource("9_building_small_b")]
+
+[node name="Structure_11_91_building-garage" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 7, 0, 4)
+
+[node name="Model" parent="Structure_11_91_building-garage" instance=ExtResource("12_building_garage")]
+
+[node name="Structure_13_96_grass-trees" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -2)
+
+[node name="Model" parent="Structure_13_96_grass-trees" instance=ExtResource("14_grass_trees")]
+
+[node name="Structure_13_97_grass-trees" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 1, 0, -2)
+
+[node name="Model" parent="Structure_13_97_grass-trees" instance=ExtResource("14_grass_trees")]
+
+[node name="Structure_13_99_grass-trees" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 2, 0, -2)
+
+[node name="Model" parent="Structure_13_99_grass-trees" instance=ExtResource("14_grass_trees")]
+
+[node name="Structure_14_101_grass-trees-tall" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 7, 0, 0)
+
+[node name="Model" parent="Structure_14_101_grass-trees-tall" instance=ExtResource("15_grass_trees_tall")]
+
+[node name="Structure_13_103_grass-trees" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 3, 0, 6)
+
+[node name="Model" parent="Structure_13_103_grass-trees" instance=ExtResource("14_grass_trees")]
+
+[node name="Structure_13_104_grass-trees" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 0, 6)
+
+[node name="Model" parent="Structure_13_104_grass-trees" instance=ExtResource("14_grass_trees")]
+
+[node name="Structure_13_105_grass-trees" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 4, 0, 6)
+
+[node name="Model" parent="Structure_13_105_grass-trees" instance=ExtResource("14_grass_trees")]
+
+[node name="Structure_14_107_grass-trees-tall" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 0, 7)
+
+[node name="Model" parent="Structure_14_107_grass-trees-tall" instance=ExtResource("15_grass_trees_tall")]
+
+[node name="Structure_14_108_grass-trees-tall" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0, 4)
+
+[node name="Model" parent="Structure_14_108_grass-trees-tall" instance=ExtResource("15_grass_trees_tall")]
+
+[node name="Structure_14_113_grass-trees-tall" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -4, 0, 2)
+
+[node name="Model" parent="Structure_14_113_grass-trees-tall" instance=ExtResource("15_grass_trees_tall")]
+
+[node name="Structure_13_116_grass-trees" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -3, 0, -1)
+
+[node name="Model" parent="Structure_13_116_grass-trees" instance=ExtResource("14_grass_trees")]
+
+[node name="Structure_13_117_grass-trees" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0, -2)
+
+[node name="Model" parent="Structure_13_117_grass-trees" instance=ExtResource("14_grass_trees")]
+
+[node name="Structure_14_118_grass-trees-tall" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 9, 0, 2)
+
+[node name="Model" parent="Structure_14_118_grass-trees-tall" instance=ExtResource("15_grass_trees_tall")]
+
+[node name="Structure_14_119_grass-trees-tall" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 7, 0, 5)
+
+[node name="Model" parent="Structure_14_119_grass-trees-tall" instance=ExtResource("15_grass_trees_tall")]
+
+[node name="Structure_14_171_grass-trees-tall" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 7, 0, -3)
+
+[node name="Model" parent="Structure_14_171_grass-trees-tall" instance=ExtResource("15_grass_trees_tall")]
+
+[node name="Structure_14_172_grass-trees-tall" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 6, 0, -3)
+
+[node name="Model" parent="Structure_14_172_grass-trees-tall" instance=ExtResource("15_grass_trees_tall")]
+
+[node name="Structure_14_173_grass-trees-tall" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 6, 0, -4)
+
+[node name="Model" parent="Structure_14_173_grass-trees-tall" instance=ExtResource("15_grass_trees_tall")]
+
+[node name="Structure_14_174_grass-trees-tall" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 7, 0, -4)
+
+[node name="Model" parent="Structure_14_174_grass-trees-tall" instance=ExtResource("15_grass_trees_tall")]
+
+[node name="NavigationManager" type="Node" parent="."]
+script = ExtResource("16_navigation_manager")

@@ -182,8 +182,9 @@ func apply_procedural_control_points(control_points_data: Dictionary, tile_size:
             # Set control point properties directly instead of calling non-existent setup() method
             control_point.control_point_id = "CP_%d" % (control_point_index - 1)
             control_point.control_point_name = "Procedural Point %d" % control_point_index
+            # Note: Control point collision prevention is handled in the control_point.gd _ready() method
             control_points_container.call_deferred("add_child", control_point)
-            logger.info("ProceduralWorldRenderer", "Created control point %d at %s" % [control_point_index, world_position])
+            logger.info("ProceduralWorldRenderer", "Created control point %d at %s (no unit collision)" % [control_point_index, world_position])
         
         if control_point:
             control_point.position = world_position

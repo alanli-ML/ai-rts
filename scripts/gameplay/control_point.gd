@@ -23,11 +23,11 @@ var progress_ring: MeshInstance3D = null
 var team_flag: MeshInstance3D = null
 var capture_area: Area3D = null
 
-# Team colors
+# Team colors with 70% transparency
 var team_colors: Dictionary = {
-    0: Color(0.5, 0.5, 0.5, 1.0),  # Neutral - Gray
-    1: Color(0.2, 0.4, 1.0, 1.0),  # Team 1 - Blue
-    2: Color(1.0, 0.2, 0.2, 1.0)   # Team 2 - Red
+    0: Color(0.5, 0.5, 0.5, 0.7),  # Neutral - Gray (70% opacity)
+    1: Color(0.2, 0.4, 1.0, 0.7),  # Team 1 - Blue (70% opacity)
+    2: Color(1.0, 0.2, 0.2, 0.7)   # Team 2 - Red (70% opacity)
 }
 
 # Signals
@@ -49,12 +49,21 @@ func _ready() -> void:
     # Server is authoritative for capture logic
     set_physics_process(multiplayer.is_server())
     
-    # Configure StaticBody3D to prevent physical blocking of units
-    set_collision_layer_value(1, false)  # Not on unit layer (Layer 1 is for units)
-    set_collision_layer_value(3, true)   # Put on a "buildings/static structures" layer
-    set_collision_mask_value(1, false)   # Do not collide with units (Layer 1)
+    # COMPLETELY disable collision for the StaticBody3D to prevent unit blocking
+    # Control points should never physically block unit movement
+    set_collision_layer(0)  # Remove from all collision layers
+    set_collision_mask(0)   # Don't collide with anything
     
-    print("ControlPoint %s (%s) initialized" % [control_point_id, control_point_name])
+    # Remove any existing collision shapes that might block units
+    for child in get_children():
+        if child is CollisionShape3D:
+            child.queue_free()
+            print("ControlPoint %s: Removed blocking collision shape" % control_point_id)
+    
+    # Verify collision setup is correct
+    _verify_no_unit_collision()
+    
+    print("ControlPoint %s (%s) initialized with no unit collision" % [control_point_id, control_point_name])
 
 func _physics_process(delta: float) -> void:
     if not multiplayer.is_server():
@@ -111,9 +120,12 @@ func _create_visual_components():
     base_mesh.mesh.top_radius = GameConstants.CONTROL_POINT_RADIUS * 0.8
     base_mesh.mesh.bottom_radius = GameConstants.CONTROL_POINT_RADIUS * 0.8
     base_mesh.mesh.height = 1.0 # Make it taller
-    base_mesh.position.y = 0.5 # Lift it so its bottom is at y=0 relative to the control point
+    base_mesh.position.y = 0.1 # Lift it so its bottom is at y=0 relative to the control point
     var base_material = StandardMaterial3D.new()
-    base_material.albedo_color = team_colors[0]
+    var base_color = team_colors[0]
+    base_color.a = 0.7  # Set transparency to 70%
+    base_material.albedo_color = base_color
+    base_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA  # Enable transparency
     base_material.metallic = 0.3
     base_material.roughness = 0.7
     base_mesh.material_override = base_material
@@ -129,9 +141,14 @@ func _create_visual_components():
     progress_ring.rotation_degrees.x = 90
     progress_ring.position.y = 1.01 # Place it on top of the taller base mesh
     var ring_material = StandardMaterial3D.new()
-    ring_material.albedo_color = Color.YELLOW
+    var ring_color = Color.YELLOW
+    ring_color.a = 0.7  # Set transparency to 70%
+    ring_material.albedo_color = ring_color
+    ring_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA  # Enable transparency
     ring_material.emission_enabled = true
-    ring_material.emission = Color.YELLOW
+    var ring_emission = Color.YELLOW
+    ring_emission.a = 0.7  # Set emission transparency to 70%
+    ring_material.emission = ring_emission
     ring_material.emission_energy_multiplier = 2.0
     ring_material.cull_mode = BaseMaterial3D.CULL_DISABLED # To make it visible from both sides
     progress_ring.material_override = ring_material
@@ -157,6 +174,11 @@ func _create_visual_components():
 func _create_capture_area():
     capture_area = Area3D.new()
     capture_area.name = "CaptureArea"
+    
+    # Ensure Area3D is detection-only and doesn't block units
+    capture_area.monitoring = true
+    capture_area.monitorable = false  # Other areas don't need to detect this area
+    
     var collision_shape = CollisionShape3D.new()
     collision_shape.name = "CollisionShape3D"
     var shape = CylinderShape3D.new()
@@ -168,6 +190,8 @@ func _create_capture_area():
     capture_area.body_entered.connect(_on_unit_entered)
     capture_area.body_exited.connect(_on_unit_exited)
     add_child(capture_area)
+    
+    print("ControlPoint %s: Capture area created (detection-only, no collision blocking)" % control_point_id)
 
 func _on_unit_entered(body: Node3D):
     if not body is Unit: return
@@ -200,8 +224,9 @@ func update_client_visuals(data: Dictionary):
     # Update base color
     if base_mesh and base_mesh.material_override:
         var target_color = team_colors.get(team_id, team_colors[0])
-        # Set color directly for immediate feedback
+        # Set color directly for immediate feedback and ensure transparency is maintained
         base_mesh.material_override.albedo_color = target_color
+        base_mesh.material_override.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 
     # Update progress ring
     if progress_ring and progress_ring.material_override:
@@ -218,14 +243,40 @@ func update_client_visuals(data: Dictionary):
             else: # Team 2 is capturing/losing
                 capturing_team_id = 2
             
-            var ring_color = team_colors.get(capturing_team_id, Color.YELLOW)
+            var ring_color = team_colors.get(capturing_team_id, Color(1.0, 1.0, 0.0, 0.7))  # Yellow with 70% opacity as fallback
             progress_ring.material_override.albedo_color = ring_color
             progress_ring.material_override.emission = ring_color
+            progress_ring.material_override.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
             
             # Animate progress by scaling.
             # This makes the ring grow from the center as a point is captured.
             # Scale on X and Y because the Torus is rotated to lie flat in the XY plane.
             progress_ring.scale = Vector3(progress, progress, 1.0)
+
+func _verify_no_unit_collision():
+    """Verify that the control point won't block unit movement"""
+    # Check StaticBody3D collision setup
+    if get_collision_layer() != 0:
+        print("WARNING: ControlPoint %s has non-zero collision layer: %d" % [control_point_id, get_collision_layer()])
+        set_collision_layer(0)  # Force disable
+    
+    if get_collision_mask() != 0:
+        print("WARNING: ControlPoint %s has non-zero collision mask: %d" % [control_point_id, get_collision_mask()])
+        set_collision_mask(0)  # Force disable
+    
+    # Check for any remaining collision shapes
+    var collision_shapes = []
+    for child in get_children():
+        if child is CollisionShape3D:
+            collision_shapes.append(child)
+    
+    if not collision_shapes.is_empty():
+        print("WARNING: ControlPoint %s still has %d collision shapes that could block units" % [control_point_id, collision_shapes.size()])
+        for shape in collision_shapes:
+            shape.disabled = true
+            print("  - Disabled collision shape: %s" % shape.name)
+    
+    print("ControlPoint %s: Collision verification complete - no unit blocking" % control_point_id)
 
 func reset_control_point():
     capture_value = 0.0

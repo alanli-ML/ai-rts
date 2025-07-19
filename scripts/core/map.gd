@@ -8,7 +8,7 @@ extends Node3D
 @export var map_size: Vector2 = Vector2(100, 100)
 @export var node_count: int = 9
 @export var load_exported_scene: bool = true
-@export var exported_scene_path: String = "res://scenes/maps/exported_map.tscn"
+@export var exported_scene_path: String = "res://scenes/maps/city_map.tscn"
 
 @onready var capture_nodes: Node3D = $CaptureNodes
 @onready var spawn_points: Node3D = $SpawnPoints
@@ -85,7 +85,22 @@ func load_exported_scene_data() -> void:
 		setup_capture_nodes()
 		return
 	
-	# CRITICAL: Add the map scene to NavigationRegion3D so buildings can be considered obstacles
+	# Check if this is a pre-configured scene (like city_map.tscn)
+	if _is_scene_pre_configured(loaded_map_scene):
+		print("Map: Detected pre-configured scene with NavigationManager - using existing setup")
+		
+		# Simply add the scene as-is - it's already properly configured
+		map_structures_container.add_child(loaded_map_scene)
+		
+		print("Map: Successfully loaded pre-configured city map scene")
+		
+		# Create capture nodes positioned around the loaded structures
+		setup_capture_nodes_for_loaded_map()
+		return
+	
+	print("Map: Loading legacy scene format - applying manual setup")
+	
+	# Legacy scene handling - needs manual model loading and navigation setup
 	var nav_region = get_node("../Environment/NavigationRegion3D")
 	if nav_region:
 		nav_region.add_child(loaded_map_scene)
@@ -106,59 +121,101 @@ func load_exported_scene_data() -> void:
 	# Load actual 3D models for each structure node
 	load_structure_models()
 	
-	# Collision and navigation are already set up in load_structure_models()
-	# setup_scene_collision_and_navigation() # REMOVED - duplicates obstacles
-	
 	# CRITICAL: Rebake navigation mesh after adding all NavigationObstacle3D nodes
 	call_deferred("_rebake_navigation_mesh")
 	
 	# Create capture nodes positioned around the loaded structures
 	setup_capture_nodes_for_loaded_map()
 
+func _is_scene_pre_configured(scene: Node3D) -> bool:
+	"""Check if a scene is already pre-configured with models, navigation, etc."""
+	# Check for NavigationManager - key indicator of pre-configured scene
+	var has_navigation_manager = scene.has_node("NavigationManager")
+	
+	# Check for NavigationRegion3D with pre-baked mesh
+	var has_nav_region_with_mesh = false
+	var nav_region = scene.get_node_or_null("NavigationRegion3D")
+	if nav_region and nav_region.navigation_mesh:
+		var nav_mesh = nav_region.navigation_mesh
+		# Check if navigation mesh has pre-baked data
+		has_nav_region_with_mesh = (nav_mesh.get_vertices().size() > 0)
+	
+	# Check if structure nodes already have Model children
+	var has_pre_loaded_models = false
+	for child in scene.get_children():
+		if child.name.begins_with("Structure_"):
+			var model_child = child.get_node_or_null("Model")
+			if model_child:
+				has_pre_loaded_models = true
+				break
+	
+	# Check if scene has proper transform (indicating it's pre-scaled/positioned)
+	var has_proper_transform = (scene.scale.x == 7.0 and scene.position.x == -20.0)
+	
+	var is_pre_configured = has_navigation_manager and has_nav_region_with_mesh and has_pre_loaded_models
+	
+	print("Map: Scene pre-configuration check:")
+	print("  - NavigationManager: %s" % has_navigation_manager)
+	print("  - Pre-baked NavigationMesh: %s" % has_nav_region_with_mesh)
+	print("  - Pre-loaded Models: %s" % has_pre_loaded_models)
+	print("  - Proper Transform: %s" % has_proper_transform)
+	print("  - Is Pre-configured: %s" % is_pre_configured)
+	
+	return is_pre_configured
+
 func load_structure_models() -> void:
-	"""Load actual 3D models for each structure node based on metadata"""
+	"""Load actual 3D models for each structure node based on metadata (legacy scenes only)"""
 	if not loaded_map_scene:
 		return
 	
 	print("Map: Loading 3D models for structures...")
 	var models_loaded = 0
+	var models_skipped = 0
 	
 	# Iterate through all structure nodes in the exported scene
 	for child in loaded_map_scene.get_children():
-		if child.name.begins_with("Structure_") and child.has_meta("structure_id"):
-			var structure_id = child.get_meta("structure_id")
-			var model_path = get_model_path_for_structure_id(structure_id)
-			
-			if model_path and ResourceLoader.exists(model_path):
-				# Load the model resource
-				var model_resource = ResourceLoader.load(model_path)
-				if model_resource:
-					# Instantiate the model
-					var model_instance = model_resource.instantiate()
-					if model_instance:
-						# Add the model as a child of the structure node
-						child.add_child(model_instance)
-						
-						# Add collision and navigation based on structure type
-						if structure_id in STRUCTURE_TYPES["buildings"]:
-							# Buildings: create holes in navigation mesh
-							setup_structure_collision(child, structure_id)
-							setup_structure_navigation_obstacle(child, structure_id)
-						elif structure_id in STRUCTURE_TYPES["roads"] or \
-							 structure_id in STRUCTURE_TYPES["pavement"] or \
-							 structure_id in STRUCTURE_TYPES["landscaping"]:
-							# Roads, pavement, grass: create walkable surface for navigation mesh
-							setup_terrain_collision(child, structure_id)
-						
-						models_loaded += 1
+		if child.name.begins_with("Structure_"):
+			# Check if model already exists (pre-configured scene)
+			if child.has_node("Model"):
+				models_skipped += 1
+				continue
+				
+			# Legacy scene: load model based on metadata
+			if child.has_meta("structure_id"):
+				var structure_id = child.get_meta("structure_id")
+				var model_path = get_model_path_for_structure_id(structure_id)
+				
+				if model_path and ResourceLoader.exists(model_path):
+					# Load the model resource
+					var model_resource = ResourceLoader.load(model_path)
+					if model_resource:
+						# Instantiate the model
+						var model_instance = model_resource.instantiate()
+						if model_instance:
+							model_instance.name = "Model"  # Consistent naming
+							# Add the model as a child of the structure node
+							child.add_child(model_instance)
+							
+							# Add collision and navigation based on structure type
+							if structure_id in STRUCTURE_TYPES["buildings"]:
+								# Buildings: create holes in navigation mesh
+								setup_structure_collision(child, structure_id)
+								#setup_structure_navigation_obstacle(child, structure_id)
+							elif structure_id in STRUCTURE_TYPES["roads"] or \
+								 structure_id in STRUCTURE_TYPES["pavement"] or \
+								 structure_id in STRUCTURE_TYPES["landscaping"]:
+								# Roads, pavement, grass: create walkable surface for navigation mesh
+								setup_terrain_collision(child, structure_id)
+							
+							models_loaded += 1
+						else:
+							print("Map: Warning - failed to instantiate model: %s" % model_path)
 					else:
-						print("Map: Warning - failed to instantiate model: %s" % model_path)
+						print("Map: Warning - failed to load model: %s" % model_path)
 				else:
-					print("Map: Warning - failed to load model: %s" % model_path)
-			else:
-				print("Map: Warning - model not found for structure_id %d: %s" % [structure_id, model_path])
+					print("Map: Warning - model not found for structure_id %d: %s" % [structure_id, model_path])
 	
-	print("Map: Successfully loaded %d 3D models" % models_loaded)
+	print("Map: Successfully loaded %d 3D models (%d skipped - already existed)" % [models_loaded, models_skipped])
 
 func get_model_path_for_structure_id(structure_id: int) -> String:
 	"""Get the correct model path for a structure ID"""
@@ -325,7 +382,7 @@ func setup_structure_collision(structure: Node3D, structure_id: int) -> void:
 		return
 	
 	# Use original model dimensions since the structure nodes are already scaled
-	var collision_size = aabb.size * 0.7  # 10% padding for safety
+	var collision_size = aabb.size * 0.9  # Minimal padding to preserve walkable area
 	var collision_center = aabb.get_center()
 	
 	print("Map: Structure %d collision setup: size=%s, center=%s" % [structure_id, collision_size, collision_center])
@@ -493,8 +550,8 @@ func setup_structure_navigation_obstacle(structure: Node3D, structure_id: int) -
 	# For NavigationObstacle3D, we need radius and height
 	# Use the larger of X or Z dimensions for radius, and Y for height
 	var radius = max(nav_size.x, nav_size.z) / 2.0
-	nav_obstacle.radius = radius * 1.3  # Larger radius to ensure avoidance
-	nav_obstacle.height = nav_size.y  # Taller to ensure detection
+	nav_obstacle.radius = radius * 1.1  # Smaller radius to preserve walkable area
+	nav_obstacle.height = nav_size.y * 0.9  # Slightly shorter to reduce impact
 	
 	# Position the obstacle at the center of the model (not base)
 	nav_obstacle.position = nav_center
@@ -612,13 +669,16 @@ func get_random_node_position() -> Vector3:
 	return node_positions.pick_random() 
 
 func _rebake_navigation_mesh() -> void:
-	"""Rebake the navigation mesh to include NavigationObstacle3D nodes
+	"""Rebake the navigation mesh to include NavigationObstacle3D nodes (legacy scenes only)
 	
-	NEW TERRAIN SYSTEM:
-	- Roads, Pavement, Grass (from exported_map.tscn) = Walkable Surface (Layer 3)
-	- Buildings (from exported_map.tscn) = Obstacles/Holes (Layer 2)  
-	- Simple CSGBox3D terrain = Excluded from navigation
+	For pre-configured scenes like city_map.tscn, skip rebaking as they already have
+	pre-baked navigation meshes and NavigationManager handling setup.
 	"""
+	# Check if we're dealing with a pre-configured scene
+	if loaded_map_scene and _is_scene_pre_configured(loaded_map_scene):
+		print("Map: Skipping navigation mesh rebaking - scene is pre-configured with NavigationManager")
+		return
+	
 	print("Map: Rebaking navigation mesh to include building obstacles...")
 	
 	# ENABLE NAVIGATION DEBUG VISUALIZATION (Multiple Methods)
@@ -670,15 +730,15 @@ func _rebake_navigation_mesh() -> void:
 		if nav_mesh:
 			print("Map: NavigationMesh found - cell size: %f, agent radius: %f" % [nav_mesh.cell_size, nav_mesh.agent_radius])
 			
-			# CRITICAL: Configure navigation mesh to work with obstacles
-			nav_mesh.agent_radius = 1.2      # Match unit NavigationAgent3D radius  
-			nav_mesh.cell_size = 0.5         # Good balance of precision and performance
-			nav_mesh.cell_height = 0.2       # Allow for height variations
-			nav_mesh.edge_max_length = 12.0   # Maximum edge length
-			nav_mesh.edge_max_error = 1.3     # Edge simplification tolerance
-			nav_mesh.vertices_per_polygon = 6 # Allow more complex polygons
-			nav_mesh.detail_sample_distance = 6.0   # Detail mesh sampling
-			nav_mesh.detail_sample_max_error = 1.0  # Detail mesh error tolerance
+			# CRITICAL: Configure navigation mesh to minimize face loss when cutting building holes
+			nav_mesh.agent_radius = 0.8      # Smaller radius to preserve more walkable area
+			nav_mesh.cell_size = 0.25        # Higher precision for better hole cutting
+			nav_mesh.cell_height = 0.1       # Finer height resolution
+			nav_mesh.edge_max_length = 5.0    # Shorter edges for better detail preservation
+			nav_mesh.edge_max_error = 1.0     # Lower error tolerance for precision
+			nav_mesh.vertices_per_polygon = 3 # More vertices for complex shapes
+			nav_mesh.detail_sample_distance = 3.0   # Closer sampling for detail
+			nav_mesh.detail_sample_max_error = 0.3  # Lower error for detail mesh
 			
 			# REVERT TO SIMPLE WORKING CONFIGURATION
 			# Use terrain collision as walkable surface, buildings collision as obstacles

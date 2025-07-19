@@ -210,31 +210,48 @@ func _setup_navigation_agent() -> void:
     if not navigation_agent:
         return
         
-    # Find the NavigationRegion3D in the scene - check multiple possible locations
-    var nav_region = get_tree().get_first_node_in_group("navigation_regions")
+    # PRIORITY 1: Check for city map navigation first (pre-baked scenes)
+    var nav_region = get_tree().get_first_node_in_group("city_map_navigation")
     
-    # If not found in group, try common paths for pre-configured scenes
-    if not nav_region:
-        # Check if we have a loaded city map with NavigationRegion3D
-        var map_nodes = get_tree().get_nodes_in_group("maps")
-        for map_node in map_nodes:
-            if map_node.has_method("get") and map_node.get("loaded_map_scene"):
-                var loaded_scene = map_node.get("loaded_map_scene")
-                nav_region = loaded_scene.get_node_or_null("NavigationRegion3D")
-                if nav_region:
-                    print("DEBUG: Unit %s - Found NavigationRegion3D in loaded map scene" % unit_id)
-                    break
+    if nav_region:
+        print("DEBUG: Unit %s - Found city map NavigationRegion3D with priority" % unit_id)
+    else:
+        # PRIORITY 2: Find any NavigationRegion3D in the scene
+        nav_region = get_tree().get_first_node_in_group("navigation_regions")
         
-        # Fallback: search for NavigationRegion3D anywhere in scene
+        # If not found in group, try common paths for pre-configured scenes
         if not nav_region:
-            var all_nav_regions = get_tree().get_nodes_in_group("NavigationRegion3D")
-            if all_nav_regions.size() > 0:
-                nav_region = all_nav_regions[0]
-                print("DEBUG: Unit %s - Found NavigationRegion3D via fallback search" % unit_id)
+            # Check if we have a loaded city map with NavigationRegion3D
+            var map_nodes = get_tree().get_nodes_in_group("maps")
+            for map_node in map_nodes:
+                if map_node.has_method("get") and map_node.get("loaded_map_scene"):
+                    var loaded_scene = map_node.get("loaded_map_scene")
+                    nav_region = loaded_scene.get_node_or_null("NavigationRegion3D")
+                    if nav_region:
+                        print("DEBUG: Unit %s - Found NavigationRegion3D in loaded map scene" % unit_id)
+                        break
+            
+            # Fallback: search for NavigationRegion3D anywhere in scene
+            if not nav_region:
+                var all_nav_regions = get_tree().get_nodes_in_group("NavigationRegion3D")
+                if all_nav_regions.size() > 0:
+                    nav_region = all_nav_regions[0]
+                    print("DEBUG: Unit %s - Found NavigationRegion3D via fallback search" % unit_id)
     
     if not nav_region:
         print("DEBUG: Unit %s - No NavigationRegion3D found, navigation may not work" % unit_id)
         return
+    
+    # Verify the NavigationRegion3D is enabled
+    if not nav_region.enabled:
+        print("DEBUG: Unit %s - NavigationRegion3D found but disabled, looking for enabled one" % unit_id)
+        # Try to find an enabled one
+        var all_nav_regions = get_tree().get_nodes_in_group("navigation_regions")
+        for region in all_nav_regions:
+            if region.enabled:
+                nav_region = region
+                print("DEBUG: Unit %s - Found enabled NavigationRegion3D" % unit_id)
+                break
     
     # Get the navigation map from the NavigationRegion3D
     var nav_map = nav_region.get_navigation_map()
@@ -250,6 +267,10 @@ func _setup_navigation_agent() -> void:
             navigation_agent.radius = nav_mesh.agent_radius
             navigation_agent.height = nav_mesh.agent_height
             print("DEBUG: Unit %s - Synced NavigationAgent3D settings with pre-baked mesh (radius: %.1f, height: %.1f)" % [unit_id, navigation_agent.radius, navigation_agent.height])
+            
+            # Debug: Print navigation mesh info
+            var vertex_count = nav_mesh.get_vertices().size() if nav_mesh.has_method("get_vertices") else 0
+            print("DEBUG: Unit %s - Navigation mesh has %d vertices, cell_size: %.2f" % [unit_id, vertex_count, nav_mesh.cell_size])
     else:
         print("DEBUG: Unit %s - Invalid navigation map, agent may not work properly" % unit_id)
 
@@ -384,6 +405,16 @@ func _physics_process(delta: float) -> void:
             var next_global_path_point = navigation_agent.get_next_path_position()
             var desired_velocity = (next_global_path_point - global_position).normalized() * movement_speed
             navigation_agent.set_velocity(desired_velocity)
+            
+            # DEBUG: Check if navigation is actually working with city map
+            if Engine.get_physics_frames() % 60 == 0:  # Print every second
+                var nav_path = navigation_agent.get_current_navigation_path()
+                if nav_path.size() > 0:
+                    print("DEBUG: Unit %s has navigation path with %d points, next point: %s, target: %s" % 
+                          [unit_id, nav_path.size(), next_global_path_point, navigation_agent.target_position])
+                else:
+                    print("DEBUG: Unit %s has NO navigation path! Target: %s, Position: %s" % 
+                          [unit_id, navigation_agent.target_position, global_position])
         else:
             # If navigation is finished, stop horizontal movement
             velocity.x = 0

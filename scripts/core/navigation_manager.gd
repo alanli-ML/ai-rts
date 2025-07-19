@@ -20,19 +20,47 @@ const OBSTACLE_LAYER = 2
 func _ready():
 	print("NavigationManager: Starting initialization...")
 	
+	# Enable collision debug visualization
+	get_tree().debug_collisions_hint = true
+	print("NavigationManager: Enabled collision debug visualization")
+	
 	# Auto-find NavigationRegion3D if not assigned
 	if not navigation_region:
 		navigation_region = get_parent().get_node_or_null("NavigationRegion3D")
 		if navigation_region:
-			print("NavigationManager: Auto-found NavigationRegion3D")
+			print("NavigationManager: Auto-found NavigationRegion3D as sibling")
 		else:
-			print("NavigationManager: Warning - Could not find NavigationRegion3D")
+			# Try to find it in the scene tree
+			var nav_regions = get_tree().get_nodes_in_group("navigation_regions")
+			if nav_regions.size() > 0:
+				navigation_region = nav_regions[0]
+				print("NavigationManager: Found NavigationRegion3D via group search")
+			else:
+				print("NavigationManager: Warning - Could not find NavigationRegion3D anywhere")
 	
 	if auto_configure_on_ready and navigation_region:
 		print("NavigationManager: Auto-configure enabled, setting up navigation...")
 		configure_navigation_mesh_settings()
 		configure_navigation_sources()
 		bake_navigation_mesh()
+		
+		# CRITICAL: Ensure NavigationRegion3D is properly registered with NavigationServer3D
+		if navigation_region.enabled and navigation_region.navigation_mesh:
+			# Force update the navigation map
+			navigation_region.enabled = false
+			await get_tree().process_frame
+			navigation_region.enabled = true
+			print("NavigationManager: Force-refreshed NavigationRegion3D registration with NavigationServer3D")
+			
+			# Debug: Print navigation map info
+			var nav_map = navigation_region.get_navigation_map()
+			if nav_map.is_valid():
+				print("NavigationManager: Navigation map RID is valid")
+			else:
+				print("NavigationManager: ERROR - Navigation map RID is invalid!")
+		
+		# Debug: Count collision structures created
+		_debug_collision_structures()
 	else:
 		print("NavigationManager: Auto-configure disabled or no navigation_region assigned")
 		if not navigation_region:
@@ -50,6 +78,15 @@ func configure_navigation_mesh_settings():
 		nav_mesh = NavigationMesh.new()
 		navigation_region.navigation_mesh = nav_mesh
 		print("NavigationManager: Created new NavigationMesh resource")
+	
+	# Check if this is a pre-baked mesh (has existing vertices)
+	if nav_mesh.get_vertices().size() > 0:
+		print("NavigationManager: Detected pre-baked NavigationMesh - using existing navigation data")
+		print("NavigationManager: Pre-baked mesh has %d vertices and %d polygons" % [nav_mesh.get_vertices().size(), nav_mesh.get_polygon_count()])
+		print("NavigationManager: Skipping navigation mesh configuration - only creating physics collision")
+		return
+	
+	print("NavigationManager: Configuring fresh NavigationMesh for GLB geometry")
 	
 	# Configure for mesh geometry detection - enable mesh instances from entire scene tree
 	# No specific source mode needed - use defaults
@@ -79,7 +116,20 @@ func configure_navigation_sources():
 		push_error("NavigationManager: No NavigationRegion3D assigned")
 		return
 	
+	# Check if we have a pre-baked navigation mesh
+	var nav_mesh = navigation_region.navigation_mesh
+	var has_prebaked_mesh = nav_mesh and nav_mesh.get_vertices().size() > 0
+	
+	print("NavigationManager: Starting to configure navigation sources...")
+	print("NavigationManager: Pre-baked navigation mesh: %s" % ("Yes" if has_prebaked_mesh else "No"))
+	
 	var root_node = navigation_region.get_parent()
+	var structure_count = _count_structures_recursive(root_node)
+	print("NavigationManager: Found %d structures to configure" % structure_count)
+	
+	if has_prebaked_mesh:
+		print("NavigationManager: Using pre-baked navigation mesh, only creating physics collision")
+	
 	_configure_structures_recursive(root_node)
 
 ## Recursively configure navigation for all structure nodes
@@ -93,66 +143,63 @@ func _configure_structures_recursive(node: Node):
 ## Configure navigation for a specific structure based on its type
 func _configure_structure_navigation(structure: Node3D):
 	var structure_type = _extract_structure_type(structure.name)
+	print("NavigationManager: Configuring structure '%s' as type '%s'" % [structure.name, structure_type])
 	
 	match structure_type:
 		"road-straight", "road-corner", "road-split", "road-intersection":
-			_set_as_walkable(structure)
-		"grass", "grass-trees", "grass-trees-tall":
-			_set_as_walkable(structure)
-		"building-small-a", "building-small-b", "building-small-c", "building-small-d", "building-garage":
-			_set_as_obstacle(structure)
+			print("  - Setting as walkable terrain (road)")
+			_set_as_walkable_terrain(structure)
+		"grass":
+			print("  - Setting as walkable terrain (grass)")
+			_set_as_walkable_terrain(structure)
 		"pavement", "pavement-fountain":
+			print("  - Setting as walkable terrain (pavement)")
+			_set_as_walkable_terrain(structure)
+		"grass-trees", "grass-trees-tall":
+			print("  - Setting as obstacle (trees)")
+			_set_as_obstacle(structure)
+		"building-small-a", "building-small-b", "building-small-c", "building-small-d", "building-garage":
+			print("  - Setting as obstacle (building)")
 			_set_as_obstacle(structure)
 		_:
-			push_warning("NavigationManager: Unknown structure type: " + structure_type)
+			print("  - Unknown type, setting as walkable terrain by default")
+			_set_as_walkable_terrain(structure)
 
-## Extract structure type from node name (e.g., "Structure_0_221_road-straight" -> "road-straight")
+## Extract structure type from node name (e.g., "Structure_0_0_road-straight" -> "road-straight")
 func _extract_structure_type(node_name: String) -> String:
 	var parts = node_name.split("_")
+	print("NavigationManager: Extracting type from '%s', parts: %s" % [node_name, str(parts)])
 	if parts.size() >= 4:
+		print("  - Extracted type: '%s'" % parts[3])
 		return parts[3]
+	print("  - Could not extract type (not enough parts)")
 	return ""
 
-## Mark a structure as walkable for navigation
-func _set_as_walkable(structure: Node3D):
+## Mark a structure as walkable terrain (creates floor collision only)
+func _set_as_walkable_terrain(structure: Node3D):
 	var model = structure.get_node_or_null("Model")
 	if model:
-		# Configure for navigation inclusion
-		_add_navigation_geometry(model)
+		# Create terrain collision for floor but don't add to navigation obstacles
+		_ensure_physics_collision_for_terrain(model)
+		print("NavigationManager: Set %s as walkable terrain with floor collision" % structure.name)
 
-## Mark a structure as walkable with passthrough areas (for streetlamps)
+## Mark a structure as walkable with passthrough areas (for streetlamps) - DEPRECATED
 func _set_as_walkable_with_passthrough(structure: Node3D):
-	var model = structure.get_node_or_null("Model")
-	if model:
-		# Configure for navigation inclusion with special handling for streetlamps
-		_add_navigation_geometry_passthrough(model)
+	# This function is deprecated - just treat as regular walkable terrain
+	_set_as_walkable_terrain(structure)
 
-## Mark a structure as an obstacle for navigation
+## Mark a structure as an obstacle for navigation (buildings, trees)
 func _set_as_obstacle(structure: Node3D):
 	var model = structure.get_node_or_null("Model")
 	if model:
-		# Configure as obstacle - exclude from walkable navigation
-		_add_navigation_obstacle(model)
+		# Create physics collision for blocking movement
+		_ensure_physics_collision_for_building(model)
+		print("NavigationManager: Set %s as obstacle with physics collision" % structure.name)
 
-## Add geometry to navigation mesh
-func _add_navigation_geometry(node: Node3D):
-	# Add the model to the navigation_geometry group so NavigationMesh can find it
-	node.add_to_group("navigation_geometry")
-	
-	# Ensure the model has collision for navigation mesh generation
-	_ensure_collision_for_navigation(node)
-	
-	print("NavigationManager: Added %s to navigation_geometry group" % node.name)
+# This function was removed - terrain should not be added to navigation geometry
+# Navigation mesh should be empty space, with obstacles creating holes
 
-## Add streetlamp geometry with passthrough capability
-func _add_navigation_geometry_passthrough(node: Node3D):
-	# Add the model to the navigation_geometry group so NavigationMesh can find it
-	node.add_to_group("navigation_geometry")
-	
-	# Create collision only for road surface parts, excluding lamp posts
-	_ensure_collision_for_navigation_passthrough(node)
-	
-	print("NavigationManager: Added %s to navigation_geometry group (with passthrough)" % node.name)
+# Removed - not needed for pre-baked navigation mesh
 
 ## Ensure a node has collision shapes for navigation mesh generation
 func _ensure_collision_for_navigation(node: Node3D):
@@ -289,11 +336,7 @@ func _is_suitable_for_navigation(mesh_instance: MeshInstance3D) -> bool:
 	
 	return true
 
-## Add geometry as navigation obstacle
-func _add_navigation_obstacle(node: Node3D):
-	# For obstacles, we don't add them to the navigation group
-	# They will create holes in the navigation mesh by not being included
-	print("NavigationManager: %s configured as navigation obstacle (excluded from walkable area)" % node.name)
+# Removed - not needed for pre-baked navigation mesh
 
 ## Bake the navigation mesh
 func bake_navigation_mesh():
@@ -303,6 +346,15 @@ func bake_navigation_mesh():
 	
 	if not navigation_region.navigation_mesh:
 		push_error("NavigationManager: No NavigationMesh resource assigned")
+		return
+	
+	# Check if we have a pre-baked navigation mesh
+	var nav_mesh = navigation_region.navigation_mesh
+	var has_prebaked_mesh = nav_mesh and nav_mesh.get_vertices().size() > 0
+	
+	if has_prebaked_mesh:
+		print("NavigationManager: Skipping navigation mesh baking - using pre-baked mesh")
+		navigation_baked.emit()
 		return
 	
 	print("NavigationManager: Starting navigation mesh baking...")
@@ -353,4 +405,189 @@ func get_closest_walkable_position(position: Vector3) -> Vector3:
 	var map = get_navigation_map()
 	if map.is_valid():
 		return NavigationServer3D.map_get_closest_point(map, position)
-	return position 
+	return position
+
+## Create physics collision for terrain (roads, grass) to prevent units falling through
+func _ensure_physics_collision_for_terrain(node: Node3D):
+	# Check if physics collision already exists
+	if _has_physics_collision(node):
+		print("NavigationManager: %s already has physics collision, skipping" % node.name)
+		return
+	
+	# Find MeshInstance3D nodes to create collision from
+	var mesh_nodes = []
+	_find_mesh_instances(node, mesh_nodes)
+	
+	if mesh_nodes.is_empty():
+		print("NavigationManager: Warning - No MeshInstance3D found in %s for terrain physics collision" % node.name)
+		return
+	
+	print("NavigationManager: Creating terrain physics collision for %s with %d mesh nodes" % [node.name, mesh_nodes.size()])
+	
+	# Create StaticBody3D with trimesh collision shapes for terrain
+	var static_body = StaticBody3D.new()
+	static_body.name = "TerrainPhysicsCollision"
+	
+	var collision_count = 0
+	for mesh_node in mesh_nodes:
+		if mesh_node.mesh and _is_suitable_for_navigation(mesh_node):
+			var collision_shape = CollisionShape3D.new()
+			collision_shape.shape = mesh_node.mesh.create_trimesh_shape()
+			collision_shape.transform = mesh_node.transform
+			static_body.add_child(collision_shape)
+			collision_count += 1
+			print("  - Added collision shape for mesh: %s" % mesh_node.name)
+	
+	if collision_count == 0:
+		print("NavigationManager: Warning - No suitable meshes found for collision in %s" % node.name)
+		static_body.queue_free()
+		return
+	
+	# Set collision layers: terrain on layer 3, collides with units on layer 1
+	static_body.set_collision_layer_value(1, false)  # Not on unit layer
+	static_body.set_collision_layer_value(2, false)  # Not on building layer  
+	static_body.set_collision_layer_value(3, true)   # On terrain layer
+	static_body.set_collision_mask_value(1, true)    # Collides with units
+	
+	# Add visual debug representation
+	_add_collision_debug_visualization(static_body, "terrain")
+	
+	node.add_child(static_body)
+	print("NavigationManager: Created terrain physics collision for %s with %d collision shapes" % [node.name, collision_count])
+
+## Create physics collision for buildings to block units
+func _ensure_physics_collision_for_building(node: Node3D):
+	# Check if physics collision already exists
+	if _has_physics_collision(node):
+		print("NavigationManager: %s already has physics collision, skipping" % node.name)
+		return
+	
+	# Find MeshInstance3D nodes to create collision from
+	var mesh_nodes = []
+	_find_mesh_instances(node, mesh_nodes)
+	
+	if mesh_nodes.is_empty():
+		print("NavigationManager: Warning - No MeshInstance3D found in %s for building physics collision" % node.name)
+		return
+	
+	print("NavigationManager: Creating building physics collision for %s with %d mesh nodes" % [node.name, mesh_nodes.size()])
+	
+	# Create StaticBody3D with trimesh collision shapes for buildings
+	var static_body = StaticBody3D.new()
+	static_body.name = "BuildingPhysicsCollision"
+	
+	var collision_count = 0
+	for mesh_node in mesh_nodes:
+		if mesh_node.mesh:
+			var collision_shape = CollisionShape3D.new()
+			collision_shape.shape = mesh_node.mesh.create_trimesh_shape()
+			collision_shape.transform = mesh_node.transform
+			static_body.add_child(collision_shape)
+			collision_count += 1
+			print("  - Added collision shape for mesh: %s" % mesh_node.name)
+	
+	if collision_count == 0:
+		print("NavigationManager: Warning - No meshes found for collision in %s" % node.name)
+		static_body.queue_free()
+		return
+	
+	# Set collision layers: buildings on layer 2, collides with units on layer 1
+	static_body.set_collision_layer_value(1, false)  # Not on unit layer
+	static_body.set_collision_layer_value(2, true)   # On building layer
+	static_body.set_collision_mask_value(1, true)    # Collides with units
+	
+	# Add visual debug representation
+	_add_collision_debug_visualization(static_body, "building")
+	
+	node.add_child(static_body)
+	print("NavigationManager: Created building physics collision for %s with %d collision shapes" % [node.name, collision_count])
+
+## Check if a node already has physics collision bodies
+func _has_physics_collision(node: Node3D) -> bool:
+	for child in node.get_children():
+		if child is StaticBody3D and (child.name.ends_with("PhysicsCollision") or child.name == "NavigationCollision"):
+			return true
+	return false
+
+## Debug function to count and report collision structures
+func _debug_collision_structures():
+	print("NavigationManager: === COLLISION STRUCTURE DEBUG ===")
+	
+	var counts = {
+		"total_structures": 0,
+		"terrain_collision": 0,
+		"building_collision": 0,
+		"navigation_collision": 0
+	}
+	
+	# Count structures and their collision types
+	var root_node = navigation_region.get_parent() if navigation_region else get_parent()
+	_count_collision_structures_recursive(root_node, counts)
+	
+	print("NavigationManager: Total structures processed: %d" % counts.total_structures)
+	print("NavigationManager: Terrain physics collision: %d" % counts.terrain_collision)
+	print("NavigationManager: Building physics collision: %d" % counts.building_collision)
+	print("NavigationManager: Navigation collision: %d" % counts.navigation_collision)
+	print("NavigationManager: === END DEBUG ===")
+
+## Count structures in the scene
+func _count_structures_recursive(node: Node) -> int:
+	var count = 0
+	if node.name.begins_with("Structure_"):
+		count += 1
+	
+	for child in node.get_children():
+		count += _count_structures_recursive(child)
+	
+	return count
+
+## Add visual debug representation for collision
+func _add_collision_debug_visualization(static_body: StaticBody3D, collision_type: String):
+	# Create a visual indicator for the collision
+	var debug_mesh = MeshInstance3D.new()
+	debug_mesh.name = "CollisionDebugVisualization"
+	
+	# Create a simple sphere to indicate collision presence
+	var sphere_mesh = SphereMesh.new()
+	sphere_mesh.radius = 0.2
+	sphere_mesh.height = 0.4
+	
+	# Create material based on collision type
+	var material = StandardMaterial3D.new()
+	if collision_type == "terrain":
+		material.albedo_color = Color.GREEN
+	else:
+		material.albedo_color = Color.RED
+	material.flags_transparent = true
+	material.albedo_color.a = 0.7
+	material.flags_unshaded = true
+	
+	debug_mesh.mesh = sphere_mesh
+	debug_mesh.material_override = material
+	debug_mesh.position = Vector3(0, 1, 0)  # Raise above ground
+	
+	static_body.add_child(debug_mesh)
+	print("NavigationManager: Added debug visualization for %s collision" % collision_type)
+
+## Recursive function to count collision structures
+func _count_collision_structures_recursive(node: Node, counts: Dictionary):
+	if node.name.begins_with("Structure_"):
+		counts.total_structures += 1
+		print("NavigationManager: Found structure: %s" % node.name)
+		
+		# Check for collision children
+		for child in node.get_children():
+			if child is StaticBody3D:
+				if child.name == "TerrainPhysicsCollision":
+					counts.terrain_collision += 1
+					print("  - Has terrain physics collision")
+				elif child.name == "BuildingPhysicsCollision":
+					counts.building_collision += 1
+					print("  - Has building physics collision")
+				elif child.name == "NavigationCollision":
+					counts.navigation_collision += 1
+					print("  - Has navigation collision")
+	
+	# Recurse through children
+	for child in node.get_children():
+		_count_collision_structures_recursive(child, counts)

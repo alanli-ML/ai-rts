@@ -51,6 +51,9 @@ const STRUCTURE_TYPES = {
 func _ready() -> void:
 	print("Map: Loading map: %s" % map_name)
 	
+	# Add to maps group for navigation system integration
+	add_to_group("maps")
+	
 	# Create structures container
 	map_structures_container = Node3D.new()
 	map_structures_container.name = "MapStructures"
@@ -91,6 +94,22 @@ func load_exported_scene_data() -> void:
 		
 		# Simply add the scene as-is - it's already properly configured
 		map_structures_container.add_child(loaded_map_scene)
+		
+		# CRITICAL: Register the city map's NavigationRegion3D with the navigation system
+		var city_nav_region = loaded_map_scene.get_node_or_null("NavigationRegion3D")
+		if city_nav_region:
+			# Remove from existing group first to ensure it's unique
+			city_nav_region.remove_from_group("navigation_regions")
+			# Add with priority flag to ensure it's found first
+			city_nav_region.add_to_group("navigation_regions")
+			city_nav_region.add_to_group("city_map_navigation")
+			
+			# Note: test_map.tscn no longer has a default NavigationRegion3D
+			# The city_map provides all navigation
+			
+			print("Map: Registered city map NavigationRegion3D at path: %s" % city_nav_region.get_path())
+		else:
+			print("Map: Warning - Could not find NavigationRegion3D in pre-configured scene")
 		
 		print("Map: Successfully loaded pre-configured city map scene")
 		

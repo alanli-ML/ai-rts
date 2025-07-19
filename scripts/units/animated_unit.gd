@@ -650,19 +650,100 @@ func debug_list_available_animations() -> void:
 		print("DEBUG: No death-related animations found - will use visual effects only")
 
 func _play_attack_while_moving_animation():
-	"""Play appropriate animation for attacking while moving"""
-	# Check if we have specific attack-while-moving animations
-	if animation_player:
-		# Try shooting animations that could work while moving
-		if animation_player.has_animation("holding-both-shoot"):
-			animation_player.play("holding-both-shoot")
-			return
-		elif animation_player.has_animation("holding-left-shoot"):
-			animation_player.play("holding-left-shoot")
-			return
-		elif animation_player.has_animation("holding-right-shoot"):
-			animation_player.play("holding-right-shoot")
+	"""Play appropriate animation for attacking while moving based on unit archetype and weapon type"""
+	if not animation_player:
+		play_animation("Run")
+		return
+	
+	# Get weapon type from weapon attachment if available
+	var weapon_type = ""
+	if weapon_attachment and weapon_attachment.has_method("get_current_weapon_type"):
+		weapon_type = weapon_attachment.get_current_weapon_type()
+	else:
+		# Fallback: get weapon type from weapon database based on archetype
+		weapon_type = weapon_db.get_weapon_for_archetype(archetype)
+	
+	# Determine preferred attack animations based on archetype and weapon type
+	var preferred_animations: Array[String] = []
+	
+	# Archetype-specific attack-while-moving preferences
+	match archetype:
+		"tank", "sniper":
+			# Heavy/ranged units prefer shooting animations
+			preferred_animations = [
+				"holding-both-shoot",
+				"holding-right-shoot", 
+				"holding-left-shoot",
+				"sprint",  # Fast movement for repositioning
+				"walk"
+			]
+		
+		"scout", "engineer":
+			# Light/mobile units prefer variety and movement
+			preferred_animations = [
+				"holding-right-shoot",  # More mobile single-handed shooting
+				"holding-left-shoot",
+				"attack-melee-right",   # Close combat capability
+				"attack-kick-right",    # Quick attacks while moving
+				"sprint",               # Fast movement
+				"holding-both-shoot"
+			]
+		
+		"medic":
+			# Support units prefer defensive positioning
+			preferred_animations = [
+				"holding-left-shoot",   # One-handed for medical gear
+				"holding-right-shoot",
+				"sprint",               # Quick movement to help allies
+				"walk",
+				"holding-both-shoot"
+			]
+		
+		_: # Default/unknown archetype
+			preferred_animations = [
+				"holding-both-shoot",
+				"holding-right-shoot",
+				"holding-left-shoot",
+				"attack-melee-right",
+				"attack-kick-right",
+				"sprint",
+				"walk"
+			]
+	
+	# Weapon-type specific adjustments
+	if weapon_type.contains("melee") or weapon_type.contains("knife") or weapon_type.contains("sword"):
+		# Melee weapons: prioritize melee attacks
+		preferred_animations = [
+			"attack-melee-right",
+			"attack-melee-left", 
+			"attack-kick-right",
+			"attack-kick-left",
+			"sprint",
+			"walk"
+		] + preferred_animations
+	elif weapon_type.contains("heavy") or weapon_type.contains("rifle"):
+		# Heavy weapons: prioritize two-handed shooting
+		preferred_animations = [
+			"holding-both-shoot",
+			"holding-right-shoot",
+			"sprint"
+		] + preferred_animations
+	elif weapon_type.contains("pistol") or weapon_type.contains("sidearm"):
+		# Light weapons: prioritize single-handed shooting for mobility
+		preferred_animations = [
+			"holding-right-shoot",
+			"holding-left-shoot", 
+			"sprint",
+			"attack-melee-right"  # Quick backup melee
+		] + preferred_animations
+	
+	# Try preferred animations in order
+	for anim in preferred_animations:
+		if animation_player.has_animation(anim):
+			print("DEBUG: Unit %s playing attack-while-moving animation: %s" % [unit_id, anim])
+			animation_player.play(anim)
 			return
 	
-	# Fallback to run animation if no specific attack-while-moving animation exists
+	# Final fallback: use the animation mapping system
+	print("DEBUG: Unit %s falling back to Run animation for attack-while-moving" % unit_id)
 	play_animation("Run")

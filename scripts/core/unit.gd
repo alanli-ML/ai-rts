@@ -116,9 +116,10 @@ func _ready() -> void:
     # This is critical for the EnhancedSelectionSystem to detect units.
     set_collision_layer_value(1, true)
     
-    # Set collision mask to include buildings (Layer 2) so units can collide with them
-    #set_collision_mask_value(1, true)   # Collide with other units 
-    set_collision_mask_value(2, true)   # Collide with buildings
+    # Set collision mask to include buildings and terrain for navigation
+    #set_collision_mask_value(1, true)   # Collide with other units for avoidance
+    set_collision_mask_value(2, true)   # Collide with buildings for pathfinding
+    set_collision_mask_value(3, true)   # Collide with terrain/static objects
     
     # Ensure a collision shape exists for physics queries
     var collision = get_node_or_null("CollisionShape3D")
@@ -158,13 +159,20 @@ func _ready() -> void:
     
     # Configure NavigationAgent3D after movement_speed is set
     if navigation_agent:
-        navigation_agent.radius = 1.0 # Matches unit's collision shape radius
+        navigation_agent.radius = 1.5 # Slightly larger for better building avoidance
         navigation_agent.max_speed = movement_speed
         navigation_agent.avoidance_enabled = true # Ensure avoidance is enabled
-        # Path postprocessing will use default settings
+        navigation_agent.neighbor_distance = 10.0 # Larger search radius for obstacles
+        navigation_agent.time_horizon = 5.0 # More time to plan avoidance
+        navigation_agent.path_postprocessing = NavigationPathQueryParameters3D.PATH_POSTPROCESSING_EDGECENTERED
+        navigation_agent.path_metadata_flags = NavigationPathQueryParameters3D.PATH_METADATA_INCLUDE_ALL
         # CRITICAL: Use default layer (1) for navigation - keep NavigationAgent3D on layer 1
         # NavigationObstacle3D will work automatically with navigation mesh rebaking
         navigation_agent.set_navigation_layers(1)
+        
+        # Improve pathfinding behavior around obstacles
+        navigation_agent.path_desired_distance = 2.0  # Stay closer to the path
+        navigation_agent.target_desired_distance = 1.0  # Get closer to target before stopping
 
         navigation_agent.velocity_computed.connect(Callable(self, "_on_navigation_velocity_computed"))
     
@@ -359,6 +367,9 @@ func _on_navigation_velocity_computed(safe_velocity: Vector3) -> void:
 func move_to(target_position: Vector3) -> void:
     current_state = GameEnums.UnitState.MOVING
     if navigation_agent:
+        # Wait for navigation map to be ready before setting target
+        await get_tree().physics_frame
+        
         # Clamp target position to map boundaries
         var clamped_position = _clamp_to_map_bounds(target_position)
         navigation_agent.target_position = clamped_position
@@ -422,6 +433,14 @@ func die() -> void:
     unit_died.emit(unit_id)
     
     print("DEBUG: Unit %s die() called - is_dead set to true" % unit_id)
+    
+    # CRITICAL: Disable collision so dead units don't block living units
+    # Dead units should not be physical obstacles for movement
+    set_collision_layer_value(1, false)  # Remove from unit collision layer (no more selection/physics blocking)
+    set_collision_mask_value(1, false)   # Don't collide with other units
+    set_collision_mask_value(2, false)   # Don't collide with buildings  
+    set_collision_mask_value(3, false)   # Don't collide with terrain
+    print("DEBUG: Unit %s collision disabled - dead units won't block movement" % unit_id)
     
     # Trigger death animation sequence if this is an animated unit
     if has_method("trigger_death_sequence"):
@@ -1428,7 +1447,14 @@ func _handle_respawn() -> void:
     
     # Re-enable physics and collision
     set_physics_process(true)
-    set_collision_layer_value(1, true)  # Re-enable selection
+    set_collision_layer_value(1, true)  # Re-enable selection and unit collision layer
+    
+    # CRITICAL: Re-enable collision masks so respawned units can interact with the world properly
+    # Note: Unit-to-unit collision (mask layer 1) is intentionally left disabled for smoother movement
+    # set_collision_mask_value(1, true)   # Re-enable unit-to-unit collision (optional for gameplay feel)
+    set_collision_mask_value(2, true)   # Re-enable building collision for pathfinding
+    set_collision_mask_value(3, true)   # Re-enable terrain collision for physics
+    print("DEBUG: Unit %s collision re-enabled - unit can now interact with world" % unit_id)
     
     # Ensure unit is visible
     visible = true

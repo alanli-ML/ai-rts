@@ -380,7 +380,8 @@ func trigger_death_sequence():
 	
 	# Prevent further actions and ensure dead state
 	is_dead = true
-	set_collision_layer_value(1, false) # No more selection/raycast hits
+	# NOTE: Collision is now disabled in the base Unit.die() method
+	# No need to disable collision here - it's handled centrally
 	
 	# Add immediate visual feedback that the unit is dead
 	_apply_immediate_death_effects()
@@ -534,8 +535,8 @@ func trigger_respawn_sequence():
 		model_container.rotation_degrees = Vector3(0, 180, 0)  # Maintain proper forward orientation
 		print("DEBUG: Unit %s model container rotation reset to proper forward orientation (0, 180, 0)" % unit_id)
 	
-	# Enable collision again
-	set_collision_layer_value(1, true)
+	# NOTE: Collision is now re-enabled in the base Unit._handle_respawn() method
+	# No need to enable collision here - it's handled centrally
 	
 	# Apply respawn visual effects
 	_apply_respawn_effects()

@@ -23,6 +23,17 @@ Logger="res://scripts/utils/logger.gd"
 DependencyContainer="res://scripts/core/dependency_container.gd"
 #EventBusforloosecouplingEventBus="res://scripts/autoload/event_bus.gd"
 
+[debug]
+
+shapes/navigation/geometry_edge_color=Color(0.1, 1, 0.7, 1)
+shapes/navigation/geometry_face_color=Color(0.1, 1, 0.7, 0.4)
+shapes/navigation/geometry_edge_disabled_color=Color(0.13, 0.73, 0.9, 1)
+shapes/navigation/geometry_face_disabled_color=Color(0.13, 0.73, 0.9, 0.4)
+shapes/navigation/link_connection_disabled_color=Color(1, 0.5, 1, 0.5)
+shapes/collision/shape_margin=Color(0, 0.6, 0.7, 0.57)
+shapes/collision/disabled_shape_color=Color(0.3, 0.4, 0.55, 0.42)
+shapes/navigation/geometry_color=Color(0.1, 1, 0.7, 0.4)
+
 [display]
 
 window/size/viewport_width=1920

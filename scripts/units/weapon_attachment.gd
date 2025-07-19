@@ -110,7 +110,7 @@ func _create_attachment_points() -> void:
 
 func equip_weapon(unit: Node3D, weapon_variant: String, team_id: int = 1) -> bool:
 	"""Equip a weapon to a unit"""
-	print("DEBUG: WeaponAttachment.equip_weapon() called - unit: %s, weapon: %s, team: %d" % [unit.name if unit else "null", weapon_variant, team_id])
+	#print("DEBUG: WeaponAttachment.equip_weapon() called - unit: %s, weapon: %s, team: %d" % [unit.name if unit else "null", weapon_variant, team_id])
 	if not unit:
 		_log_error("Cannot equip weapon: unit is null")
 		return false
@@ -121,7 +121,7 @@ func equip_weapon(unit: Node3D, weapon_variant: String, team_id: int = 1) -> boo
 	# Get skeleton from unit
 	if unit.has_method("get_skeleton"):
 		parent_skeleton = unit.get_skeleton()
-		print("DEBUG: WeaponAttachment.equip_weapon() - unit has get_skeleton method, result: %s" % ("found" if parent_skeleton else "null"))
+		#print("DEBUG: WeaponAttachment.equip_weapon() - unit has get_skeleton method, result: %s" % ("found" if parent_skeleton else "null"))
 	else:
 		print("DEBUG: WeaponAttachment.equip_weapon() - unit has no get_skeleton method")
 	
@@ -134,26 +134,26 @@ func equip_weapon(unit: Node3D, weapon_variant: String, team_id: int = 1) -> boo
 	# Try skeleton attachment first, fall back to static if no skeleton
 	var attachment_success = false
 	if parent_skeleton:
-		print("DEBUG: WeaponAttachment.equip_weapon() - attempting skeleton attachment")
+		#print("DEBUG: WeaponAttachment.equip_weapon() - attempting skeleton attachment")
 		attachment_success = _attach_to_skeleton()
-		print("DEBUG: WeaponAttachment.equip_weapon() - skeleton attachment result: %s" % ("success" if attachment_success else "failed"))
+		#print("DEBUG: WeaponAttachment.equip_weapon() - skeleton attachment result: %s" % ("success" if attachment_success else "failed"))
 	
 	if not attachment_success:
-		print("DEBUG: WeaponAttachment.equip_weapon() - attempting static fallback attachment")
+		#print("DEBUG: WeaponAttachment.equip_weapon() - attempting static fallback attachment")
 		# Use static fallback positioning
 		attachment_success = _attach_weapon_static_fallback()
-		print("DEBUG: WeaponAttachment.equip_weapon() - static attachment result: %s" % ("success" if attachment_success else "failed"))
+		#print("DEBUG: WeaponAttachment.equip_weapon() - static attachment result: %s" % ("success" if attachment_success else "failed"))
 	
 	if not attachment_success:
 		_log_error("Failed to attach weapon using any method")
 		return false
 	
 	# Apply team colors
-	print("DEBUG: WeaponAttachment.equip_weapon() - applying team colors")
+	#print("DEBUG: WeaponAttachment.equip_weapon() - applying team colors")
 	_apply_team_colors(team_id)
 	
 	# Load weapon stats
-	print("DEBUG: WeaponAttachment.equip_weapon() - loading weapon stats")
+	#print("DEBUG: WeaponAttachment.equip_weapon() - loading weapon stats")
 	_load_weapon_stats(weapon_variant)
 	
 	is_equipped = true
@@ -163,7 +163,7 @@ func equip_weapon(unit: Node3D, weapon_variant: String, team_id: int = 1) -> boo
 	else:
 		print("WeaponAttachment: Equipped weapon %s to unit %s" % [weapon_variant, unit.name])
 	
-	print("DEBUG: WeaponAttachment.equip_weapon() - weapon equipped successfully (damage: %.1f, ammo: %d/%d)" % [damage, current_ammo, max_ammo])
+	#print("DEBUG: WeaponAttachment.equip_weapon() - weapon equipped successfully (damage: %.1f, ammo: %d/%d)" % [damage, current_ammo, max_ammo])
 	weapon_equipped.emit(weapon_type)
 	return true
 
@@ -470,13 +470,13 @@ func add_attachment(attachment_type: String) -> bool:
 
 func can_fire() -> bool:
 	"""Check if weapon can fire"""
-	print("DEBUG: WeaponAttachment.can_fire() - checking conditions")
+	#print("DEBUG: WeaponAttachment.can_fire() - checking conditions")
 	if not is_equipped:
-		print("DEBUG: WeaponAttachment.can_fire() - weapon not equipped")
+		#print("DEBUG: WeaponAttachment.can_fire() - weapon not equipped")
 		return false
 	
 	if current_ammo <= 0:
-		print("DEBUG: WeaponAttachment.can_fire() - no ammo (%d)" % current_ammo)
+		#print("DEBUG: WeaponAttachment.can_fire() - no ammo (%d)" % current_ammo)
 		return false
 	
 	var current_time = Time.get_ticks_msec() / 1000.0
@@ -484,20 +484,20 @@ func can_fire() -> bool:
 	var fire_cooldown = 1.0 / fire_rate
 	
 	if time_since_last_fire < fire_cooldown:
-		print("DEBUG: WeaponAttachment.can_fire() - on cooldown (%.1fs since last fire, need %.1fs)" % [time_since_last_fire, fire_cooldown])
+		#print("DEBUG: WeaponAttachment.can_fire() - on cooldown (%.1fs since last fire, need %.1fs)" % [time_since_last_fire, fire_cooldown])
 		return false
 	
-	print("DEBUG: WeaponAttachment.can_fire() - all checks passed, can fire")
+	#print("DEBUG: WeaponAttachment.can_fire() - all checks passed, can fire")
 	return true
 
 func fire() -> Dictionary:
 	"""Fire the weapon and return fire data"""
-	print("DEBUG: WeaponAttachment.fire() called - checking if can fire")
+	#print("DEBUG: WeaponAttachment.fire() called - checking if can fire")
 	if not can_fire():
-		print("DEBUG: WeaponAttachment.fire() - cannot fire, returning empty")
+		#print("DEBUG: WeaponAttachment.fire() - cannot fire, returning empty")
 		return {}
 	
-	print("DEBUG: WeaponAttachment.fire() - firing weapon %s" % weapon_type)
+	#print("DEBUG: WeaponAttachment.fire() - firing weapon %s" % weapon_type)
 	current_ammo -= 1
 	last_fire_time = Time.get_ticks_msec() / 1000.0
 	is_firing = true
@@ -511,7 +511,7 @@ func fire() -> Dictionary:
 		"ammo_remaining": current_ammo
 	}
 	
-	print("DEBUG: WeaponAttachment.fire() - creating effects and spawning projectile")
+	#print("DEBUG: WeaponAttachment.fire() - creating effects and spawning projectile")
 	
 	# Create muzzle flash effect
 	_create_muzzle_flash()
@@ -523,10 +523,10 @@ func fire() -> Dictionary:
 	
 	# Auto-reload if empty
 	if current_ammo <= 0:
-		print("DEBUG: WeaponAttachment.fire() - weapon empty, starting auto-reload")
+		#print("DEBUG: WeaponAttachment.fire() - weapon empty, starting auto-reload")
 		_auto_reload()
 	
-	print("DEBUG: WeaponAttachment.fire() - completed successfully")
+	#print("DEBUG: WeaponAttachment.fire() - completed successfully")
 	return fire_data
 
 func _create_muzzle_flash() -> void:

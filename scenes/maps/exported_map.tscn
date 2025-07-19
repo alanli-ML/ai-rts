@@ -1,0 +1,1335 @@
+[gd_scene format=3]
+
+[node name="ExportedCityMap" type="Node3D"]
+
+[node name="Structure_0_0_road-straight" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 0, 5)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 0
+
+[node name="Structure_0_1_road-straight" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 0, 4)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 0
+
+[node name="Structure_3_2_road-split" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -2, 0, 3)
+metadata/scene_path = "res://models/road-split.glb"
+metadata/structure_id = 3
+metadata/original_orientation = 22
+
+[node name="Structure_1_3_road-straight-lightposts" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -2, 0, 2)
+metadata/scene_path = "res://models/road-straight-lightposts.glb"
+metadata/structure_id = 1
+metadata/original_orientation = 10
+
+[node name="Structure_0_4_road-straight" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 0, 1)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 0
+
+[node name="Structure_0_5_road-straight" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -1, 0, 0)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 16
+
+[node name="Structure_3_6_road-split" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -2, 0, 0)
+metadata/scene_path = "res://models/road-split.glb"
+metadata/structure_id = 3
+metadata/original_orientation = 16
+
+[node name="Structure_0_7_road-straight" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 0, 0, 0)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 16
+
+[node name="Structure_3_8_road-split" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0)
+metadata/scene_path = "res://models/road-split.glb"
+metadata/structure_id = 3
+metadata/original_orientation = 0
+
+[node name="Structure_0_9_road-straight" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 2, 0, 0)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 16
+
+[node name="Structure_4_10_road-intersection" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 3, 0, 0)
+metadata/scene_path = "res://models/road-intersection.glb"
+metadata/structure_id = 4
+metadata/original_orientation = 16
+
+[node name="Structure_0_11_road-straight" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 4, 0, 0)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 16
+
+[node name="Structure_1_12_road-straight-lightposts" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 5, 0, 0)
+metadata/scene_path = "res://models/road-straight-lightposts.glb"
+metadata/structure_id = 1
+metadata/original_orientation = 16
+
+[node name="Structure_0_13_road-straight" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -3, 0, 3)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 16
+
+[node name="Structure_0_14_road-straight" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -4, 0, 3)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 16
+
+[node name="Structure_0_15_road-straight" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -5, 0, 3)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 16
+
+[node name="Structure_0_16_road-straight" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -2, 0, -1)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 10
+
+[node name="Structure_0_17_road-straight" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -2, 0, -2)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 10
+
+[node name="Structure_3_18_road-split" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -2, 0, -3)
+metadata/scene_path = "res://models/road-split.glb"
+metadata/structure_id = 3
+metadata/original_orientation = 16
+
+[node name="Structure_0_19_road-straight" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -2, 0, -4)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 10
+
+[node name="Structure_0_20_road-straight" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -2, 0, -5)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 10
+
+[node name="Structure_0_21_road-straight" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -1, 0, -3)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 22
+
+[node name="Structure_0_22_road-straight" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 0, 0, -3)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 22
+
+[node name="Structure_0_23_road-straight" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 1, 0, -3)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 22
+
+[node name="Structure_0_24_road-straight" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 2, 0, -3)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 22
+
+[node name="Structure_2_25_road-corner" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0, -3)
+metadata/scene_path = "res://models/road-corner.glb"
+metadata/structure_id = 2
+metadata/original_orientation = 0
+
+[node name="Structure_0_26_road-straight" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0, -2)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 0
+
+[node name="Structure_0_27_road-straight" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0, -1)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 0
+
+[node name="Structure_0_28_road-straight" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 2)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 0
+
+[node name="Structure_0_29_road-straight" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 0
+
+[node name="Structure_0_30_road-straight" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 3)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 0
+
+[node name="Structure_3_31_road-split" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 1, 0, 5)
+metadata/scene_path = "res://models/road-split.glb"
+metadata/structure_id = 3
+metadata/original_orientation = 16
+
+[node name="Structure_0_32_road-straight" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 6)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 0
+
+[node name="Structure_2_33_road-corner" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 1, 0, 7)
+metadata/scene_path = "res://models/road-corner.glb"
+metadata/structure_id = 2
+metadata/original_orientation = 22
+
+[node name="Structure_0_34_road-straight" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 4)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 0
+
+[node name="Structure_0_35_road-straight" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 0, 0, 7)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 16
+
+[node name="Structure_0_36_road-straight" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -1, 0, 7)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 16
+
+[node name="Structure_2_37_road-corner" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -2, 0, 7)
+metadata/scene_path = "res://models/road-corner.glb"
+metadata/structure_id = 2
+metadata/original_orientation = 10
+
+[node name="Structure_0_38_road-straight" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -2, 0, 6)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 10
+
+[node name="Structure_0_39_road-straight" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 2, 0, 5)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 22
+
+[node name="Structure_3_40_road-split" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 3, 0, 5)
+metadata/scene_path = "res://models/road-split.glb"
+metadata/structure_id = 3
+metadata/original_orientation = 10
+
+[node name="Structure_3_41_road-split" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 4, 0, 5)
+metadata/scene_path = "res://models/road-split.glb"
+metadata/structure_id = 3
+metadata/original_orientation = 10
+
+[node name="Structure_0_42_road-straight" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 5, 0, 5)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 22
+
+[node name="Structure_0_43_road-straight" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 0, 4)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 0
+
+[node name="Structure_4_44_road-intersection" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 6, 0, 3)
+metadata/scene_path = "res://models/road-intersection.glb"
+metadata/structure_id = 4
+metadata/original_orientation = 16
+
+[node name="Structure_0_45_road-straight" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 0, 2)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 0
+
+[node name="Structure_0_46_road-straight" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 0, 1)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 0
+
+[node name="Structure_2_47_road-corner" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 0, 0)
+metadata/scene_path = "res://models/road-corner.glb"
+metadata/structure_id = 2
+metadata/original_orientation = 0
+
+[node name="Structure_2_48_road-corner" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 6, 0, 5)
+metadata/scene_path = "res://models/road-corner.glb"
+metadata/structure_id = 2
+metadata/original_orientation = 22
+
+[node name="Structure_2_49_road-corner" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 4, 0, 3)
+metadata/scene_path = "res://models/road-corner.glb"
+metadata/structure_id = 2
+metadata/original_orientation = 16
+
+[node name="Structure_1_50_road-straight-lightposts" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 4, 0, 4)
+metadata/scene_path = "res://models/road-straight-lightposts.glb"
+metadata/structure_id = 1
+metadata/original_orientation = 10
+
+[node name="Structure_0_51_road-straight" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 5, 0, 3)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 22
+
+[node name="Structure_0_52_road-straight" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 7, 0, 3)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 22
+
+[node name="Structure_3_53_road-split" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0, 3)
+metadata/scene_path = "res://models/road-split.glb"
+metadata/structure_id = 3
+metadata/original_orientation = 0
+
+[node name="Structure_0_54_road-straight" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 9, 0, 3)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 22
+
+[node name="Structure_8_55_building-small-b" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 0, 0, 6)
+metadata/scene_path = "res://models/building-small-b.glb"
+metadata/structure_id = 8
+metadata/original_orientation = 16
+
+[node name="Structure_5_56_pavement" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -1, 0, 6)
+metadata/scene_path = "res://models/pavement.glb"
+metadata/structure_id = 5
+metadata/original_orientation = 10
+
+[node name="Structure_5_57_pavement" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -1, 0, 5)
+metadata/scene_path = "res://models/pavement.glb"
+metadata/structure_id = 5
+metadata/original_orientation = 10
+
+[node name="Structure_9_58_building-small-c" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 0, 0, 5)
+metadata/scene_path = "res://models/building-small-c.glb"
+metadata/structure_id = 9
+metadata/original_orientation = 16
+
+[node name="Structure_10_59_building-small-d" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 0, 0, 4)
+metadata/scene_path = "res://models/building-small-d.glb"
+metadata/structure_id = 10
+metadata/original_orientation = 16
+
+[node name="Structure_5_60_pavement" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 3)
+metadata/scene_path = "res://models/pavement.glb"
+metadata/structure_id = 5
+metadata/original_orientation = 0
+
+[node name="Structure_5_61_pavement" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 0, 0, 2)
+metadata/scene_path = "res://models/pavement.glb"
+metadata/structure_id = 5
+metadata/original_orientation = 22
+
+[node name="Structure_10_62_building-small-d" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 1)
+metadata/scene_path = "res://models/building-small-d.glb"
+metadata/structure_id = 10
+metadata/original_orientation = 10
+
+[node name="Structure_7_63_building-small-a" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -1, 0, 1)
+metadata/scene_path = "res://models/building-small-a.glb"
+metadata/structure_id = 7
+metadata/original_orientation = 10
+
+[node name="Structure_5_64_pavement" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -1, 0, 2)
+metadata/scene_path = "res://models/pavement.glb"
+metadata/structure_id = 5
+metadata/original_orientation = 22
+
+[node name="Structure_5_65_pavement" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -1, 0, 3)
+metadata/scene_path = "res://models/pavement.glb"
+metadata/structure_id = 5
+metadata/original_orientation = 22
+
+[node name="Structure_5_66_pavement" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -1, 0, 4)
+metadata/scene_path = "res://models/pavement.glb"
+metadata/structure_id = 5
+metadata/original_orientation = 22
+
+[node name="Structure_8_67_building-small-b" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 2, 0, 3)
+metadata/scene_path = "res://models/building-small-b.glb"
+metadata/structure_id = 8
+metadata/original_orientation = 22
+
+[node name="Structure_7_68_building-small-a" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 2, 0, 4)
+metadata/scene_path = "res://models/building-small-a.glb"
+metadata/structure_id = 7
+metadata/original_orientation = 22
+
+[node name="Structure_0_69_road-straight" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 3, 0, 4)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 10
+
+[node name="Structure_0_70_road-straight" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 3, 0, 3)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 10
+
+[node name="Structure_7_71_building-small-a" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 2, 0, 2)
+metadata/scene_path = "res://models/building-small-a.glb"
+metadata/structure_id = 7
+metadata/original_orientation = 16
+
+[node name="Structure_0_72_road-straight" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 3, 0, 1)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 10
+
+[node name="Structure_5_73_pavement" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0, 2)
+metadata/scene_path = "res://models/pavement.glb"
+metadata/structure_id = 5
+metadata/original_orientation = 0
+
+[node name="Structure_5_74_pavement" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 0, 1)
+metadata/scene_path = "res://models/pavement.glb"
+metadata/structure_id = 5
+metadata/original_orientation = 0
+
+[node name="Structure_5_75_pavement" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0, 1)
+metadata/scene_path = "res://models/pavement.glb"
+metadata/structure_id = 5
+metadata/original_orientation = 0
+
+[node name="Structure_8_76_building-small-b" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 2, 0, 1)
+metadata/scene_path = "res://models/building-small-b.glb"
+metadata/structure_id = 8
+metadata/original_orientation = 16
+
+[node name="Structure_0_77_road-straight" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 3, 0, 2)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 10
+
+[node name="Structure_9_78_building-small-c" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 0, 2)
+metadata/scene_path = "res://models/building-small-c.glb"
+metadata/structure_id = 9
+metadata/original_orientation = 0
+
+[node name="Structure_6_79_pavement-fountain" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 5, 0, 4)
+metadata/scene_path = "res://models/pavement-fountain.glb"
+metadata/structure_id = 6
+metadata/original_orientation = 16
+
+[node name="Structure_10_80_building-small-d" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 0, -1)
+metadata/scene_path = "res://models/building-small-d.glb"
+metadata/structure_id = 10
+metadata/original_orientation = 0
+
+[node name="Structure_11_81_building-garage" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1, 0, -4)
+metadata/scene_path = "res://models/building-garage.glb"
+metadata/structure_id = 11
+metadata/original_orientation = 0
+
+[node name="Structure_11_82_building-garage" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -4)
+metadata/scene_path = "res://models/building-garage.glb"
+metadata/structure_id = 11
+metadata/original_orientation = 0
+
+[node name="Structure_12_83_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 1, 0, -4)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_11_84_building-garage" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -3, 0, 1)
+metadata/scene_path = "res://models/building-garage.glb"
+metadata/structure_id = 11
+metadata/original_orientation = 16
+
+[node name="Structure_10_85_building-small-d" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0, 2)
+metadata/scene_path = "res://models/building-small-d.glb"
+metadata/structure_id = 10
+metadata/original_orientation = 0
+
+[node name="Structure_8_86_building-small-b" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0, -1)
+metadata/scene_path = "res://models/building-small-b.glb"
+metadata/structure_id = 8
+metadata/original_orientation = 0
+
+[node name="Structure_7_87_building-small-a" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 0, -1)
+metadata/scene_path = "res://models/building-small-a.glb"
+metadata/structure_id = 7
+metadata/original_orientation = 0
+
+[node name="Structure_9_88_building-small-c" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 0, -1)
+metadata/scene_path = "res://models/building-small-c.glb"
+metadata/structure_id = 9
+metadata/original_orientation = 0
+
+[node name="Structure_7_89_building-small-a" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7, 0, 2)
+metadata/scene_path = "res://models/building-small-a.glb"
+metadata/structure_id = 7
+metadata/original_orientation = 0
+
+[node name="Structure_8_90_building-small-b" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0, 2)
+metadata/scene_path = "res://models/building-small-b.glb"
+metadata/structure_id = 8
+metadata/original_orientation = 0
+
+[node name="Structure_11_91_building-garage" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 7, 0, 4)
+metadata/scene_path = "res://models/building-garage.glb"
+metadata/structure_id = 11
+metadata/original_orientation = 16
+
+[node name="Structure_2_92_road-corner" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 8, 0, 4)
+metadata/scene_path = "res://models/road-corner.glb"
+metadata/structure_id = 2
+metadata/original_orientation = 22
+
+[node name="Structure_12_93_grass" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -1, 0, -2)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 22
+
+[node name="Structure_12_94_grass" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -1, 0, -1)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 22
+
+[node name="Structure_12_95_grass" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 0, 0, -1)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 22
+
+[node name="Structure_13_96_grass-trees" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -2)
+metadata/scene_path = "res://models/grass-trees.glb"
+metadata/structure_id = 13
+metadata/original_orientation = 0
+
+[node name="Structure_13_97_grass-trees" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 1, 0, -2)
+metadata/scene_path = "res://models/grass-trees.glb"
+metadata/structure_id = 13
+metadata/original_orientation = 16
+
+[node name="Structure_12_98_grass" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 1, 0, -1)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 22
+
+[node name="Structure_13_99_grass-trees" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 2, 0, -2)
+metadata/scene_path = "res://models/grass-trees.glb"
+metadata/structure_id = 13
+metadata/original_orientation = 16
+
+[node name="Structure_12_100_grass" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 7, 0, -1)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 22
+
+[node name="Structure_14_101_grass-trees-tall" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 7, 0, 0)
+metadata/scene_path = "res://models/grass-trees-tall.glb"
+metadata/structure_id = 14
+metadata/original_orientation = 16
+
+[node name="Structure_12_102_grass" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 7, 0, 1)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 22
+
+[node name="Structure_13_103_grass-trees" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 3, 0, 6)
+metadata/scene_path = "res://models/grass-trees.glb"
+metadata/structure_id = 13
+metadata/original_orientation = 22
+
+[node name="Structure_13_104_grass-trees" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 0, 6)
+metadata/scene_path = "res://models/grass-trees.glb"
+metadata/structure_id = 13
+metadata/original_orientation = 0
+
+[node name="Structure_13_105_grass-trees" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 4, 0, 6)
+metadata/scene_path = "res://models/grass-trees.glb"
+metadata/structure_id = 13
+metadata/original_orientation = 22
+
+[node name="Structure_12_106_grass" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 5, 0, 6)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 22
+
+[node name="Structure_14_107_grass-trees-tall" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 0, 7)
+metadata/scene_path = "res://models/grass-trees-tall.glb"
+metadata/structure_id = 14
+metadata/original_orientation = 0
+
+[node name="Structure_14_108_grass-trees-tall" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0, 4)
+metadata/scene_path = "res://models/grass-trees-tall.glb"
+metadata/structure_id = 14
+metadata/original_orientation = 0
+
+[node name="Structure_12_109_grass" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -3, 0, 5)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 22
+
+[node name="Structure_12_110_grass" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -3, 0, 6)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 22
+
+[node name="Structure_12_111_grass" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -3, 0, 7)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 22
+
+[node name="Structure_12_112_grass" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -4, 0, 4)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 22
+
+[node name="Structure_14_113_grass-trees-tall" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -4, 0, 2)
+metadata/scene_path = "res://models/grass-trees-tall.glb"
+metadata/structure_id = 14
+metadata/original_orientation = 16
+
+[node name="Structure_12_114_grass" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -5, 0, 2)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 22
+
+[node name="Structure_12_115_grass" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -3, 0, 0)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 22
+
+[node name="Structure_13_116_grass-trees" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -3, 0, -1)
+metadata/scene_path = "res://models/grass-trees.glb"
+metadata/structure_id = 13
+metadata/original_orientation = 22
+
+[node name="Structure_13_117_grass-trees" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0, -2)
+metadata/scene_path = "res://models/grass-trees.glb"
+metadata/structure_id = 13
+metadata/original_orientation = 0
+
+[node name="Structure_14_118_grass-trees-tall" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 9, 0, 2)
+metadata/scene_path = "res://models/grass-trees-tall.glb"
+metadata/structure_id = 14
+metadata/original_orientation = 10
+
+[node name="Structure_14_119_grass-trees-tall" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 7, 0, 5)
+metadata/scene_path = "res://models/grass-trees-tall.glb"
+metadata/structure_id = 14
+metadata/original_orientation = 10
+
+[node name="Structure_12_120_grass" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0, 8)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 0
+
+[node name="Structure_12_121_grass" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0, 4)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 0
+
+[node name="Structure_12_122_grass" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0, 7)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 0
+
+[node name="Structure_12_123_grass" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0, 6)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 0
+
+[node name="Structure_12_124_grass" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0, 5)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 0
+
+[node name="Structure_12_125_grass" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0, 1)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 0
+
+[node name="Structure_12_126_grass" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0, -1)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 0
+
+[node name="Structure_12_127_grass" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0, -2)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 0
+
+[node name="Structure_12_128_grass" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0, -3)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 0
+
+[node name="Structure_12_129_grass" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 9, 0, 0)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 16
+
+[node name="Structure_12_130_grass" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 8, 0, 8)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 16
+
+[node name="Structure_12_131_grass" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 6, 0, 8)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 16
+
+[node name="Structure_12_132_grass" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 7, 0, 8)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 16
+
+[node name="Structure_12_133_grass" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 5, 0, 8)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 16
+
+[node name="Structure_12_134_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 4, 0, 8)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_135_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 3, 0, 8)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_136_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 2, 0, 8)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_137_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 1, 0, 8)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_138_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, -5)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_139_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, -4)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_140_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, -6)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_141_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4, 0, -6)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_142_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -3, 0, -6)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_143_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -1, 0, -6)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_144_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, -6)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_145_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 2, 0, -6)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_146_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 3, 0, -6)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_147_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 4, 0, -6)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_148_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 5, 0, -6)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_149_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 6, 0, -6)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_150_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 7, 0, -6)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_151_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8, 0, -6)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_152_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 9, 0, -6)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_153_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 9, 0, -5)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_154_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 9, 0, -4)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_155_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 1, 0, -6)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_156_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, -3)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_157_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, -2)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_158_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, 0)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_159_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, -1)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_160_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, 1)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_161_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, 4)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_162_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, 5)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_163_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, 6)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_164_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, 7)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_165_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -5, 0, 8)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_166_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4, 0, 8)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_167_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -2, 0, 8)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_168_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 8)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_169_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -1, 0, 8)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_170_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -3, 0, 8)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_14_171_grass-trees-tall" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 7, 0, -3)
+metadata/scene_path = "res://models/grass-trees-tall.glb"
+metadata/structure_id = 14
+metadata/original_orientation = 10
+
+[node name="Structure_14_172_grass-trees-tall" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 6, 0, -3)
+metadata/scene_path = "res://models/grass-trees-tall.glb"
+metadata/structure_id = 14
+metadata/original_orientation = 10
+
+[node name="Structure_14_173_grass-trees-tall" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 6, 0, -4)
+metadata/scene_path = "res://models/grass-trees-tall.glb"
+metadata/structure_id = 14
+metadata/original_orientation = 10
+
+[node name="Structure_14_174_grass-trees-tall" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 7, 0, -4)
+metadata/scene_path = "res://models/grass-trees-tall.glb"
+metadata/structure_id = 14
+metadata/original_orientation = 10
+
+[node name="Structure_12_175_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8, 0, -5)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_176_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4, 0, 5)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_177_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4, 0, 6)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_178_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4, 0, 7)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_179_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 3, 0, 7)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_180_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 4, 0, 7)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_181_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 5, 0, 7)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_182_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 6, 0, 7)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_183_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 7, 0, 7)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_184_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8, 0, 7)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_185_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8, 0, 6)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_186_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8, 0, 5)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_187_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 7, 0, 6)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_188_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 6, 0, 6)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_189_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8, 0, 1)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_190_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8, 0, 0)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_191_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8, 0, -1)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_192_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8, 0, -2)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_193_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8, 0, -4)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_194_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8, 0, -3)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_195_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 7, 0, -2)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_196_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 7, 0, -5)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_197_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 6, 0, -5)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_198_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 5, 0, -4)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_199_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 5, 0, -5)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_200_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 5, 0, -3)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_201_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 6, 0, -2)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_202_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 4, 0, -3)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_203_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -3, 0, -5)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_204_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4, 0, -5)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_205_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4, 0, 0)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_206_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4, 0, -1)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_207_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4, 0, -2)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_208_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4, 0, -3)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_209_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4, 0, -4)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_210_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -3, 0, -4)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_211_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -3, 0, -3)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_212_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -1, 0, -5)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_213_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, -5)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_214_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 3, 0, -5)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_215_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 4, 0, -5)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_216_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 2, 0, -5)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_217_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 1, 0, -5)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_218_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 2, 0, -4)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_219_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 3, 0, -4)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_12_220_grass" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 4, 0, -4)
+metadata/scene_path = "res://models/grass.glb"
+metadata/structure_id = 12
+metadata/original_orientation = 10
+
+[node name="Structure_0_221_road-straight" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -2, 0, -6)
+metadata/scene_path = "res://models/road-straight.glb"
+metadata/structure_id = 0
+metadata/original_orientation = 10

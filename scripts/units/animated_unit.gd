@@ -59,6 +59,10 @@ func play_animation(animation_name: String):
 		print("DEBUG: No animation player for unit %s, cannot play '%s'" % [unit_id, animation_name])
 		return
 	
+	# Debug output for attack animations
+	if animation_name == "Attack":
+		print("DEBUG: AnimatedUnit %s attempting to play Attack animation" % unit_id)
+	
 	# Add debug output for death animations specifically
 	if animation_name in ["Die", "Death", "die"]:
 		print("DEBUG: Unit %s attempting to play death animation: '%s'" % [unit_id, animation_name])
@@ -132,6 +136,7 @@ func update_client_visuals(server_velocity: Vector3, _delta: float) -> void:
 		if current_state == GameEnums.UnitState.CHARGING_SHOT:
 			_handle_charging_shot_animation()
 		elif current_state == GameEnums.UnitState.ATTACKING:
+			print("DEBUG: AnimatedUnit %s in ATTACKING state, playing Attack animation" % unit_id)
 			play_animation("Attack")
 		else:
 			play_animation("Idle")
@@ -159,6 +164,7 @@ func _physics_process(delta: float):
 		if current_state == GameEnums.UnitState.CHARGING_SHOT:
 			_handle_charging_shot_animation()
 		elif current_state == GameEnums.UnitState.ATTACKING:
+			print("DEBUG: AnimatedUnit %s in ATTACKING state, playing Attack animation" % unit_id)
 			play_animation("Attack")
 		elif velocity.length_squared() > 0.01:
 			play_animation("Run")
@@ -380,8 +386,16 @@ func trigger_death_sequence():
 	
 	# Prevent further actions and ensure dead state
 	is_dead = true
-	# NOTE: Collision is now disabled in the base Unit.die() method
-	# No need to disable collision here - it's handled centrally
+	
+	# CRITICAL: Completely disable collision so dead units don't block living units
+	set_collision_layer_value(1, false) # No more selection/raycast hits
+	set_collision_mask(0) # Don't collide with anything
+	
+	# Disable the CollisionShape3D completely to ensure no blocking
+	var collision_shape = get_node_or_null("CollisionShape3D")
+	if collision_shape:
+		collision_shape.disabled = true
+		print("DEBUG: Disabled CollisionShape3D for dead unit %s" % unit_id)
 	
 	# Add immediate visual feedback that the unit is dead
 	_apply_immediate_death_effects()
@@ -479,7 +493,7 @@ func _apply_death_effects():
 
 func _fade_out_unit():
 	"""Gradually fade out the unit after death animation"""
-	print("DEBUG: Starting fade out for unit %s" % unit_id)
+	#print("DEBUG: Starting fade out for unit %s" % unit_id)
 	
 	# Check if we can fade using modulate
 	if has_method("set_modulate") or "modulate" in self:
@@ -505,7 +519,7 @@ func _play_death_sound():
 
 func trigger_respawn_sequence():
 	"""Called when unit respawns - visual effects for revival"""
-	print("DEBUG: AnimatedUnit %s (%s) starting respawn sequence" % [unit_id, archetype])
+	#print("DEBUG: AnimatedUnit %s (%s) starting respawn sequence" % [unit_id, archetype])
 	
 	# CRITICAL: This method is called AFTER _set_initial_facing_direction() in the base Unit class
 	# The Unit transform is correctly rotated toward the enemy base, but we need to ensure
@@ -535,8 +549,9 @@ func trigger_respawn_sequence():
 		model_container.rotation_degrees = Vector3(0, 180, 0)  # Maintain proper forward orientation
 		print("DEBUG: Unit %s model container rotation reset to proper forward orientation (0, 180, 0)" % unit_id)
 	
-	# NOTE: Collision is now re-enabled in the base Unit._handle_respawn() method
-	# No need to enable collision here - it's handled centrally
+	# NOTE: Collision restoration is now handled by the base Unit class in _handle_respawn()
+	# This ensures proper collision mask values for navigation (buildings and terrain)
+	# No collision setup needed here - just visual effects
 	
 	# Apply respawn visual effects
 	_apply_respawn_effects()
@@ -547,7 +562,7 @@ func trigger_respawn_sequence():
 	else:
 		play_animation("Idle")
 	
-	print("DEBUG: Unit %s respawn sequence completed" % unit_id)
+	#print("DEBUG: Unit %s respawn sequence completed" % unit_id)
 
 func _apply_respawn_effects():
 	"""Apply visual effects for respawn"""
@@ -581,11 +596,11 @@ func _apply_respawn_effects():
 func debug_list_available_animations() -> void:
 	"""Debug method to list all available animations for this unit"""
 	if not animation_player:
-		print("DEBUG: No animation player available for unit %s" % unit_id)
+		#print("DEBUG: No animation player available for unit %s" % unit_id)
 		return
 	
 	var available_anims = animation_player.get_animation_list()
-	print("DEBUG: Unit %s (%s) available animations: %s" % [unit_id, archetype, available_anims])
+	#print("DEBUG: Unit %s (%s) available animations: %s" % [unit_id, archetype, available_anims])
 	
 	# Also check for death-related animations specifically
 	var death_candidates = ["die", "death", "fall", "hurt", "damage", "knockout"]

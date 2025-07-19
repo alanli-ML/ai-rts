@@ -107,11 +107,11 @@ func _create_home_base(team_id: int) -> void:
 		Vector3(0, 0, 10)     # Back building
 	]
 	
-	for i in range(secondary_positions.size()):
-		var building = _create_building("secondary", secondary_positions[i], team_id)
-		if building:
-			building.name = "Building_%d_Team_%d" % [i + 1, team_id]
-			home_base_node.add_child(building)
+	#for i in range(secondary_positions.size()):
+	#	var building = _create_building("secondary", secondary_positions[i], team_id)
+	#	if building:
+	#		building.name = "Building_%d_Team_%d" % [i + 1, team_id]
+	#		home_base_node.add_child(building)
 	
 	# Store home base data
 	home_bases[team_id] = {

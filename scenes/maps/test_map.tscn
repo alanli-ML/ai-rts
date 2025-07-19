@@ -1,9 +1,9 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=8 format=3 uid="uid://cy6thdslqc68v"]
 
-[ext_resource type="Script" path="res://scripts/core/map.gd" id="1"]
-[ext_resource type="Script" path="res://scripts/core/rts_camera.gd" id="2"]
-[ext_resource type="Script" path="res://scripts/core/home_base_manager.gd" id="3_hbm"]
-[ext_resource type="Script" path="res://scripts/core/building_manager.gd" id="4_bm"]
+[ext_resource type="Script" uid="uid://bybut5d1d7vp1" path="res://scripts/core/map.gd" id="1"]
+[ext_resource type="Script" uid="uid://cwdm2haun7x8" path="res://scripts/core/rts_camera.gd" id="2"]
+[ext_resource type="Script" uid="uid://cvkqthfxqgu2j" path="res://scripts/core/home_base_manager.gd" id="3_hbm"]
+[ext_resource type="Script" uid="uid://c04wflgq28ehy" path="res://scripts/core/building_manager.gd" id="4_bm"]
 
 [sub_resource type="NavigationMesh" id="NavigationMesh_1"]
 vertices = PackedVector3Array(-100, 0.5, -100, -100, 0.5, 100, 100, 0.5, 100, 100, 0.5, -100)
@@ -23,8 +23,6 @@ emission_energy_multiplier = 0.5
 
 [node name="TestMap" type="Node3D"]
 script = ExtResource("1")
-load_exported_scene = true
-exported_scene_path = "res://scenes/maps/exported_map.tscn"
 
 [node name="Environment" type="Node3D" parent="."]
 
@@ -36,7 +34,6 @@ shadow_enabled = true
 
 [node name="NavigationRegion3D" type="NavigationRegion3D" parent="Environment" groups=["navigation_regions"]]
 navigation_mesh = SubResource("NavigationMesh_1")
-navigation_layers = 1
 
 [node name="Terrain" type="CSGBox3D" parent="Environment/NavigationRegion3D"]
 use_collision = true
@@ -57,42 +54,32 @@ script = ExtResource("3_hbm")
 
 [node name="Team1Base" type="CSGBox3D" parent="HomeBases"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0, -40)
-use_collision = false
 size = Vector3(20, 0.5, 20)
 material = SubResource("StandardMaterial3D_team1")
 
 [node name="Team2Base" type="CSGBox3D" parent="HomeBases"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0, 40)
-use_collision = false
 size = Vector3(20, 0.5, 20)
 material = SubResource("StandardMaterial3D_team2")
 
 [node name="BuildingManager" type="Node3D" parent="."]
 script = ExtResource("4_bm")
 map_size = Vector2(120, 120)
-auto_generate_on_ready = false
-clear_existing_on_generate = true
-generate_buildings = true
-generate_roads = true
-generate_navigation_obstacles = true
-commercial_district_enabled = true
-industrial_district_enabled = true
-residential_district_enabled = true
 commercial_building_density = 0.5
 industrial_building_density = 0.3
 residential_building_density = 0.4
-main_road_width = 8.0
 road_spacing = 25.0
-create_ring_roads = true
-create_cross_arteries = true
 max_buildings_per_district = 20
-building_collision_layer = 2
-update_navigation_mesh = true
+
+[node name="Buildings" type="Node3D" parent="BuildingManager"]
+
+[node name="Roads" type="Node3D" parent="BuildingManager"]
+
+[node name="NavigationObstacles" type="Node3D" parent="BuildingManager"]
 
 [node name="Units" type="Node3D" parent="."]
 
 [node name="RTSCamera" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
 script = ExtResource("2")
 min_x = -60.0
 max_x = 60.0

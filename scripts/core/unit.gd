@@ -18,6 +18,7 @@ const TRIGGER_PRIORITIES = {
     "on_enemy_in_range": 3,
     "on_enemy_sighted": 2,
     "on_health_low": 1,
+ 
     "on_ally_health_low": 1
 }
 
@@ -117,7 +118,7 @@ func _ready() -> void:
     set_collision_layer_value(1, true)
     
     # Set collision mask to include buildings and terrain for navigation
-    #set_collision_mask_value(1, true)   # Collide with other units for avoidance
+    set_collision_mask_value(1, false)   # Collide with other units for avoidance
     set_collision_mask_value(2, true)   # Collide with buildings for pathfinding
     set_collision_mask_value(3, true)   # Collide with terrain/static objects
     
@@ -159,11 +160,11 @@ func _ready() -> void:
     
     # Configure NavigationAgent3D after movement_speed is set
     if navigation_agent:
-        navigation_agent.radius = 1.5 # Slightly larger for better building avoidance
+        navigation_agent.radius = 1.2 # Match the navigation mesh agent radius
         navigation_agent.max_speed = movement_speed
         navigation_agent.avoidance_enabled = true # Ensure avoidance is enabled
-        navigation_agent.neighbor_distance = 10.0 # Larger search radius for obstacles
-        navigation_agent.time_horizon = 5.0 # More time to plan avoidance
+        navigation_agent.neighbor_distance = 6.0 # Reduced search radius to avoid premature slowdown
+        navigation_agent.time_horizon = 2.0 # Reduced planning time for more responsive movement
         navigation_agent.path_postprocessing = NavigationPathQueryParameters3D.PATH_POSTPROCESSING_EDGECENTERED
         navigation_agent.path_metadata_flags = NavigationPathQueryParameters3D.PATH_METADATA_INCLUDE_ALL
         # CRITICAL: Use default layer (1) for navigation - keep NavigationAgent3D on layer 1
@@ -171,8 +172,11 @@ func _ready() -> void:
         navigation_agent.set_navigation_layers(1)
         
         # Improve pathfinding behavior around obstacles
-        navigation_agent.path_desired_distance = 2.0  # Stay closer to the path
-        navigation_agent.target_desired_distance = 1.0  # Get closer to target before stopping
+        navigation_agent.path_desired_distance = 1.0  # Stay closer to the path
+        navigation_agent.target_desired_distance = 1.5  # Get closer to target before stopping
+        
+        # CRITICAL: Wait for navigation map to be ready and link to NavigationRegion3D
+        call_deferred("_setup_navigation_agent")
 
         navigation_agent.velocity_computed.connect(Callable(self, "_on_navigation_velocity_computed"))
     
@@ -190,6 +194,26 @@ func _ready() -> void:
     call_deferred("_set_initial_facing_direction")
     
     set_physics_process(true)
+
+func _setup_navigation_agent() -> void:
+    """Set up NavigationAgent3D to properly use the navigation mesh"""
+    if not navigation_agent:
+        return
+        
+    # Find the NavigationRegion3D in the scene
+    var nav_region = get_tree().get_first_node_in_group("navigation_regions")
+    if not nav_region:
+        print("DEBUG: Unit %s - No NavigationRegion3D found, navigation may not work" % unit_id)
+        return
+    
+    # Get the navigation map from the NavigationRegion3D
+    var nav_map = nav_region.get_navigation_map()
+    if nav_map.is_valid():
+        # Link the NavigationAgent3D to the navigation map
+        navigation_agent.set_navigation_map(nav_map)
+        print("DEBUG: Unit %s - NavigationAgent3D linked to navigation map" % unit_id)
+    else:
+        print("DEBUG: Unit %s - Invalid navigation map, agent may not work properly" % unit_id)
 
 func _set_initial_facing_direction() -> void:
     """Set the unit's facing direction toward the enemy base (used for both initial spawn and respawn)"""
@@ -342,7 +366,15 @@ func _physics_process(delta: float) -> void:
         if direction_to_target.length_squared() > 0.01:
             look_at_position = global_position + direction_to_target
             should_look = true
-    # Priority 2: If not in combat but moving, look in the direction of movement.
+    # Priority 2: If navigating, look toward the next navigation waypoint
+    elif can_move and navigation_agent and not navigation_agent.is_navigation_finished():
+        var next_point = navigation_agent.get_next_path_position()
+        var direction_to_next = (next_point - global_position)
+        direction_to_next.y = 0 # Don't tilt up/down
+        if direction_to_next.length_squared() > 0.25: # Only rotate if waypoint is far enough
+            look_at_position = global_position + direction_to_next
+            should_look = true
+    # Priority 3: If not navigating but moving, look in the direction of movement.
     elif velocity.length_squared() > 0.01:
         var horizontal_velocity = velocity
         horizontal_velocity.y = 0
@@ -352,7 +384,8 @@ func _physics_process(delta: float) -> void:
     
     if should_look:
         var new_transform = transform.looking_at(look_at_position, Vector3.UP)
-        transform.basis = transform.basis.slerp(new_transform.basis, delta * 10.0)
+        # Slower rotation for smoother navigation around obstacles
+        transform.basis = transform.basis.slerp(new_transform.basis, delta * 5.0)
 
     # Always call move_and_slide to apply physics and update velocity
     move_and_slide()
@@ -373,9 +406,15 @@ func move_to(target_position: Vector3) -> void:
         # Clamp target position to map boundaries
         var clamped_position = _clamp_to_map_bounds(target_position)
         navigation_agent.target_position = clamped_position
+        
+        print("DEBUG: Unit %s moving from %s to %s" % [unit_id, global_position, clamped_position])
+        
         # Provide an initial desired velocity to the agent when setting a new target
         var desired_initial_velocity = (clamped_position - global_position).normalized() * movement_speed
         navigation_agent.set_velocity(desired_initial_velocity)
+        
+        # Debug: Check if a path was found
+        call_deferred("_debug_navigation_path")
 
 func attack_target(target: Unit) -> void:
     if not is_instance_valid(target): 
@@ -433,14 +472,6 @@ func die() -> void:
     unit_died.emit(unit_id)
     
     print("DEBUG: Unit %s die() called - is_dead set to true" % unit_id)
-    
-    # CRITICAL: Disable collision so dead units don't block living units
-    # Dead units should not be physical obstacles for movement
-    set_collision_layer_value(1, false)  # Remove from unit collision layer (no more selection/physics blocking)
-    set_collision_mask_value(1, false)   # Don't collide with other units
-    set_collision_mask_value(2, false)   # Don't collide with buildings  
-    set_collision_mask_value(3, false)   # Don't collide with terrain
-    print("DEBUG: Unit %s collision disabled - dead units won't block movement" % unit_id)
     
     # Trigger death animation sequence if this is an animated unit
     if has_method("trigger_death_sequence"):
@@ -773,7 +804,7 @@ func _evaluate_reactive_behavior() -> void:
         return
     
     if behavior_matrix.is_empty():
-        print("DEBUG: Unit %s - behavior matrix is empty, cannot evaluate" % unit_id)
+        #print("DEBUG: Unit %s - behavior matrix is empty, cannot evaluate" % unit_id)
         return
     
     if _behavior_timer < behavior_start_delay:
@@ -781,7 +812,7 @@ func _evaluate_reactive_behavior() -> void:
 
     var state_vars = _gather_state_variables()
     if state_vars.is_empty():
-        print("DEBUG: Unit %s - state variables empty, using fallback basic state" % unit_id)
+        #print("DEBUG: Unit %s - state variables empty, using fallback basic state" % unit_id)
         # Fallback to basic state variables for UI display
         state_vars = _get_fallback_state_variables()
         
@@ -803,8 +834,8 @@ func _evaluate_reactive_behavior() -> void:
             if activation_levels[action] > max_score:
                 max_score = activation_levels[action]
                 top_action = action
-        if not top_action.is_empty():
-            print("DEBUG: SERVER Unit %s top activation: %s (%.2f) - will sync to clients" % [unit_id, top_action, max_score])
+        #if not top_action.is_empty():
+        #    print("DEBUG: SERVER Unit %s top activation: %s (%.2f) - will sync to clients" % [unit_id, top_action, max_score])
 
 func _gather_state_variables() -> Dictionary:
     """Collects real-time data about the unit's environment and normalizes it."""
@@ -1447,14 +1478,18 @@ func _handle_respawn() -> void:
     
     # Re-enable physics and collision
     set_physics_process(true)
-    set_collision_layer_value(1, true)  # Re-enable selection and unit collision layer
+    set_collision_layer_value(1, true)  # Re-enable selection
     
-    # CRITICAL: Re-enable collision masks so respawned units can interact with the world properly
-    # Note: Unit-to-unit collision (mask layer 1) is intentionally left disabled for smoother movement
-    # set_collision_mask_value(1, true)   # Re-enable unit-to-unit collision (optional for gameplay feel)
-    set_collision_mask_value(2, true)   # Re-enable building collision for pathfinding
-    set_collision_mask_value(3, true)   # Re-enable terrain collision for physics
-    print("DEBUG: Unit %s collision re-enabled - unit can now interact with world" % unit_id)
+    # CRITICAL: Properly restore collision mask for navigation
+    set_collision_mask_value(1, false)   # Don't collide with other units for avoidance
+    set_collision_mask_value(2, true)    # Collide with buildings for pathfinding
+    set_collision_mask_value(3, true)    # Collide with terrain/static objects
+    
+    # Re-enable the CollisionShape3D if it was disabled
+    var collision_shape = get_node_or_null("CollisionShape3D")
+    if collision_shape and collision_shape.disabled:
+        collision_shape.disabled = false
+        print("DEBUG: Re-enabled CollisionShape3D for unit %s" % unit_id)
     
     # Ensure unit is visible
     visible = true

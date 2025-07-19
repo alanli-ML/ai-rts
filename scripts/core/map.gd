@@ -85,22 +85,29 @@ func load_exported_scene_data() -> void:
 		setup_capture_nodes()
 		return
 	
-	# Add the map scene to our structures container
-	map_structures_container.add_child(loaded_map_scene)
+	# CRITICAL: Add the map scene to NavigationRegion3D so buildings can be considered obstacles
+	var nav_region = get_node("../Environment/NavigationRegion3D")
+	if nav_region:
+		nav_region.add_child(loaded_map_scene)
+		print("Map: Added buildings to NavigationRegion3D for proper obstacle detection")
+	else:
+		# Fallback to structures container
+		map_structures_container.add_child(loaded_map_scene)
+		print("Map: Warning - NavigationRegion3D not found, buildings may not be detected as obstacles")
 	
 	# Scale up the entire map by 7x
 	loaded_map_scene.scale = Vector3(7.0, 7.0, 7.0)
 	
 	# Adjust position: raise up slightly (Y+) and move to the left (X-)
-	loaded_map_scene.position = Vector3(-20.0, 0, 0.0)
+	loaded_map_scene.position = Vector3(-20.0, 0.5, 0.0)
 	
 	print("Map: Successfully loaded exported city map scene with %d structure nodes (scaled 7x, repositioned)" % loaded_map_scene.get_child_count())
 	
 	# Load actual 3D models for each structure node
 	load_structure_models()
 	
-	# Set up collision and navigation for all structures
-	setup_scene_collision_and_navigation()
+	# Collision and navigation are already set up in load_structure_models()
+	# setup_scene_collision_and_navigation() # REMOVED - duplicates obstacles
 	
 	# CRITICAL: Rebake navigation mesh after adding all NavigationObstacle3D nodes
 	call_deferred("_rebake_navigation_mesh")
@@ -132,9 +139,16 @@ func load_structure_models() -> void:
 						# Add the model as a child of the structure node
 						child.add_child(model_instance)
 						
-						# Add collision and navigation for buildings only
-						setup_structure_collision(child, structure_id)
-						setup_structure_navigation_obstacle(child, structure_id)
+						# Add collision and navigation based on structure type
+						if structure_id in STRUCTURE_TYPES["buildings"]:
+							# Buildings: create holes in navigation mesh
+							setup_structure_collision(child, structure_id)
+							setup_structure_navigation_obstacle(child, structure_id)
+						elif structure_id in STRUCTURE_TYPES["roads"] or \
+							 structure_id in STRUCTURE_TYPES["pavement"] or \
+							 structure_id in STRUCTURE_TYPES["landscaping"]:
+							# Roads, pavement, grass: create walkable surface for navigation mesh
+							setup_terrain_collision(child, structure_id)
 						
 						models_loaded += 1
 					else:
@@ -228,6 +242,55 @@ func instantiate_structure(structure_data) -> void:
 	
 	print("Map: Placed structure %d at (%d, %d) with rotation %d°" % [structure_id, position_2d.x, position_2d.y, rotation_y])
 
+func setup_terrain_collision(structure: Node3D, structure_id: int) -> void:
+	"""Add collision to roads, pavement, and grass to create walkable navigation surface"""
+	print("Map: Adding terrain collision for walkable structure ID %d" % structure_id)
+	
+	# Find the actual 3D model in the structure to get its bounds
+	var model_node: Node3D = null
+	for child in structure.get_children():
+		if child is Node3D and child.name != "TerrainCollision":
+			model_node = child
+			break
+	
+	if not model_node:
+		print("Map: Warning - no 3D model found in structure for terrain collision")
+		return
+	
+	# Get the actual bounding box of the model
+	var aabb = get_node_aabb(model_node)
+	if aabb.size == Vector3.ZERO:
+		print("Map: Warning - could not get valid AABB for terrain structure %d" % structure_id)
+		return
+	
+	# Create a StaticBody3D for walkable collision
+	var static_body = StaticBody3D.new()
+	static_body.name = "TerrainCollision"
+	
+	# CRITICAL: Add to navigation geometry group for walkable surface
+	static_body.add_to_group("navigation_geometry")
+	
+	# Create a collision shape using the model bounds
+	var collision_shape = CollisionShape3D.new()
+	var box_shape = BoxShape3D.new()
+	
+	# Use the actual model size for terrain collision
+	box_shape.size = aabb.size
+	collision_shape.shape = box_shape
+	collision_shape.position = aabb.get_center()
+	
+	# Set collision layer to 3 (terrain) for navigation mesh generation
+	static_body.set_collision_layer_value(1, false)  # Not on unit layer
+	static_body.set_collision_layer_value(2, false)  # Not on building layer
+	static_body.set_collision_layer_value(3, true)   # On terrain layer
+	
+	static_body.add_child(collision_shape)
+	structure.add_child(static_body)
+	
+	print("Map: Added terrain collision for structure %d: size=%s, center=%s" % [
+		structure_id, aabb.size, aabb.get_center()
+	])
+
 func setup_structure_collision(structure: Node3D, structure_id: int) -> void:
 	"""Add collision to structures to make them non-traversable"""
 	# Only add collision to buildings, not roads/pavement/landscaping
@@ -262,7 +325,7 @@ func setup_structure_collision(structure: Node3D, structure_id: int) -> void:
 		return
 	
 	# Use original model dimensions since the structure nodes are already scaled
-	var collision_size = aabb.size * 1.1  # 10% padding for safety
+	var collision_size = aabb.size * 0.7  # 10% padding for safety
 	var collision_center = aabb.get_center()
 	
 	print("Map: Structure %d collision setup: size=%s, center=%s" % [structure_id, collision_size, collision_center])
@@ -270,6 +333,9 @@ func setup_structure_collision(structure: Node3D, structure_id: int) -> void:
 	# Create a StaticBody3D for collision
 	var static_body = StaticBody3D.new()
 	static_body.name = "Collision"
+	
+	# CRITICAL: Add to navigation geometry group so NavigationMesh can find it
+	static_body.add_to_group("navigation_geometry")
 	
 	# Create a collision shape using the scaled model bounds
 	var collision_shape = CollisionShape3D.new()
@@ -427,11 +493,11 @@ func setup_structure_navigation_obstacle(structure: Node3D, structure_id: int) -
 	# For NavigationObstacle3D, we need radius and height
 	# Use the larger of X or Z dimensions for radius, and Y for height
 	var radius = max(nav_size.x, nav_size.z) / 2.0
-	nav_obstacle.radius = radius * 1.0  # 10% padding like collision
-	nav_obstacle.height = nav_size.y
+	nav_obstacle.radius = radius * 1.3  # Larger radius to ensure avoidance
+	nav_obstacle.height = nav_size.y  # Taller to ensure detection
 	
-	# Position the obstacle at the base of the model (NavigationObstacle3D positions from bottom)
-	nav_obstacle.position = Vector3(nav_center.x, nav_center.y - (nav_size.y / 2.0), nav_center.z)
+	# Position the obstacle at the center of the model (not base)
+	nav_obstacle.position = nav_center
 	
 	# Note: NavigationObstacle3D doesn't support navigation layers in Godot 4.4
 	# The obstacle will work on the default navigation layer with the navigation mesh
@@ -441,11 +507,20 @@ func setup_structure_navigation_obstacle(structure: Node3D, structure_id: int) -
 	# Enable the obstacle
 	nav_obstacle.avoidance_enabled = true
 	
+	# CRITICAL: NavigationObstacle3D setup for Godot 4.4
+	# In Godot 4.4, NavigationObstacle3D affects pathfinding through the navigation mesh
+	# No navigation layers needed - it works automatically when navigation mesh is rebaked
+	
 	# Add debug visualization for navigation obstacle
 	var nav_obstacle_position = Vector3(nav_center.x, nav_center.y - (nav_size.y / 2.0), nav_center.z)
 	add_navigation_debug_visualization(nav_obstacle, nav_obstacle.radius, nav_obstacle.height, nav_obstacle_position)
 	
 	structure.add_child(nav_obstacle)
+	
+	# Debug output for obstacle creation
+	print("Map: Created NavigationObstacle3D for structure %d at %s (radius: %f, height: %f, avoidance: %s)" % [
+		structure_id, nav_obstacle.global_position, nav_obstacle.radius, nav_obstacle.height, nav_obstacle.avoidance_enabled
+	])
 
 func setup_capture_nodes_for_loaded_map() -> void:
 	"""Setup capture nodes positioned strategically around loaded map structures"""
@@ -537,22 +612,146 @@ func get_random_node_position() -> Vector3:
 	return node_positions.pick_random() 
 
 func _rebake_navigation_mesh() -> void:
-	"""Rebake the navigation mesh to include NavigationObstacle3D nodes"""
+	"""Rebake the navigation mesh to include NavigationObstacle3D nodes
+	
+	NEW TERRAIN SYSTEM:
+	- Roads, Pavement, Grass (from exported_map.tscn) = Walkable Surface (Layer 3)
+	- Buildings (from exported_map.tscn) = Obstacles/Holes (Layer 2)  
+	- Simple CSGBox3D terrain = Excluded from navigation
+	"""
 	print("Map: Rebaking navigation mesh to include building obstacles...")
 	
+	# ENABLE NAVIGATION DEBUG VISUALIZATION (Multiple Methods)
+	NavigationServer3D.set_debug_enabled(true)
+	
+	# Additional debug settings for comprehensive visualization
+	var nav_region = get_node("../Environment/NavigationRegion3D")
+	if nav_region:
+		nav_region.enabled = true
+		# Force the navigation region to be visible
+		nav_region.visible = true
+		print("Map: NavigationRegion3D visibility and enabled state set")
+	
+	# Verify debug state
+	var debug_enabled = NavigationServer3D.get_debug_enabled()
+	print("Map: Navigation debug enabled: %s" % debug_enabled)
+	
+	# Count NavigationObstacle3D nodes first
+	var obstacle_count = 0
+	obstacle_count = _count_navigation_obstacles(get_tree().root, obstacle_count)
+	print("Map: Found %d NavigationObstacle3D nodes before rebaking" % obstacle_count)
+	
 	# Find NavigationRegion3D in the scene
-	var nav_region = get_tree().get_first_node_in_group("navigation_regions")
 	if not nav_region:
-		# Try to find it by name if not in group
-		nav_region = get_node("../Environment/NavigationRegion3D")
-		if nav_region:
-			# Add it to the group for future reference
-			nav_region.add_to_group("navigation_regions")
-			print("Map: Found NavigationRegion3D and added to navigation_regions group")
+		nav_region = get_tree().get_first_node_in_group("navigation_regions")
+		if not nav_region:
+			# Try to find it by name if not in group
+			nav_region = get_node("../Environment/NavigationRegion3D")
+			if nav_region:
+				# Add it to the group for future reference
+				nav_region.add_to_group("navigation_regions")
+				print("Map: Found NavigationRegion3D and added to navigation_regions group")
+			else:
+				print("Map: Warning - Could not find NavigationRegion3D by relative path")
 	
 	if nav_region and nav_region is NavigationRegion3D:
-		# Trigger navigation mesh baking
+		# Ensure the NavigationRegion3D is enabled
+		nav_region.enabled = true
+		
+		# CRITICAL: Configure NavigationServer3D map to match our settings BEFORE mesh configuration
+		var nav_map = nav_region.get_navigation_map()
+		if nav_map.is_valid():
+			NavigationServer3D.map_set_cell_size(nav_map, 0.5)
+			NavigationServer3D.map_set_cell_height(nav_map, 0.2)
+			print("Map: NavigationServer3D map configured - cell size: 0.5, cell height: 0.2")
+		
+		# Get the navigation mesh for debugging
+		var nav_mesh = nav_region.navigation_mesh
+		if nav_mesh:
+			print("Map: NavigationMesh found - cell size: %f, agent radius: %f" % [nav_mesh.cell_size, nav_mesh.agent_radius])
+			
+			# CRITICAL: Configure navigation mesh to work with obstacles
+			nav_mesh.agent_radius = 1.2      # Match unit NavigationAgent3D radius  
+			nav_mesh.cell_size = 0.5         # Good balance of precision and performance
+			nav_mesh.cell_height = 0.2       # Allow for height variations
+			nav_mesh.edge_max_length = 12.0   # Maximum edge length
+			nav_mesh.edge_max_error = 1.3     # Edge simplification tolerance
+			nav_mesh.vertices_per_polygon = 6 # Allow more complex polygons
+			nav_mesh.detail_sample_distance = 6.0   # Detail mesh sampling
+			nav_mesh.detail_sample_max_error = 1.0  # Detail mesh error tolerance
+			
+			# REVERT TO SIMPLE WORKING CONFIGURATION
+			# Use terrain collision as walkable surface, buildings collision as obstacles
+			nav_mesh.geometry_collision_mask = 0b00000110  # Use collision layers 2 (buildings) and 3 (terrain)
+			nav_mesh.geometry_source_geometry_mode = NavigationMesh.SOURCE_GEOMETRY_GROUPS_WITH_CHILDREN
+			nav_mesh.geometry_source_group_name = "navigation_geometry"
+			
+			print("Map: Navigation mesh configured - Buildings create holes, Roads/Grass create walkable surface")
+			
+		else:
+			print("Map: Warning - NavigationRegion3D has no navigation mesh")
+		
+		# Add terrain to navigation geometry for walkable surface detection
+		var terrain = nav_region.get_node_or_null("Terrain")
+		if terrain:
+			# REMOVE old simple terrain from navigation geometry - we're using exported map terrain now
+			terrain.remove_from_group("navigation_geometry")
+			print("Map: Removed simple CSGBox3D terrain from navigation geometry (using exported map terrain instead)")
+		else:
+			print("Map: No simple terrain found - using exported map roads/grass as walkable surface")
+		
+		# Force a synchronous bake for immediate effect
+		print("Map: Starting navigation mesh baking...")
 		nav_region.bake_navigation_mesh()
-		print("Map: Navigation mesh rebaked successfully")
+		
+		# Wait for baking to complete
+		var max_wait_time = 5.0
+		var wait_time = 0.0
+		while nav_region.is_baking() and wait_time < max_wait_time:
+			await get_tree().process_frame
+			wait_time += get_process_delta_time()
+		
+		if nav_region.is_baking():
+			print("Map: Warning - Navigation mesh baking taking too long, proceeding anyway")
+		else:
+			print("Map: Navigation mesh rebaked successfully with %d obstacles in %.2f seconds" % [obstacle_count, wait_time])
+			
+		# Test pathfinding to verify obstacles are working
+		_test_navigation_obstacles(nav_region)
 	else:
-		print("Map: Warning - No NavigationRegion3D found, navigation obstacles may not work") 
+		print("Map: Error - No valid NavigationRegion3D found, navigation obstacles will not work")
+
+func _test_navigation_obstacles(nav_region: NavigationRegion3D) -> void:
+	"""Test if navigation obstacles are actually affecting pathfinding"""
+	print("Map: Testing navigation obstacle integration...")
+	
+	# Test a simple path through where buildings should be
+	var test_start = Vector3(-20, 0.5, -20)
+	var test_end = Vector3(20, 0.5, 20)
+	
+	# Use NavigationServer3D to test pathfinding
+	var map_rid = nav_region.get_navigation_map()
+	if map_rid.is_valid():
+		var path = NavigationServer3D.map_get_path(map_rid, test_start, test_end, true)
+		print("Map: Test path from %s to %s has %d waypoints" % [test_start, test_end, path.size()])
+		
+		if path.size() > 2:
+			print("Map: Navigation obstacles appear to be working - path has detours")
+		else:
+			print("Map: Warning - Navigation obstacles may not be working - path is too direct")
+	else:
+		print("Map: Error - Could not get navigation map for testing")
+
+func _count_navigation_obstacles(node: Node, count: int) -> int:
+	"""Recursively count NavigationObstacle3D nodes"""
+	if node is NavigationObstacle3D:
+		count += 1
+		var obstacle = node as NavigationObstacle3D
+		print("Map: Found NavigationObstacle3D at %s with radius %f, enabled: %s" % [
+			obstacle.global_position, obstacle.radius, obstacle.avoidance_enabled
+		])
+	
+	for child in node.get_children():
+		count = _count_navigation_obstacles(child, count)
+	
+	return count 

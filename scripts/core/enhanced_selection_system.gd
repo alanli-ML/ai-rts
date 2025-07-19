@@ -276,8 +276,47 @@ func _screen_to_world_ground_pos(screen_pos: Vector2) -> Variant:
     
     # Intersect with the ground plane (y=0)
     var plane = Plane(Vector3.UP, 0)
-    var intersection = plane.intersects_ray(from, to)
-    return intersection
+    var global_intersection = plane.intersects_ray(from, to)
+    
+    if global_intersection == null:
+        return null
+    
+    # Convert from global world coordinates to scene-local coordinates
+    # The CityMap scene has a transform that we need to account for
+    var city_map_node = _find_city_map_node()
+    if city_map_node:
+        var scene_transform = city_map_node.global_transform
+        var local_position = scene_transform.affine_inverse() * global_intersection
+        print("EnhancedSelectionSystem: Global pos %s → Local pos %s (scene transform scale: %s)" % [global_intersection, local_position, scene_transform.basis.get_scale()])
+        return local_position
+    else:
+        print("EnhancedSelectionSystem: No CityMap node found, using global coordinates")
+        return global_intersection
+
+func _find_city_map_node() -> Node3D:
+    """Find the CityMap node to get its transform"""
+    # Look for CityMap node in the scene tree
+    var scene_root = get_tree().current_scene
+    if scene_root.name == "CityMap":
+        return scene_root
+    
+    # Look for CityMap as a child node
+    var city_map = scene_root.find_child("CityMap", true, false)
+    if city_map:
+        return city_map
+    
+    # Fallback: look in common locations
+    var test_map_candidates = [
+        get_node_or_null("/root/Main/CityMap"),
+        get_node_or_null("/root/UnifiedMain/CityMap"),
+        get_node_or_null("/root/TestMap/CityMap")
+    ]
+    
+    for candidate in test_map_candidates:
+        if candidate:
+            return candidate
+    
+    return null
 
 func get_selected_units() -> Array[Unit]:
     # Prune dead units from selection

@@ -137,12 +137,11 @@ func _execute_direct_command(command_text: String, unit_ids: Array):
                 if plan_executor:
                     plan_executor.interrupt_plan(unit_id, "Direct command override", false)
                 
-                # Convert world coordinates to team-relative coordinates for the unit
+                # Use coordinates directly from selection system (now scene-local coordinates)
+                # No team-relative conversion needed since selection system provides proper coordinates
                 if action_data.action == "move_to" and action_data.params.has("position"):
-                    var world_pos = Vector3(action_data.params.position[0], action_data.params.position[1], action_data.params.position[2])
-                    var team_relative_pos = _world_to_team_relative_coords(world_pos, unit.team_id)
-                    action_data.params.position = [team_relative_pos.x, team_relative_pos.y, team_relative_pos.z]
-                    logger.info("UnifiedMain", "Team %d unit %s: World pos %s → Team-relative pos [%s, %s, %s]" % [unit.team_id, unit_id, world_pos, team_relative_pos.x, team_relative_pos.y, team_relative_pos.z])
+                    var local_pos = Vector3(action_data.params.position[0], action_data.params.position[1], action_data.params.position[2])
+                    logger.info("UnifiedMain", "Unit %s: Using scene-local coordinates [%s, %s, %s] directly" % [unit_id, local_pos.x, local_pos.y, local_pos.z])
                 
                 # Execute the direct action
                 unit.set_current_action(action_data)

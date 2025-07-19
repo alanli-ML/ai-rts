@@ -1698,10 +1698,15 @@ func _get_fallback_state_variables() -> Dictionary:
 
 # --- Player Override System Methods ---
 
-func set_current_action(action_data: Dictionary) -> void:
+func execute_player_override(action_data: Dictionary) -> void:
     """Set a direct action from player input, overriding AI behavior"""
     if not multiplayer.is_server():
         return
+
+    # Interrupt any ongoing AI behavior
+    var plan_executor = get_node_or_null("/root/DependencyContainer/PlanExecutor")
+    if plan_executor:
+        plan_executor.interrupt_plan(unit_id, "Player override")
     
     var action = action_data.get("action", "")
     var params = action_data.get("params", {})
@@ -1786,3 +1791,6 @@ func clear_player_override() -> void:
         
         # Update strategic goal to reflect return to AI
         strategic_goal = "Acting autonomously after completing player command"
+        
+        # Immediately re-evaluate AI behavior
+        _evaluate_reactive_behavior()

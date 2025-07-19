@@ -1,21 +1,8 @@
-[gd_scene load_steps=7 format=3 uid="uid://cy6thdslqc68v"]
+[gd_scene load_steps=4 format=3 uid="uid://cy6thdslqc68v"]
 
 [ext_resource type="Script" uid="uid://bybut5d1d7vp1" path="res://scripts/core/map.gd" id="1"]
 [ext_resource type="Script" uid="uid://cwdm2haun7x8" path="res://scripts/core/rts_camera.gd" id="2"]
-[ext_resource type="Script" uid="uid://cvkqthfxqgu2j" path="res://scripts/core/home_base_manager.gd" id="3_hbm"]
 [ext_resource type="Script" uid="uid://c04wflgq28ehy" path="res://scripts/core/building_manager.gd" id="4_bm"]
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_team1"]
-albedo_color = Color(0.2, 0.4, 1, 0.5)
-emission_enabled = true
-emission = Color(0.2, 0.4, 1, 0.5)
-emission_energy_multiplier = 0.5
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_team2"]
-albedo_color = Color(1, 0.2, 0.2, 0.5)
-emission_enabled = true
-emission = Color(1, 0.2, 0.2, 0.5)
-emission_energy_multiplier = 0.5
 
 [node name="TestMap" type="Node3D"]
 script = ExtResource("1")
@@ -29,27 +16,6 @@ shadow_enabled = true
 [node name="WorldEnvironment" type="WorldEnvironment" parent="Environment"]
 
 [node name="CaptureNodes" type="Node3D" parent="."]
-
-[node name="SpawnPoints" type="Node3D" parent="."]
-
-[node name="Team1Spawn" type="Marker3D" parent="SpawnPoints"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 0.5, 30)
-
-[node name="Team2Spawn" type="Marker3D" parent="SpawnPoints"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 0.5, -30)
-
-[node name="HomeBases" type="Node3D" parent="."]
-script = ExtResource("3_hbm")
-
-[node name="Team1Base" type="CSGBox3D" parent="HomeBases"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, -40)
-size = Vector3(20, 0.5, 20)
-material = SubResource("StandardMaterial3D_team1")
-
-[node name="Team2Base" type="CSGBox3D" parent="HomeBases"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, 40)
-size = Vector3(20, 0.5, 20)
-material = SubResource("StandardMaterial3D_team2")
 
 [node name="BuildingManager" type="Node3D" parent="."]
 script = ExtResource("4_bm")

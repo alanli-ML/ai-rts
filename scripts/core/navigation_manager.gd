@@ -20,9 +20,7 @@ const OBSTACLE_LAYER = 2
 func _ready():
 	print("NavigationManager: Starting initialization...")
 	
-	# Enable collision debug visualization
-	get_tree().debug_collisions_hint = true
-	print("NavigationManager: Enabled collision debug visualization")
+	# Note: Collision debug visualization disabled
 	
 	# Auto-find NavigationRegion3D if not assigned
 	if not navigation_region:
@@ -449,8 +447,7 @@ func _ensure_physics_collision_for_terrain(node: Node3D):
 	static_body.set_collision_layer_value(3, true)   # On terrain layer
 	static_body.set_collision_mask_value(1, true)    # Collides with units
 	
-	# Add visual debug representation
-	_add_collision_debug_visualization(static_body, "terrain")
+	# Note: Debug visualization disabled
 	
 	node.add_child(static_body)
 	print("NavigationManager: Created terrain physics collision for %s with %d collision shapes" % [node.name, collision_count])
@@ -496,8 +493,7 @@ func _ensure_physics_collision_for_building(node: Node3D):
 	static_body.set_collision_layer_value(2, true)   # On building layer
 	static_body.set_collision_mask_value(1, true)    # Collides with units
 	
-	# Add visual debug representation
-	_add_collision_debug_visualization(static_body, "building")
+	# Note: Debug visualization disabled
 	
 	node.add_child(static_body)
 	print("NavigationManager: Created building physics collision for %s with %d collision shapes" % [node.name, collision_count])
@@ -541,33 +537,8 @@ func _count_structures_recursive(node: Node) -> int:
 	
 	return count
 
-## Add visual debug representation for collision
-func _add_collision_debug_visualization(static_body: StaticBody3D, collision_type: String):
-	# Create a visual indicator for the collision
-	var debug_mesh = MeshInstance3D.new()
-	debug_mesh.name = "CollisionDebugVisualization"
-	
-	# Create a simple sphere to indicate collision presence
-	var sphere_mesh = SphereMesh.new()
-	sphere_mesh.radius = 0.2
-	sphere_mesh.height = 0.4
-	
-	# Create material based on collision type
-	var material = StandardMaterial3D.new()
-	if collision_type == "terrain":
-		material.albedo_color = Color.GREEN
-	else:
-		material.albedo_color = Color.RED
-	material.flags_transparent = true
-	material.albedo_color.a = 0.7
-	material.flags_unshaded = true
-	
-	debug_mesh.mesh = sphere_mesh
-	debug_mesh.material_override = material
-	debug_mesh.position = Vector3(0, 1, 0)  # Raise above ground
-	
-	static_body.add_child(debug_mesh)
-	print("NavigationManager: Added debug visualization for %s collision" % collision_type)
+## Add visual debug representation for collision (DISABLED)
+# Debug visualization has been removed for performance
 
 ## Recursive function to count collision structures
 func _count_collision_structures_recursive(node: Node, counts: Dictionary):

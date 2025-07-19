@@ -57,6 +57,14 @@ func _log_error(message: String) -> void:
     else:
         print("SessionManager ERROR: %s" % message)
 
+func _find_nodes_by_name(node: Node, target_name: String, results: Array) -> void:
+    """Recursively find nodes by name"""
+    if node.name == target_name:
+        results.append(node)
+    
+    for child in node.get_children():
+        _find_nodes_by_name(child, target_name, results)
+
 func _initialize_session_manager():
     """Initialize session management"""
     # Setup session cleanup timer
@@ -634,10 +642,74 @@ func _spawn_initial_units(session: Dictionary, map_node: Node) -> void:
     """Spawn initial units for each team"""
     _log_info("Spawning initial units for session %s" % session.id)
     
-    var team_spawns = {
-        1: map_node.get_node("SpawnPoints/Team1Spawn").global_position,
-        2: map_node.get_node("SpawnPoints/Team2Spawn").global_position
-    }
+    # Try to find spawn points in various locations due to map structure changes
+    var team1_spawn = null
+    var team2_spawn = null
+    
+    # First try direct path (legacy test_map structure)
+    team1_spawn = map_node.get_node_or_null("SpawnPoints/Team1Spawn")
+    team2_spawn = map_node.get_node_or_null("SpawnPoints/Team2Spawn")
+    
+    # If not found, search in loaded map structures (city_map structure)
+    if not team1_spawn or not team2_spawn:
+        _log_info("Spawn points not found in direct path, searching in loaded map structures...")
+        var map_structures = map_node.get_node_or_null("MapStructures")
+        if map_structures:
+            _log_info("Found MapStructures node, searching children...")
+            for child in map_structures.get_children():
+                _log_info("Checking child: %s" % child.name)
+                var spawn_points = child.get_node_or_null("SpawnPoints")
+                if spawn_points and is_instance_valid(spawn_points):
+                    _log_info("Found SpawnPoints in %s" % child.name)
+                    if not team1_spawn:
+                        team1_spawn = spawn_points.get_node_or_null("Team1Spawn")
+                        if team1_spawn:
+                            _log_info("Found Team1Spawn at: %s" % team1_spawn.get_path())
+                    if not team2_spawn:
+                        team2_spawn = spawn_points.get_node_or_null("Team2Spawn")
+                        if team2_spawn:
+                            _log_info("Found Team2Spawn at: %s" % team2_spawn.get_path())
+                    if team1_spawn and team2_spawn:
+                        break
+        else:
+            _log_info("MapStructures node not found")
+            
+        # Also try searching directly for any SpawnPoints node in the scene tree
+        if not team1_spawn or not team2_spawn:
+            _log_info("Still missing spawn points, searching entire scene tree...")
+            var spawn_points_nodes = get_tree().get_nodes_in_group("spawn_points")
+            if spawn_points_nodes.is_empty():
+                # Search by name if no group found
+                var all_spawn_points = []
+                _find_nodes_by_name(map_node, "SpawnPoints", all_spawn_points)
+                for sp in all_spawn_points:
+                    if not team1_spawn:
+                        team1_spawn = sp.get_node_or_null("Team1Spawn")
+                    if not team2_spawn:
+                        team2_spawn = sp.get_node_or_null("Team2Spawn")
+                    if team1_spawn and team2_spawn:
+                        break
+    
+    # Create team_spawns dictionary
+    var team_spawns = {}
+    
+    # Fallback to home base manager if spawn points still not found
+    if not team1_spawn or not team2_spawn:
+        var home_base_manager = get_tree().get_first_node_in_group("home_base_managers")
+        if home_base_manager:
+            _log_info("Using home base manager for spawn positions")
+            team_spawns = {
+                1: home_base_manager.get_spawn_position_with_offset(1),
+                2: home_base_manager.get_spawn_position_with_offset(2)
+            }
+        else:
+            _log_error("No spawn points or home base manager found!")
+            return
+    else:
+        team_spawns = {
+            1: team1_spawn.global_position,
+            2: team2_spawn.global_position
+        }
 
     # Spawn initial units for each team (not per player to avoid duplicates)
     var teams_with_players = {}

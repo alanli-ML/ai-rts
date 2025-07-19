@@ -249,28 +249,36 @@ func _handle_right_click(screen_pos: Vector2):
         unit_ids.append(unit.unit_id)
 
     var target_unit = _get_unit_at_position(screen_pos)
-    var command_text = ""
+    var command_data = {}
     
     if target_unit and target_unit.team_id != selected_units[0].team_id:
         # Attack command
-        command_text = "Attack target %s" % target_unit.unit_id
-        print("EnhancedSelectionSystem: Generated attack command: %s" % command_text)
+        command_data = {
+            "action": "attack",
+            "target_id": target_unit.unit_id,
+            "units": unit_ids
+        }
+        print("EnhancedSelectionSystem: Generated attack command data: %s" % str(command_data))
     else:
         # Move command
         var world_pos = _screen_to_world_ground_pos(screen_pos)
         if world_pos != null:
-            command_text = "Move to position (%s, %s, %s)" % [round(world_pos.x), round(world_pos.y), round(world_pos.z)]
-            print("EnhancedSelectionSystem: Generated move command: %s" % command_text)
+            command_data = {
+                "action": "move_to",
+                "position": world_pos,
+                "units": unit_ids
+            }
+            print("EnhancedSelectionSystem: Generated move command data: %s" % str(command_data))
         else:
             print("EnhancedSelectionSystem: Failed to calculate world position from screen pos: %s" % screen_pos)
 
-    if not command_text.is_empty():
-        print("EnhancedSelectionSystem: Sending DIRECT command to %d units: %s" % [unit_ids.size(), command_text])
+    if not command_data.is_empty():
+        print("EnhancedSelectionSystem: Sending DIRECT command for %d units" % unit_ids.size())
         
         # Find the correct scene root that has the submit_direct_command_rpc method
         var scene_root = get_tree().current_scene
         if scene_root and scene_root.has_method("submit_direct_command_rpc"):
-            scene_root.rpc("submit_direct_command_rpc", command_text, unit_ids)
+            scene_root.rpc("submit_direct_command_rpc", command_data)
         else:
             # Fallback: try common scene root names
             var possible_roots = [
@@ -284,7 +292,7 @@ func _handle_right_click(screen_pos: Vector2):
             for root in possible_roots:
                 if root and root.has_method("submit_direct_command_rpc"):
                     print("EnhancedSelectionSystem: Found command handler at: %s" % root.get_path())
-                    root.rpc("submit_direct_command_rpc", command_text, unit_ids)
+                    root.rpc("submit_direct_command_rpc", command_data)
                     command_sent = true
                     break
             
@@ -304,26 +312,8 @@ func _screen_to_world_ground_pos(screen_pos: Vector2) -> Variant:
     if global_intersection == null:
         print("DEBUG: Screen raycast failed to intersect ground plane")
         return null
-    
-    print("DEBUG: Global intersection: ", global_intersection)
-    
-    # Try to convert from global world coordinates to scene-local coordinates
-    var city_map_node = _find_city_map_node()
-    if city_map_node:
-        print("DEBUG: Found CityMap node: ", city_map_node.name)
-        # Check if the CityMap has a non-identity transform
-        var scene_transform = city_map_node.global_transform
-        if not scene_transform.basis.is_equal_approx(Basis.IDENTITY) or not scene_transform.origin.is_zero_approx():
-            print("DEBUG: CityMap has transform - converting coordinates")
-            var local_position = scene_transform.affine_inverse() * global_intersection
-            print("DEBUG: Converted local position: ", local_position)
-            return local_position
-        else:
-            print("DEBUG: CityMap has identity transform - using global coordinates")
-            return global_intersection
-    else:
-        print("DEBUG: CityMap node not found - using global coordinates")
-        return global_intersection
+        
+    return global_intersection
 
 func _find_city_map_node() -> Node3D:
     """Find the CityMap node to get its transform"""

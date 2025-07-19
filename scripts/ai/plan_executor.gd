@@ -44,17 +44,7 @@ func execute_plan(unit_id: String, plan_data: Dictionary) -> bool:
         logger.error("PlanExecutor", "Unit %s does not have set_behavior_plan method." % unit_id)
         return false
 
-func interrupt_plan(unit_id: String, reason: String, from_trigger: bool = false) -> void:
+func interrupt_plan(unit_id: String, reason: String, _from_trigger: bool = false) -> void:
     # This function is now mainly for logging and signaling.
     # The unit manages its own state interruptions.
     plan_interrupted.emit(unit_id, reason)
-
-    # If the interruption is NOT from the unit's internal reactive system,
-    # the unit should be told to go idle.
-    if not from_trigger:
-        var unit = game_state.units.get(unit_id)
-        if is_instance_valid(unit):
-            if unit.has_method("set_current_action"):
-                # Tell unit to stop what it's doing and go idle.
-                unit.set_current_action({"action": "idle"})
-        unit_became_idle.emit(unit_id)

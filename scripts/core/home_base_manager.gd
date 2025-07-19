@@ -4,8 +4,8 @@ extends Node3D
 
 # Home base positions for teams (moved inward from edges for safety)
 const HOME_BASE_POSITIONS = {
-	1: Vector3(30, 0, 30),  # Team 1: Bottom-right corner (moved inward)
-	2: Vector3(-30, 0, -30)     # Team 2: Top-left corner (moved inward)
+	1: Vector3(-47.02, 0.5, -35.0086),  # Team 1: Calculated from city_map Team1Base transform
+	2: Vector3(25.513, 0.5, 48.651)     # Team 2: Calculated from city_map Team2Base transform
 }
 
 # Unit spawn areas around home bases (radius for spawning units)

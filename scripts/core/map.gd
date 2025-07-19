@@ -11,7 +11,7 @@ extends Node3D
 @export var exported_scene_path: String = "res://scenes/maps/city_map.tscn"
 
 @onready var capture_nodes: Node3D = $CaptureNodes
-@onready var spawn_points: Node3D = $SpawnPoints
+@onready var spawn_points: Node3D = get_node_or_null("SpawnPoints")
 
 var node_positions: Array[Vector3] = []
 var team_spawns: Dictionary = {}
@@ -673,11 +673,30 @@ func create_capture_node(pos: Vector3, node_name: String) -> void:
 	
 
 func setup_spawn_points() -> void:
-	for child in spawn_points.get_children():
-		if child is Marker3D:
-			var team_name = child.name.replace("Spawn", "")
-			team_spawns[team_name] = child.position
-			print("Map: Registered spawn point for %s at %s" % [team_name, child.position])
+	# First try to find spawn points in the current map node
+	if spawn_points and is_instance_valid(spawn_points):
+		for child in spawn_points.get_children():
+			if child is Marker3D:
+				var team_name = child.name.replace("Spawn", "")
+				team_spawns[team_name] = child.position
+				print("Map: Registered spawn point for %s at %s" % [team_name, child.position])
+		return
+	
+	# If not found locally, search in the loaded map scene
+	if loaded_map_scene:
+		var loaded_spawn_points = loaded_map_scene.get_node_or_null("SpawnPoints")
+		if loaded_spawn_points and is_instance_valid(loaded_spawn_points):
+			print("Map: Found spawn points in loaded map scene")
+			for child in loaded_spawn_points.get_children():
+				if child is Marker3D:
+					var team_name = child.name.replace("Spawn", "")
+					# Convert local position to global position accounting for the loaded scene transform
+					var global_spawn_pos = loaded_map_scene.to_global(child.position)
+					team_spawns[team_name] = global_spawn_pos
+					print("Map: Registered spawn point for %s at %s (global: %s)" % [team_name, child.position, global_spawn_pos])
+			return
+	
+	print("Map: Warning - No spawn points found in map or loaded scene")
 
 func get_spawn_position(team: String) -> Vector3:
 	return team_spawns.get(team, Vector3.ZERO)

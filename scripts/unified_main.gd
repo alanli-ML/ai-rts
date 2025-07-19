@@ -104,86 +104,47 @@ func submit_command_rpc(command_text: String, unit_ids: Array):
         ai_processor.process_command(command_text, unit_ids, peer_id)
 
 @rpc("any_peer", "call_local")
-func submit_direct_command_rpc(command_text: String, unit_ids: Array):
+func submit_direct_command_rpc(command_data: Dictionary):
     if not dependency_container.is_server_mode():
         return
-    
-    var peer_id = multiplayer.get_remote_sender_id()
-    logger.info("UnifiedMain", "Received DIRECT command '%s' for units %s from peer %d" % [command_text, unit_ids, peer_id])
-    
-    # Execute command directly without AI processing
-    _execute_direct_command(command_text, unit_ids)
 
-func _execute_direct_command(command_text: String, unit_ids: Array):
+    var peer_id = multiplayer.get_remote_sender_id()
+    logger.info("UnifiedMain", "Received DIRECT command data for units %s from peer %d" % [command_data.get("units", []), peer_id])
+
+    # Execute command directly without AI processing
+    _execute_direct_command(command_data)
+
+func _execute_direct_command(command_data: Dictionary):
     """Execute a direct command immediately without AI processing"""
     var game_state = dependency_container.get_game_state()
     if not game_state:
         logger.error("UnifiedMain", "GameState not found for direct command execution")
         return
+
+    var action = command_data.get("action", "")
+    var unit_ids = command_data.get("units", [])
+    var params = {}
+
+    if action == "move_to":
+        var pos = command_data.get("position", Vector3.ZERO)
+        params = {"position": [pos.x, pos.y, pos.z]}
+    elif action == "attack":
+        params = {"target_id": command_data.get("target_id", "")}
     
-    # Parse the command to extract action and parameters
-    var action_data = _parse_direct_command(command_text)
-    if action_data.is_empty():
-        logger.warning("UnifiedMain", "Could not parse direct command: %s" % command_text)
+    var action_data = {"action": action, "params": params}
+    
+    if action_data.is_empty() or action.is_empty():
+        logger.warning("UnifiedMain", "Could not parse direct command from data: %s" % str(command_data))
         return
-    
+
     # Execute the action on each unit
     for unit_id in unit_ids:
         if game_state.units.has(unit_id):
             var unit = game_state.units[unit_id]
-            if is_instance_valid(unit):
-                # Interrupt any existing plan first
-                var plan_executor = dependency_container.get_node_or_null("PlanExecutor")
-                if plan_executor:
-                    plan_executor.interrupt_plan(unit_id, "Direct command override", false)
-                
-                # Use coordinates directly from selection system (now scene-local coordinates)
-                # No team-relative conversion needed since selection system provides proper coordinates
-                if action_data.action == "move_to" and action_data.params.has("position"):
-                    var local_pos = Vector3(action_data.params.position[0], action_data.params.position[1], action_data.params.position[2])
-                    logger.info("UnifiedMain", "Unit %s: Using scene-local coordinates [%s, %s, %s] directly" % [unit_id, local_pos.x, local_pos.y, local_pos.z])
-                
-                # Execute the direct action
-                unit.set_current_action(action_data)
+            if is_instance_valid(unit) and unit.has_method("execute_player_override"):
+                # The unit's execute_player_override will handle interrupting its own AI plan.
+                unit.execute_player_override(action_data)
                 logger.info("UnifiedMain", "Executed direct command on unit %s: %s with params: %s" % [unit_id, action_data.action, str(action_data.params)])
-
-func _parse_direct_command(command_text: String) -> Dictionary:
-    """Parse direct command text into action data"""
-    var action_data = {}
-    
-    # Handle move commands: "Move to position (x, y, z)"
-    var move_regex = RegEx.new()
-    move_regex.compile(r"Move to position \(([^,]+), ([^,]+), ([^)]+)\)")
-    var move_result = move_regex.search(command_text)
-    if move_result:
-        var x = float(move_result.get_string(1))
-        var y = float(move_result.get_string(2))
-        var z = float(move_result.get_string(3))
-        action_data = {
-            "action": "move_to",
-            "params": {
-                "position": [x, y, z],
-                "target_id": null
-            }
-        }
-        return action_data
-    
-    # Handle attack commands: "Attack target [unit_id]"
-    var attack_regex = RegEx.new()
-    attack_regex.compile(r"Attack target (.+)")
-    var attack_result = attack_regex.search(command_text)
-    if attack_result:
-        var target_id = attack_result.get_string(1)
-        action_data = {
-            "action": "attack",
-            "params": {
-                "position": null,
-                "target_id": target_id
-            }
-        }
-        return action_data
-    
-    return {}
 
 func _world_to_team_relative_coords(world_pos: Vector3, team_id: int) -> Vector3:
     """Convert world coordinates to team-relative coordinates"""

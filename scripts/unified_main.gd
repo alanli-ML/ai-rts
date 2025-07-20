@@ -210,6 +210,11 @@ func _on_match_start_requested() -> void:
         hud_instance = hud_scene.instantiate()
         add_child(hud_instance)
 
+    # CRITICAL: Position camera based on player's team after map is loaded
+    # Wait a frame to ensure all map components are fully initialized
+    await get_tree().process_frame
+    _position_camera_for_team(client_team_id)
+
     # Server-side initialization is now fully handled by the SessionManager
     # when it receives the match_started signal. This avoids duplicate logic.
 

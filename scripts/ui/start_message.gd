@@ -65,12 +65,12 @@ func _on_got_it_pressed() -> void:
     print("StartMessage: Got It button pressed")
     hide_start_message()
 
-func _input(event: InputEvent) -> void:
-    """Handle input while start message is visible"""
+func _unhandled_input(event: InputEvent) -> void:
+    """Handle unhandled input while start message is visible - only keyboard events"""
     if not is_visible:
         return
-        
-    # Allow ESC key to close the message
+    
+    # Only handle keyboard events, let mouse events pass through to UI elements
     if event is InputEventKey and event.pressed:
         if event.keycode == KEY_ESCAPE:
             _on_got_it_pressed()

@@ -36,7 +36,7 @@ anchor_bottom = 1.0
 
 [node name="MessagePanel" type="Panel" parent="CenterContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(700, 500)
+custom_minimum_size = Vector2(700, 650)
 theme_override_styles/panel = SubResource("StyleBoxFlat_1")
 
 [node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer/MessagePanel"]
@@ -191,5 +191,5 @@ text = "Got It!"
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
 theme_override_font_sizes/font_size = 14
-text = "(This message will disappear when you submit your first command)"
+text = "(Click 'Got It!' when you're ready to begin)"
 horizontal_alignment = 1 

@@ -305,16 +305,11 @@ func _on_command_submitted(text: String):
             unit_ids.append(unit.unit_id)
         print("GameHUD: Submitting command '%s' to %d selected units" % [text, unit_ids.size()])
     
-    # Hide start message immediately on client side for instant feedback
-    var unified_main = get_node("/root/UnifiedMain")
-    if unified_main and unified_main.has_method("_hide_start_message_rpc"):
-        unified_main._hide_start_message_rpc()
-    
     if audio_manager:
         audio_manager.play_sound_2d("res://assets/audio/ui/command_submit_01.wav")
     
     # Send command to server via RPC
-    unified_main.rpc("submit_command_rpc", text, unit_ids)
+    get_node("/root/UnifiedMain").rpc("submit_command_rpc", text, unit_ids)
     
     command_input.clear()
     _ensure_command_input_active()  # Immediately ready for next command

@@ -65,11 +65,6 @@ func _on_got_it_pressed() -> void:
     print("StartMessage: Got It button pressed")
     hide_start_message()
 
-func on_first_command_submitted() -> void:
-    """Called when the first AI command is submitted"""
-    print("StartMessage: First command submitted, hiding tutorial")
-    hide_start_message()
-
 func _input(event: InputEvent) -> void:
     """Handle input while start message is visible"""
     if not is_visible:

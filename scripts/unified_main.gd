@@ -122,11 +122,6 @@ func submit_command_rpc(command_text: String, unit_ids: Array):
     var peer_id = multiplayer.get_remote_sender_id()
     logger.info("UnifiedMain", "Received command '%s' for units %s from peer %d" % [command_text, unit_ids, peer_id])
     
-    # Hide start message when first command is received (server-side)
-    if start_message_instance and start_message_instance.is_currently_visible():
-        # Notify all clients to hide their start message
-        _hide_start_message_on_all_clients()
-    
     var ai_processor = dependency_container.get_ai_command_processor()
     if ai_processor:
         ai_processor.process_command(command_text, unit_ids, peer_id)
@@ -407,10 +402,6 @@ func _on_main_menu_requested() -> void:
     # Return to lobby/main menu
     _return_to_lobby()
 
-func _on_start_message_dismissed() -> void:
-    """Handle start message being dismissed"""
-    logger.info("UnifiedMain", "Start message was dismissed")
-
 func _return_to_lobby() -> void:
     """Return to lobby screen and clean up game state"""
     # Hide and cleanup game elements
@@ -443,28 +434,10 @@ func _return_to_lobby() -> void:
 func get_client_team_id() -> int:
     return client_team_id
 
-@rpc("any_peer", "call_local", "reliable")
-func _hide_start_message_rpc() -> void:
-    """Hide start message on client when first command is submitted"""
-    if start_message_instance:
-        start_message_instance.on_first_command_submitted()
-
-func _hide_start_message_on_all_clients() -> void:
-    """Hide start message on all clients when first command is received"""
-    # Get all clients to send hide message to
-    var session_manager = dependency_container.get_node_or_null("SessionManager")
-    if not session_manager or session_manager.get_session_count() == 0:
-        return
-
-    var session_id = session_manager.sessions.keys()[0]
-    var peer_ids = session_manager.get_all_peer_ids_in_session(session_id)
-    
-    # Send hide message RPC to all clients
-    for peer_id in peer_ids:
-        rpc_id(peer_id, "_hide_start_message_rpc")
-    
-    logger.info("UnifiedMain", "Sent hide start message to all clients")
-
 func _exit_tree() -> void:
     if dependency_container:
         dependency_container.cleanup()
+
+func _on_start_message_dismissed() -> void:
+    """Handle start message being dismissed"""
+    logger.info("UnifiedMain", "Start message was dismissed")

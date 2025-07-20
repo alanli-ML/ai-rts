@@ -40,6 +40,10 @@ var is_refreshing_units: bool = false  # Prevent concurrent refreshes
 var behavior_refresh_timer: float = 0.0
 const BEHAVIOR_REFRESH_INTERVAL: float = 1.0  # Reduced from 0.2 to 1.0 - Update once per second instead of 5 times per second
 
+# Auto-refresh for unit bars to catch goal updates  
+var unit_bars_refresh_timer: float = 0.0
+const UNIT_BARS_REFRESH_INTERVAL: float = 2.0  # Check for unit goal updates every 2 seconds
+
 # Command input health check timer
 var command_input_check_timer: float = 0.0
 const COMMAND_INPUT_CHECK_INTERVAL: float = 2.0
@@ -205,6 +209,12 @@ func _physics_process(delta):
     if behavior_refresh_timer >= BEHAVIOR_REFRESH_INTERVAL:
         behavior_refresh_timer = 0.0
         _refresh_behavior_matrix_display()
+    
+    # Auto-refresh unit bars to catch goal updates
+    unit_bars_refresh_timer += delta
+    if unit_bars_refresh_timer >= UNIT_BARS_REFRESH_INTERVAL:
+        unit_bars_refresh_timer = 0.0
+        call_deferred("_refresh_unit_status_display") # Use call_deferred for async method
     
     # Periodic check to ensure command input stays active (every 2 seconds)
     # This prevents any external interference from disabling the command input
@@ -625,6 +635,9 @@ func update_ai_command_feedback(summary_text: String, status_text: String) -> vo
     if selection_system and not selection_system.get_selected_units().is_empty():
         _update_selection_display(selection_system.get_selected_units())
 
+    # Also refresh all unit bars since strategic goals may have changed
+    call_deferred("refresh_all_unit_bars")
+
     # Auto-clear status after a few seconds, if this is the final status update
     # Note: A separate timer might be needed if complex states are involved.
     # For now, it will clear after a few seconds regardless of how it was triggered.
@@ -884,7 +897,7 @@ func _update_unit_bar(unit_id: String, unit_data: Dictionary) -> void:
         # Show respawn timer
         progress_bar.max_value = GameConstants.UNIT_RESPAWN_TIME
         progress_bar.value = GameConstants.UNIT_RESPAWN_TIME - respawn_timer
-        progress_bar.modulate = Color.YELLOW
+        progress_bar.modulate = Color.BLUE
         status_label.text = "%ds" % int(respawn_timer)
     elif is_dead:
         # Dead but not respawning yet
@@ -934,9 +947,32 @@ func _update_unit_bar(unit_id: String, unit_data: Dictionary) -> void:
 
 func update_unit_data(unit_id: String, unit_data: Dictionary) -> void:
     """Update data for a specific unit and refresh its bar"""
-    if player_units.has(unit_id):
+    # Check if this unit belongs to the player's team first
+    var player_team_id = _get_player_team_id(multiplayer.get_unique_id())
+    var unit_team_id = unit_data.get("team_id", -1)
+    
+    # Only handle units from the player's team
+    if player_team_id != -1 and unit_team_id == player_team_id:
+        # Update the unit data whether it exists in player_units or not
         player_units[unit_id] = unit_data
-        _update_unit_bar(unit_id, unit_data)
+        
+        # If we already have a UI bar for this unit, update it
+        if unit_bars.has(unit_id):
+            _update_unit_bar(unit_id, unit_data)
+        else:
+            # If no bar exists yet, create one
+            _create_unit_bar(unit_id, unit_data)
+        
+        print("GameHUD: Updated unit data for %s - strategic_goal: '%s'" % [unit_id, unit_data.get("strategic_goal", "none")])
+    else:
+        print("GameHUD: Ignoring unit %s - not from player's team (player: %d, unit: %d)" % [unit_id, player_team_id, unit_team_id])
+
+# Add a helper method to force refresh all unit bars when needed
+func refresh_all_unit_bars() -> void:
+    """Force refresh all unit bars with current data"""
+    for unit_id in player_units:
+        if unit_bars.has(unit_id):
+            _update_unit_bar(unit_id, player_units[unit_id])
 
 func _on_spawn_scout():
     print("GameHUD: Scout button pressed!")

@@ -889,6 +889,12 @@ func update_full_plan(full_plan_data: Array) -> void:
 func set_strategic_goal(new_goal: String) -> void:
 	"""Update the strategic goal and refresh the status bar display"""
 	strategic_goal = new_goal
+	
+	# Mark this unit for goal update broadcast to clients
+	var game_state = get_node_or_null("/root/DependencyContainer/GameState")
+	if game_state and game_state.has_method("mark_unit_goal_changed"):
+		game_state.mark_unit_goal_changed(unit_id)
+	
 	refresh_status_bar()
 
 func refresh_status_bar() -> void:
@@ -1013,6 +1019,10 @@ func set_behavior_plan(matrix: Dictionary, sequence: Array):
 	else:
 		# Normal mode, enable movement immediately
 		waiting_for_first_command = false
+	
+	# Mark this unit for goal update broadcast to clients (control point sequences changed)
+	if game_state and game_state.has_method("mark_unit_goal_changed"):
+		game_state.mark_unit_goal_changed(unit_id)
 	
 	# IMPORTANT: Refresh the status bar to show new goals and control point targets
 	refresh_status_bar()

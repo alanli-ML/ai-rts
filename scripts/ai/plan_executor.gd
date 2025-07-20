@@ -48,6 +48,11 @@ func execute_plan(plan_data: Dictionary) -> bool:
         # Update unit's strategic goal first
         unit.strategic_goal = goal
         
+        # Mark this unit for goal update broadcast to clients
+        var game_state = get_node_or_null("/root/DependencyContainer/GameState")
+        if game_state and game_state.has_method("mark_unit_goal_changed"):
+            game_state.mark_unit_goal_changed(unit.unit_id)
+        
         # Set the tuned matrix on the unit (this will also refresh the status bar)
         unit.set_behavior_plan(tuned_matrix, attack_sequence)
         

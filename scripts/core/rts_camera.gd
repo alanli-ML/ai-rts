@@ -11,7 +11,7 @@ extends Node3D
 
 # Zoom settings
 @export_group("Zoom")
-@export var zoom_speed: float = 5.0
+@export var zoom_speed: float = 2.0  # Reduced from 5.0 for more precise control
 @export var min_zoom: float = 5.0  # Reduced from 10.0 to allow much closer zoom
 @export var max_zoom: float = 60.0
 @export var zoom_smoothing: float = 10.0
@@ -124,15 +124,15 @@ func _process(delta: float) -> void:
     if Input.is_action_pressed("camera_backward"):  # S key should move backward
         input_vector.z -= 1
     
-    # Rotation input with Q and E keys
+    # Rotation input with Q and E keys - orbit around focus point
     var rotation_input: float = 0.0
-    if Input.is_key_pressed(KEY_E):
-        rotation_input += 1.0
     if Input.is_key_pressed(KEY_Q):
+        rotation_input += 1.0
+    if Input.is_key_pressed(KEY_E):
         rotation_input -= 1.0
     
     if rotation_input != 0.0:
-        rotate_y(deg_to_rad(rotation_input * rotation_speed * delta))
+        _orbit_around_ground_focus(rotation_input * rotation_speed * delta)
     
     # Edge scrolling
     if use_edge_scroll and get_viewport().gui_get_focus_owner() == null:
@@ -184,9 +184,52 @@ func _process(delta: float) -> void:
     # Smooth zoom
     if abs(current_zoom - target_zoom) > 0.1:
         current_zoom = lerp(current_zoom, target_zoom, zoom_smoothing * delta)
-        _update_camera_position()
+        _update_camera_position()  # Don't force center look during zoom changes
 
 func _update_camera_position() -> void:
+    if camera_3d:
+        # Simple approach: maintain current look direction and adjust distance
+        var current_look_direction = -camera_3d.global_transform.basis.z
+        
+        # Find where we're currently looking on the ground
+        var camera_world_pos = camera_3d.global_position
+        var ground_focus_point = _get_ground_intersection(camera_world_pos, current_look_direction)
+        
+        # Fallback if no ground intersection
+        if ground_focus_point == Vector3.INF:
+            # Use current camera XZ position projected to ground as focus
+            ground_focus_point = Vector3(camera_world_pos.x, 0, camera_world_pos.z)
+        
+        # Calculate where camera node should be to achieve desired zoom distance
+        var horizontal_distance = current_zoom * 0.8
+        var height = current_zoom * 0.6
+        
+        # Get direction from focus point to current camera position (horizontal only)
+        var current_direction = global_position - ground_focus_point
+        current_direction.y = 0
+        current_direction = current_direction.normalized()
+        
+        # If no clear direction (camera directly above focus), use a default
+        if current_direction.length() < 0.1:
+            current_direction = Vector3(0, 0, 1)  # Default backward direction
+        
+        # Position camera node at zoom distance from focus point
+        global_position = ground_focus_point + current_direction * horizontal_distance
+        global_position.y = height
+        
+        # Update camera local position for tactical angle
+        var angle = deg_to_rad(-55)
+        camera_3d.position = Vector3(
+            0,
+            current_zoom * sin(-angle),
+            current_zoom * cos(-angle)
+        )
+        
+        # Maintain look at focus point
+        camera_3d.look_at(ground_focus_point, Vector3.UP)
+
+func _update_camera_position_with_center_look() -> void:
+    """Update camera position and force it to look at center - used for initial positioning only"""
     if camera_3d:
         # Update camera position based on zoom level with improved angle calculation
         var angle = deg_to_rad(-55)  # Slightly steeper angle for better close-up views
@@ -271,10 +314,10 @@ func position_for_team_base(team_id: int, instant: bool = true) -> void:
         # Smooth camera movement (implement tween here if needed)
         position = camera_position
     
-    # Update camera angle for closer view with steeper angle
+    # Set up team-specific camera angle and direction initially
     if camera_3d:
         camera_3d.position = Vector3(0, current_zoom * 0.7, current_zoom * 0.3)  # Steeper angle for closer view
-        camera_3d.look_at(look_target - position, Vector3.UP)
+        camera_3d.look_at(look_target - position, Vector3.UP)  # Set initial team-specific look direction
     
     # Log the positioning
     if has_node("/root/Logger"):
@@ -315,8 +358,8 @@ func position_for_map_data(map_data: Dictionary, team_id: int = -1) -> void:
     current_zoom = 20.0 * map_scale  # Closer default zoom than before (was 30.0)
     target_zoom = current_zoom
     
-    # Update camera position based on new zoom
-    _update_camera_position()
+    # Update camera position and force center look for initial map positioning
+    _update_camera_position_with_center_look()
     
     if has_node("/root/Logger"):
         var logger = get_node("/root/Logger")
@@ -328,3 +371,72 @@ func shake(_intensity: float = 1.0, _duration: float = 0.5) -> void:
     """Add camera shake effect"""
     # TODO: Implement camera shake
     pass 
+
+func _orbit_around_ground_focus(rotation_degrees: float) -> void:
+    """Orbit the camera around the point where it's looking at the ground (Y=0 plane)"""
+    if not camera_3d:
+        return
+    
+    # Get camera's world position and direction
+    var camera_world_pos = camera_3d.global_position
+    var camera_forward = -camera_3d.global_transform.basis.z
+    
+    # Calculate intersection with ground plane (Y=0)
+    var ground_focus_point = _get_ground_intersection(camera_world_pos, camera_forward)
+    if ground_focus_point == Vector3.INF:
+        # No intersection found (camera pointing up), use a point in front of camera on ground
+        var ground_point = camera_world_pos + camera_forward * 20.0  # 20 units forward
+        ground_point.y = 0  # Project to ground
+        ground_focus_point = ground_point
+    
+    # Calculate current offset from focus point to camera node position (not camera_3d position)
+    var current_offset = global_position - ground_focus_point
+    
+    # Rotate the offset around Y-axis (vertical axis) using proper rotation matrix
+    var rotation_radians = deg_to_rad(rotation_degrees)
+    var cos_angle = cos(rotation_radians)
+    var sin_angle = sin(rotation_radians)
+    
+    var rotated_offset = Vector3(
+        current_offset.x * cos_angle - current_offset.z * sin_angle,
+        current_offset.y,  # Keep Y the same
+        current_offset.x * sin_angle + current_offset.z * cos_angle
+    )
+    
+    # Calculate the new camera node position
+    var new_position = ground_focus_point + rotated_offset
+    
+    # Apply bounds if enabled
+    if use_bounds:
+        new_position.x = clamp(new_position.x, min_x, max_x)
+        new_position.z = clamp(new_position.z, min_z, max_z)
+    
+    # Apply the new position to the camera node
+    global_position = new_position
+    
+    # Now rotate the camera's look direction to maintain focus on the ground point
+    if camera_3d:
+        # Calculate direction from new camera position to focus point
+        var look_direction = (ground_focus_point - camera_3d.global_position).normalized()
+        
+        # Set camera rotation to look at the focus point
+        camera_3d.look_at(camera_3d.global_position + look_direction, Vector3.UP)
+
+func _get_ground_intersection(ray_origin: Vector3, ray_direction: Vector3) -> Vector3:
+    """Calculate where a ray intersects with the ground plane (Y=0)"""
+    # Ray-plane intersection formula: t = (plane_y - ray_origin.y) / ray_direction.y
+    # Where plane_y = 0 for ground plane
+    
+    if abs(ray_direction.y) < 0.001:
+        # Ray is nearly parallel to ground plane, no intersection
+        return Vector3.INF
+    
+    var t = (0.0 - ray_origin.y) / ray_direction.y
+    
+    if t < 0:
+        # Intersection is behind the camera
+        return Vector3.INF
+    
+    # Calculate intersection point
+    var intersection = ray_origin + ray_direction * t
+    return intersection 

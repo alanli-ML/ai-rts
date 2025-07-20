@@ -1012,32 +1012,35 @@ func _input(event):
         
         print("GameHUD: Key pressed: %d, command_input has focus: %s" % [event.keycode, input_has_focus])
         
-        # Handle spawn hotkeys (1-5) regardless of command input focus
-        # These are action keys, not text input, so they should always work
-        match event.keycode:
-            KEY_1:
-                print("GameHUD: Hotkey 1 pressed - spawning scout")
-                _on_spawn_scout()
-                get_viewport().set_input_as_handled()  # Prevent further processing
-            KEY_2:  
-                print("GameHUD: Hotkey 2 pressed - spawning tank")
-                _on_spawn_tank()
-                get_viewport().set_input_as_handled()
-            KEY_3:
-                print("GameHUD: Hotkey 3 pressed - spawning sniper")
-                _on_spawn_sniper()
-                get_viewport().set_input_as_handled()
-            KEY_4:
-                print("GameHUD: Hotkey 4 pressed - spawning medic")
-                _on_spawn_medic()
-                get_viewport().set_input_as_handled()
-            KEY_5:
-                print("GameHUD: Hotkey 5 pressed - spawning engineer")
-                _on_spawn_engineer()
-                get_viewport().set_input_as_handled()
-            _:
-                # For other keys, let them pass through to command input normally
-                pass
+        # Only handle spawn hotkeys (1-5) when command input is NOT focused
+        # This allows normal typing in the text box while preserving hotkey functionality
+        if not input_has_focus:
+            match event.keycode:
+                KEY_1:
+                    print("GameHUD: Hotkey 1 pressed - spawning scout")
+                    _on_spawn_scout()
+                    get_viewport().set_input_as_handled()  # Prevent further processing
+                KEY_2:  
+                    print("GameHUD: Hotkey 2 pressed - spawning tank")
+                    _on_spawn_tank()
+                    get_viewport().set_input_as_handled()
+                KEY_3:
+                    print("GameHUD: Hotkey 3 pressed - spawning sniper")
+                    _on_spawn_sniper()
+                    get_viewport().set_input_as_handled()
+                KEY_4:
+                    print("GameHUD: Hotkey 4 pressed - spawning medic")
+                    _on_spawn_medic()
+                    get_viewport().set_input_as_handled()
+                KEY_5:
+                    print("GameHUD: Hotkey 5 pressed - spawning engineer")
+                    _on_spawn_engineer()
+                    get_viewport().set_input_as_handled()
+                _:
+                    # For other keys when input is not focused, let them pass through normally
+                    pass
+        # If command input IS focused, let all keys pass through to the text input normally
+        # This includes number keys, which should work for typing
 
 func _update_spawn_button_states():
     """Update spawn button states based on available resources"""

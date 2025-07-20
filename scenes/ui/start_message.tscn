@@ -132,6 +132,13 @@ theme_override_font_sizes/font_size = 16
 text = "• Left Click - Select units • Drag - Select multiple units"
 horizontal_alignment = 1
 
+[node name="Rotation" type="Label" parent="CenterContainer/MessagePanel/VBoxContainer/ControlsContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.9, 1, 1)
+theme_override_font_sizes/font_size = 16
+text = "• Q / E Keys - Orbit camera around the point you're looking at"
+horizontal_alignment = 1
+
 [node name="Spacer4" type="Control" parent="CenterContainer/MessagePanel/VBoxContainer"]
 layout_mode = 2
 custom_minimum_size = Vector2(0, 15)

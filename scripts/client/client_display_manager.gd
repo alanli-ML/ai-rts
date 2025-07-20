@@ -249,14 +249,25 @@ func _update_unit(unit_data: Dictionary, delta: float) -> void:
 	
 	# Update strategic goal from server
 	if unit_data.has("strategic_goal"):
+		print("ClientDisplayManager: Updating unit %s strategic goal to: '%s'" % [unit_id, unit_data.strategic_goal])
+		
 		if "strategic_goal" in unit_instance:
 			unit_instance.strategic_goal = unit_data.strategic_goal
 		else:
 			unit_instance.set("strategic_goal", unit_data.strategic_goal)
 		
+		# Check if unit has status bar
+		if unit_instance.status_bar:
+			print("ClientDisplayManager: Unit %s has status bar, calling refresh" % unit_id)
+		else:
+			print("ClientDisplayManager: WARNING - Unit %s does not have status bar!" % unit_id)
+		
 		# Refresh the status bar to show updated goal
 		if unit_instance.has_method("refresh_status_bar"):
 			unit_instance.refresh_status_bar()
+			print("ClientDisplayManager: Called refresh_status_bar() for unit %s" % unit_id)
+		else:
+			print("ClientDisplayManager: WARNING - Unit %s does not have refresh_status_bar method!" % unit_id)
 		
 		# Refresh HUD unit status if strategic goal changed
 		var game_hud = get_tree().get_first_node_in_group("game_hud")
@@ -264,6 +275,28 @@ func _update_unit(unit_data: Dictionary, delta: float) -> void:
 			game_hud = get_node_or_null("/root/UnifiedMain/GameHUD")
 		if game_hud and game_hud.has_method("update_unit_data"):
 			game_hud.update_unit_data(unit_id, unit_data)
+	
+	# Update control point attack sequence from server
+	if unit_data.has("control_point_attack_sequence"):
+		if "control_point_attack_sequence" in unit_instance:
+			unit_instance.control_point_attack_sequence = unit_data.control_point_attack_sequence
+		else:
+			unit_instance.set("control_point_attack_sequence", unit_data.control_point_attack_sequence)
+		
+		# Refresh the status bar to show updated target sequence
+		if unit_instance.has_method("refresh_status_bar"):
+			unit_instance.refresh_status_bar()
+	
+	# Update current attack sequence index from server
+	if unit_data.has("current_attack_sequence_index"):
+		if "current_attack_sequence_index" in unit_instance:
+			unit_instance.current_attack_sequence_index = unit_data.current_attack_sequence_index
+		else:
+			unit_instance.set("current_attack_sequence_index", unit_data.current_attack_sequence_index)
+		
+		# Refresh the status bar to show updated sequence progress
+		if unit_instance.has_method("refresh_status_bar"):
+			unit_instance.refresh_status_bar()
 	
 	# Update health from server
 	if unit_data.has("health"):

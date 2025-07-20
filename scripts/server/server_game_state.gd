@@ -43,6 +43,10 @@ var control_points_data: Dictionary = {}  # Updated control point data for clien
 var resource_data: Dictionary = {}  # Updated resource data for clients
 var ai_progress_data: Dictionary = {}  # AI plan progress for clients
 
+# Change tracking for efficient client updates
+var unit_goal_cache: Dictionary = {}  # unit_id -> {strategic_goal, control_sequence, sequence_index}
+var units_with_goal_changes: Array = []  # Units that need goal updates sent to clients
+
 # Signals
 signal game_state_changed()
 signal unit_spawned(unit_id: String)
@@ -203,16 +207,27 @@ func _gather_filtered_game_state_for_team(team_id: int) -> Dictionary:
                     "health": unit.current_health,
                     "current_health": unit.current_health,
                     "max_health": unit.max_health,
-"is_dead": unit.is_dead,
-"is_respawning": unit.is_respawning,
-"respawn_timer": unit.respawn_timer if "respawn_timer" in unit else 0.0,
-"plan_summary": plan_summary,
-"waiting_for_first_command": unit.waiting_for_first_command if "waiting_for_first_command" in unit else true,
+                    "is_dead": unit.is_dead,
+                    "is_respawning": unit.is_respawning,
+                    "respawn_timer": unit.respawn_timer if "respawn_timer" in unit else 0.0,
+                    "plan_summary": plan_summary,
+                    "waiting_for_first_command": unit.waiting_for_first_command if "waiting_for_first_command" in unit else true,
                     "has_received_first_command": unit.has_received_first_command if "has_received_first_command" in unit else false,
                     "waiting_for_ai": false, # This is now deprecated
                     "active_triggers": [],  # Deprecated
                     "all_triggers": {}     # Deprecated
                 }
+                
+                # Only include goal data if it has changed or unit is marked for update
+                var unit_needs_goal_update = units_with_goal_changes.has(unit.unit_id)
+                var has_goal_changes = _check_and_cache_unit_goal_changes(unit.unit_id, unit)
+                
+                if unit_needs_goal_update or has_goal_changes:
+                    unit_data["strategic_goal"] = unit.strategic_goal if "strategic_goal" in unit else ""
+                    unit_data["control_point_attack_sequence"] = unit.control_point_attack_sequence if "control_point_attack_sequence" in unit else []
+                    unit_data["current_attack_sequence_index"] = unit.current_attack_sequence_index if "current_attack_sequence_index" in unit else 0
+                    _log_info("ServerGameState", "Including goal data for unit %s: %s" % [unit.unit_id, unit_data.get("strategic_goal", "none")])
+                    print("DEBUG: ServerGameState - Sending goal update for unit %s: strategic_goal='%s', sequence=%s" % [unit.unit_id, unit_data.get("strategic_goal", ""), unit_data.get("control_point_attack_sequence", [])])
                 
                 if unit.archetype == "sniper" and unit.current_state == GameEnums.UnitState.CHARGING_SHOT:
                     if "charge_timer" in unit and "charge_time" in unit:
@@ -337,6 +352,9 @@ func _broadcast_game_state() -> void:
         var peer_ids = teams_to_process[team_id]
         for peer_id in peer_ids:
             root_node.rpc_id(peer_id, "_on_game_state_update", state)
+    
+    # Clear the goal changes list after broadcasting
+    units_with_goal_changes.clear()
 
 func _broadcast_ui_data() -> void:
     var session_manager = get_node("/root/DependencyContainer").get_node("SessionManager")
@@ -1066,4 +1084,44 @@ func _generate_fallback_unit_id(archetype: String, team_id: int) -> String:
     var counter = units.size() + 1  # Simple fallback counter
     return "%s_%02d_fallback" % [counter_key, counter]
 
-# Existing methods continue...
+func mark_unit_goal_changed(unit_id: String) -> void:
+    """Mark a unit as having goal/sequence changes that need to be sent to clients"""
+    if not units_with_goal_changes.has(unit_id):
+        units_with_goal_changes.append(unit_id)
+        _log_info("ServerGameState", "Marked unit %s for goal update broadcast" % unit_id)
+
+func _check_and_cache_unit_goal_changes(unit_id: String, unit: Node) -> bool:
+    """Check if unit's goals have changed since last cache and update cache. Returns true if changed."""
+    var current_goal = unit.strategic_goal if "strategic_goal" in unit else ""
+    var current_sequence = unit.control_point_attack_sequence if "control_point_attack_sequence" in unit else []
+    var current_index = unit.current_attack_sequence_index if "current_attack_sequence_index" in unit else 0
+    
+    var cached_data = unit_goal_cache.get(unit_id, {})
+    var cached_goal = cached_data.get("strategic_goal", "")
+    var cached_sequence = cached_data.get("control_sequence", [])
+    var cached_index = cached_data.get("sequence_index", 0)
+    
+    # Check if anything changed
+    var has_changes = (current_goal != cached_goal or 
+                      not _arrays_equal(current_sequence, cached_sequence) or 
+                      current_index != cached_index)
+    
+    if has_changes:
+        # Update cache
+        unit_goal_cache[unit_id] = {
+            "strategic_goal": current_goal,
+            "control_sequence": current_sequence.duplicate(),
+            "sequence_index": current_index
+        }
+        return true
+    
+    return false
+
+func _arrays_equal(arr1: Array, arr2: Array) -> bool:
+    """Compare two arrays for equality"""
+    if arr1.size() != arr2.size():
+        return false
+    for i in range(arr1.size()):
+        if arr1[i] != arr2[i]:
+            return false
+    return true

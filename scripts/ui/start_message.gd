@@ -62,6 +62,11 @@ func hide_start_message() -> void:
     
     # Emit signal so other systems know it was dismissed
     start_message_dismissed.emit()
+    
+    # Tell GameHUD it can resume normal focus behavior
+    var game_hud = get_node_or_null("/root/UnifiedMain/GameHUD")
+    if game_hud and game_hud.has_method("_ensure_command_input_active"):
+        game_hud.call_deferred("_ensure_command_input_active")
 
 func _on_got_it_pressed() -> void:
     """Handle Got It button press"""

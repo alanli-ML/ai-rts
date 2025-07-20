@@ -127,12 +127,24 @@ func _setup_command_input():
 
 func _grab_command_focus():
     """Grab focus for command input with a frame delay"""
+    # Don't grab focus if start message is visible
+    var start_message = get_node_or_null("/root/UnifiedMain/StartMessage")
+    if start_message and start_message.has_method("is_currently_visible") and start_message.is_currently_visible():
+        print("GameHUD: Start message is visible, not grabbing initial focus")
+        return
+        
     if command_input and is_visible_in_tree():
         command_input.grab_focus()
         print("GameHUD: Command input focus grabbed")
 
 func _on_command_input_focus_lost():
     """Automatically regrab focus when command input loses focus"""
+    # Don't regrab focus if start message is visible
+    var start_message = get_node_or_null("/root/UnifiedMain/StartMessage")
+    if start_message and start_message.has_method("is_currently_visible") and start_message.is_currently_visible():
+        print("GameHUD: Start message is visible, not regrabbing focus on focus lost")
+        return
+        
     # Use call_deferred instead of await to avoid race conditions
     # This prevents issues where the node might become invalid during await
     call_deferred("_regrab_focus_safely")
@@ -145,6 +157,12 @@ func _regrab_focus_safely():
         
     if not is_visible_in_tree():
         print("GameHUD: GameHUD not visible in tree, cannot regrab focus")
+        return
+    
+    # Don't steal focus if start message is visible
+    var start_message = get_node_or_null("/root/UnifiedMain/StartMessage")
+    if start_message and start_message.has_method("is_currently_visible") and start_message.is_currently_visible():
+        print("GameHUD: Start message is visible, not grabbing focus")
         return
         
     # Ensure command input is still editable and enabled
@@ -198,6 +216,12 @@ func _physics_process(delta):
 func _check_command_input_health():
     """Periodically check and maintain command input health"""
     if not command_input or not is_visible_in_tree():
+        return
+    
+    # Don't interfere if start message is visible
+    var start_message = get_node_or_null("/root/UnifiedMain/StartMessage")
+    if start_message and start_message.has_method("is_currently_visible") and start_message.is_currently_visible():
+        print("GameHUD: Start message is visible, skipping command input health check")
         return
     
     # Check if command input has lost its settings and restore them

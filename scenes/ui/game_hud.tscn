@@ -44,6 +44,7 @@ anchor_bottom = 1.0
 offset_top = -80.0
 grow_horizontal = 2
 grow_vertical = 0
+custom_minimum_size = Vector2(0, 80)
 
 [node name="HBoxContainer" type="HBoxContainer" parent="BottomBar"]
 layout_mode = 2
@@ -58,6 +59,7 @@ placeholder_text = "Enter command for your squad..."
 [node name="UnitStatusPanel" type="PanelContainer" parent="BottomBar/HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
+custom_minimum_size = Vector2(200, 0)
 
 [node name="MarginContainer" type="MarginContainer" parent="BottomBar/HBoxContainer/UnitStatusPanel"]
 layout_mode = 2
@@ -74,9 +76,14 @@ layout_mode = 2
 text = "Your Units"
 horizontal_alignment = 1
 
-[node name="UnitList" type="VBoxContainer" parent="BottomBar/HBoxContainer/UnitStatusPanel/MarginContainer/VBoxContainer"]
+[node name="ScrollContainer" type="ScrollContainer" parent="BottomBar/HBoxContainer/UnitStatusPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
 size_flags_vertical = 3
+custom_minimum_size = Vector2(0, 40)
+
+[node name="UnitList" type="VBoxContainer" parent="BottomBar/HBoxContainer/UnitStatusPanel/MarginContainer/VBoxContainer/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
 
 [node name="CommandStatusPanel" type="PanelContainer" parent="."]
 layout_mode = 1
@@ -173,5 +180,69 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-mouse_filter = 0
+mouse_filter = 1
 script = ExtResource("2_selection")
+
+[node name="LeftSpawnPanel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 4
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_left = 10.0
+offset_top = -150.0
+offset_right = 120.0
+offset_bottom = 150.0
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="MarginContainer" type="MarginContainer" parent="LeftSpawnPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="VBoxContainer" type="VBoxContainer" parent="LeftSpawnPanel/MarginContainer"]
+layout_mode = 2
+
+[node name="TitleLabel" type="Label" parent="LeftSpawnPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Spawn Units"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="LeftSpawnPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="ScoutButton" type="Button" parent="LeftSpawnPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Scout (1)"
+tooltip_text = "Fast reconnaissance unit with stealth ability"
+
+[node name="TankButton" type="Button" parent="LeftSpawnPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Tank (2)"
+tooltip_text = "Heavy armored unit with shield and taunt abilities"
+
+[node name="SniperButton" type="Button" parent="LeftSpawnPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Sniper (3)"
+tooltip_text = "Long-range unit with charge shot ability"
+
+[node name="MedicButton" type="Button" parent="LeftSpawnPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Medic (4)"
+tooltip_text = "Support unit that can heal allies"
+
+[node name="EngineerButton" type="Button" parent="LeftSpawnPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Engineer (5)"
+tooltip_text = "Builder unit that constructs turrets and repairs"
+
+[node name="HSeparator2" type="HSeparator" parent="LeftSpawnPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="CostLabel" type="Label" parent="LeftSpawnPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Cost: 100 Energy"
+horizontal_alignment = 1
+vertical_alignment = 1

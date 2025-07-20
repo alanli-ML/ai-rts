@@ -10,6 +10,7 @@ const GameEnums = preload("res://scripts/shared/types/game_enums.gd")
 @export var control_point_id: String = ""
 @export var control_point_name: String = ""
 @export var strategic_value: int = 1
+@export var vision_range: float = 20.0
 
 # Capture mechanics
 const CAPTURE_SPEED_PER_UNIT_ADVANTAGE = 0.2 # 20% progress per second per unit advantage

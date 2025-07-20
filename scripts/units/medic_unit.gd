@@ -27,7 +27,7 @@ func heal_ally(params: Dictionary):
 		print("Medic %s: Healing on cooldown (%.1fs remaining)" % [unit_id, healing_cooldown - (current_time - last_heal_time)])
 		return
 		
-	print("DEBUG: Medic %s heal_ally called with target: %s" % [unit_id, target_id])
+	GameConstants.debug_print("Medic %s heal_ally called with target: %s" % [unit_id, target_id], "UNITS")
 
 	var game_state = get_node("/root/DependencyContainer").get_game_state()
 	if not game_state:

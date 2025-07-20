@@ -147,14 +147,14 @@ func _ready() -> void:
 	# This will be overwritten when a plan is received from the AI.
 	behavior_matrix = _get_default_behavior_matrix()
 	
-	print("DEBUG: Unit %s - initialized with default behavior matrix, %d actions (server: %s)" % [unit_id, behavior_matrix.size(), multiplayer.is_server()])
+	GameConstants.debug_print("Unit %s - initialized with default behavior matrix, %d actions (server: %s)" % [unit_id, behavior_matrix.size(), multiplayer.is_server()], "UNITS")
 	
 	# Start behavior processing immediately for UI feedback (server only)
 	if multiplayer.is_server():
 		_behavior_timer = behavior_start_delay
-		print("DEBUG: Unit %s - server-side behavior engine enabled" % unit_id)
+		GameConstants.debug_print("Unit %s - server-side behavior engine enabled" % unit_id, "UNITS")
 	else:
-		print("DEBUG: Unit %s - client-side unit, behavior engine disabled (will display server data)" % unit_id)
+		GameConstants.debug_print("Unit %s - client-side unit, behavior engine disabled (will display server data)" % unit_id, "UNITS")
 	
 	# Configure NavigationAgent3D after movement_speed is set
 	if navigation_agent:
@@ -1697,11 +1697,11 @@ func _attempt_attack_target(target: Unit) -> void:
 				
 				# Attack animation will be triggered by weapon_fired signal
 		else:
-			print("DEBUG: Unit %s weapon cannot fire (cooldown or ammo)" % unit_id)
+			GameConstants.debug_print("Unit %s weapon cannot fire (cooldown or ammo)" % unit_id, "WEAPONS")
 	
 	# Fallback to direct damage if weapon failed
 	if not weapon_fired:
-		print("DEBUG: Unit %s using fallback direct damage against %s" % [unit_id, target.unit_id])
+		GameConstants.debug_print("Unit %s using fallback direct damage against %s" % [unit_id, target.unit_id], "WEAPONS")
 		target.take_damage(attack_damage)
 		last_attack_time = current_time
 		
@@ -1767,9 +1767,9 @@ func _get_lowest_health_ally_in_vision() -> Unit:
 	if archetype == "medic" and allies.size() > 0:
 		var injured_allies = allies.filter(func(u): return u.get_health_percentage() < 1.0 and not u.is_dead and u.archetype != "turret")
 		if injured_allies.size() > 0 and lowest_health_ally == null:
-			print("DEBUG: Medic %s found %d injured allies but couldn't select target. Lowest health: %.1f%%" % [unit_id, injured_allies.size(), lowest_health_pct * 100])
+			GameConstants.debug_print("Medic %s found %d injured allies but couldn't select target. Lowest health: %.1f%%" % [unit_id, injured_allies.size(), lowest_health_pct * 100], "UNITS")
 		elif lowest_health_ally:
-			print("DEBUG: Medic %s selected healing target %s (%.1f%% health)" % [unit_id, lowest_health_ally.unit_id, lowest_health_pct * 100])
+			GameConstants.debug_print("Medic %s selected healing target %s (%.1f%% health)" % [unit_id, lowest_health_ally.unit_id, lowest_health_pct * 100], "UNITS")
 	
 	return lowest_health_ally
 
@@ -1983,7 +1983,7 @@ func execute_player_override(action_data: Dictionary) -> void:
 	var action = action_data.get("action", "")
 	var params = action_data.get("params", {})
 	
-	print("DEBUG: Unit %s received direct action: %s with params: %s" % [unit_id, action, str(params)])
+	GameConstants.debug_print("Unit %s received direct action: %s with params: %s" % [unit_id, action, str(params)], "UNITS")
 	
 	# Activate player override
 	player_override_active = true
@@ -2151,7 +2151,7 @@ func can_be_targeted() -> bool:
 	if "is_stealthed" in self and self.is_stealthed:
 		# Debug: Log when stealth prevents targeting
 		if archetype == "scout":
-			print("DEBUG: Scout %s is stealthed and cannot be targeted" % unit_id)
+			GameConstants.debug_print("Scout %s is stealthed and cannot be targeted" % unit_id, "UNITS")
 		return false
 	
 	return true

@@ -10,10 +10,18 @@ const GameConstants = preload("res://scripts/shared/constants/game_constants.gd"
 @onready var node_label = $TopBar/HBoxContainer/NodeLabel
 @onready var action_queue_list = $UnitActionQueuePanel/MarginContainer/ScrollContainer/ActionQueueList
 @onready var command_input = $BottomBar/HBoxContainer/CommandInput
-@onready var unit_status_panel = $BottomBar/HBoxContainer/UnitStatusPanel/MarginContainer/VBoxContainer/UnitList
+@onready var unit_status_panel = $BottomBar/HBoxContainer/UnitStatusPanel/MarginContainer/VBoxContainer/ScrollContainer/UnitList
 @onready var hover_tooltip = $HoverTooltip
 @onready var command_status_label = $CommandStatusPanel/MarginContainer/VBoxContainer/StatusLabel
 @onready var command_summary_label = $CommandStatusPanel/MarginContainer/VBoxContainer/SummaryLabel
+
+# Spawn button references
+@onready var scout_button = $LeftSpawnPanel/MarginContainer/VBoxContainer/ScoutButton
+@onready var tank_button = $LeftSpawnPanel/MarginContainer/VBoxContainer/TankButton
+@onready var sniper_button = $LeftSpawnPanel/MarginContainer/VBoxContainer/SniperButton
+@onready var medic_button = $LeftSpawnPanel/MarginContainer/VBoxContainer/MedicButton
+@onready var engineer_button = $LeftSpawnPanel/MarginContainer/VBoxContainer/EngineerButton
+@onready var spawn_cost_label = $LeftSpawnPanel/MarginContainer/VBoxContainer/CostLabel
 
 # System References
 var resource_manager
@@ -45,6 +53,10 @@ var last_behavior_data_cache: Dictionary = {}  # unit_id -> last_known_action_sc
 func _ready() -> void:
     # Add to group for easy discovery
     add_to_group("game_hud")
+    
+    # Enable input handling for this control
+    set_process_input(true)
+    focus_mode = Control.FOCUS_ALL
     
     # Initialize cached validator to avoid expensive creation during gameplay
     var validator_script = preload("res://scripts/ai/action_validator.gd")
@@ -81,6 +93,12 @@ func _ready() -> void:
     command_input.text_submitted.connect(_on_command_submitted)
     # Unit spawning is now handled via RPC commands, not direct buttons
     
+    # Connect spawn buttons (deferred to ensure they're ready)
+    call_deferred("_connect_spawn_buttons")
+    
+    # Set up keyboard shortcuts for spawn buttons
+    _setup_spawn_shortcuts()
+    
     # Make command input active by default and capture keyboard input
     _setup_command_input()
     
@@ -88,6 +106,7 @@ func _ready() -> void:
     _update_energy_display(1000, 0.0)
     _update_node_display(0)
     _update_selection_display([])
+    _update_spawn_button_states()  # Initialize spawn button states
     hover_tooltip.visible = false
 
 func _setup_command_input():
@@ -225,6 +244,8 @@ func _on_resource_changed(team_id: int, resource_type: int, new_amount: int):
         if resource_manager and resource_manager.team_income_rates.has(team_id):
             rate = resource_manager.team_income_rates[team_id].get("energy", 0)
         _update_energy_display(new_amount, rate)
+        # Update spawn button states when energy changes
+        _update_spawn_button_states()
 
 func _on_node_count_changed(team_id: int, new_count: int):
     # Assuming client is team 1
@@ -833,3 +854,146 @@ func update_unit_data(unit_id: String, unit_data: Dictionary) -> void:
     if player_units.has(unit_id):
         player_units[unit_id] = unit_data
         _update_unit_bar(unit_id, unit_data)
+
+func _on_spawn_scout():
+    print("GameHUD: Scout button pressed!")
+    _spawn_unit("scout")
+
+func _on_spawn_tank():
+    print("GameHUD: Tank button pressed!")
+    _spawn_unit("tank")
+
+func _on_spawn_sniper():
+    print("GameHUD: Sniper button pressed!")
+    _spawn_unit("sniper")
+
+func _on_spawn_medic():
+    print("GameHUD: Medic button pressed!")
+    _spawn_unit("medic")
+
+func _on_spawn_engineer():
+    print("GameHUD: Engineer button pressed!")
+    _spawn_unit("engineer")
+
+func _spawn_unit(unit_type: String):
+    """Spawn a unit of the specified type via direct RPC call"""
+    print("GameHUD: Attempting to spawn %s" % unit_type.to_lower())
+    
+    # Check if we have enough energy (basic validation)
+    if resource_manager:
+        var current_energy = resource_manager.team_resources.get(1, {}).get("energy", 0)
+        var spawn_cost = 100  # Standard unit cost
+        
+        if current_energy < spawn_cost:
+            print("GameHUD: Not enough energy to spawn %s (need %d, have %d)" % [unit_type, spawn_cost, current_energy])
+            if audio_manager:
+                audio_manager.play_sound_2d("res://assets/audio/ui/click_01.wav")
+            return
+    
+    # Get the server game state and call the direct spawn RPC
+    var server_game_state = get_node_or_null("/root/DependencyContainer/ServerGameState")
+    if not server_game_state:
+        # Try alternative paths for the server game state
+        server_game_state = get_tree().get_first_node_in_group("server_game_state")
+        if not server_game_state:
+            var dependency_container = get_node_or_null("/root/DependencyContainer")
+            if dependency_container:
+                server_game_state = dependency_container.get_game_state()
+    
+    if server_game_state:
+        var peer_id = multiplayer.get_unique_id()
+        print("GameHUD: Calling direct spawn RPC for %s with peer_id %d" % [unit_type.to_lower(), peer_id])
+        
+        # Call the direct spawn RPC
+        server_game_state.request_spawn_unit_rpc(unit_type.to_lower(), peer_id)
+        
+        # Play success sound
+        if audio_manager:
+            audio_manager.play_sound_2d("res://assets/audio/ui/click_01.wav")
+    else:
+        print("GameHUD: ERROR - Could not find ServerGameState to call spawn RPC")
+        if audio_manager:
+            audio_manager.play_sound_2d("res://assets/audio/ui/click_01.wav")
+
+func _setup_spawn_shortcuts():
+    """Set up keyboard shortcuts for spawning units"""
+    # Simple input handling via _input method
+    print("GameHUD: Spawn shortcuts configured (1-5 keys for unit types)")
+
+func _input(event):
+    """Handle keyboard input for spawn shortcuts"""
+    if event is InputEventKey and event.pressed:
+        var input_has_focus = false
+        if command_input and is_instance_valid(command_input):
+            input_has_focus = command_input.has_focus()
+        
+        print("GameHUD: Key pressed: %d, command_input has focus: %s" % [event.keycode, input_has_focus])
+        
+        # Handle spawn hotkeys (1-5) regardless of command input focus
+        # These are action keys, not text input, so they should always work
+        match event.keycode:
+            KEY_1:
+                print("GameHUD: Hotkey 1 pressed - spawning scout")
+                _on_spawn_scout()
+                get_viewport().set_input_as_handled()  # Prevent further processing
+            KEY_2:  
+                print("GameHUD: Hotkey 2 pressed - spawning tank")
+                _on_spawn_tank()
+                get_viewport().set_input_as_handled()
+            KEY_3:
+                print("GameHUD: Hotkey 3 pressed - spawning sniper")
+                _on_spawn_sniper()
+                get_viewport().set_input_as_handled()
+            KEY_4:
+                print("GameHUD: Hotkey 4 pressed - spawning medic")
+                _on_spawn_medic()
+                get_viewport().set_input_as_handled()
+            KEY_5:
+                print("GameHUD: Hotkey 5 pressed - spawning engineer")
+                _on_spawn_engineer()
+                get_viewport().set_input_as_handled()
+            _:
+                # For other keys, let them pass through to command input normally
+                pass
+
+func _update_spawn_button_states():
+    """Update spawn button states based on available resources"""
+    if not resource_manager:
+        return
+        
+    var current_energy = resource_manager.team_resources.get(1, {}).get("energy", 0)
+    var spawn_cost = 100  # Standard unit cost
+    var can_afford = current_energy >= spawn_cost
+    
+    # Update button states
+    if scout_button:
+        scout_button.disabled = not can_afford
+    if tank_button:
+        tank_button.disabled = not can_afford
+    if sniper_button:
+        sniper_button.disabled = not can_afford
+    if medic_button:
+        medic_button.disabled = not can_afford
+    if engineer_button:
+        engineer_button.disabled = not can_afford
+    
+    # Update cost label color
+    if spawn_cost_label:
+        if can_afford:
+            spawn_cost_label.modulate = Color.WHITE
+        else:
+            spawn_cost_label.modulate = Color.RED
+
+func _connect_spawn_buttons():
+    """Connect signals for spawn buttons after they are ready"""
+    if scout_button:
+        scout_button.pressed.connect(_on_spawn_scout)
+    if tank_button:
+        tank_button.pressed.connect(_on_spawn_tank)
+    if sniper_button:
+        sniper_button.pressed.connect(_on_spawn_sniper)
+    if medic_button:
+        medic_button.pressed.connect(_on_spawn_medic)
+    if engineer_button:
+        engineer_button.pressed.connect(_on_spawn_engineer)
+    print("GameHUD: Spawn buttons connected successfully")

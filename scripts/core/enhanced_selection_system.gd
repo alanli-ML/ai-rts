@@ -2,10 +2,13 @@
 class_name EnhancedSelectionSystem
 extends Control
 
+const GameConstants = preload("res://scripts/shared/constants/game_constants.gd")
+
 signal selection_changed(selected_units: Array)
 signal unit_hovered(unit: Unit)
 
 var camera: Camera3D
+var game_world: World3D = null
 var selected_units: Array[Unit] = []
 var hovered_unit: Unit = null
 
@@ -63,6 +66,12 @@ func _find_camera():
     
     if camera:
         print("EnhancedSelectionSystem: Camera found successfully: %s (parent: %s)" % [camera.name, camera.get_parent().name if camera.get_parent() else "None"])
+        var viewport = camera.get_viewport()
+        if viewport:
+            game_world = viewport.world_3d
+            print("EnhancedSelectionSystem: Game world reference obtained from camera's viewport.")
+        else:
+            print("EnhancedSelectionSystem: WARNING - Camera has no viewport, click selection may fail.")
     else:
         print("EnhancedSelectionSystem: WARNING - No camera found, but input will remain enabled")
         # Don't disable input - keep trying to find camera each frame
@@ -73,6 +82,9 @@ func _find_camera_fallback():
     var viewport_camera = get_viewport().get_camera_3d()
     if viewport_camera:
         camera = viewport_camera
+        var viewport = camera.get_viewport()
+        if viewport:
+            game_world = viewport.world_3d
         set_process(false)  # Stop searching once found
         print("EnhancedSelectionSystem: Camera found via fallback: %s" % camera.name)
 
@@ -110,7 +122,7 @@ func _unhandled_input(event: InputEvent):
         print("EnhancedSelectionSystem: Skipping input - no camera")
         return
     
-    print("EnhancedSelectionSystem: _unhandled_input processing: %s" % event)
+    GameConstants.debug_print("EnhancedSelectionSystem: _unhandled_input processing: %s" % event, "SELECTION")
     _process_input_event(event)
 
 func _process_input_event(event: InputEvent):
@@ -202,10 +214,16 @@ func _finish_selection(end_pos: Vector2):
     selection_changed.emit(selected_units)
 
 func _get_unit_at_position(screen_pos: Vector2) -> Unit:
-    var world_3d = get_viewport().get_world_3d()
-    if not world_3d:
-        return null # No 3D world, can't raycast
-    var space_state = world_3d.direct_space_state
+    if not game_world:
+        # Try one last time to get the world from the camera's viewport
+        if camera:
+            var viewport = camera.get_viewport()
+            if viewport:
+                game_world = viewport.world_3d
+        if not game_world:
+            return null # No 3D world, can't raycast
+            
+    var space_state = game_world.direct_space_state
     if not space_state:
         return null
         
@@ -244,13 +262,24 @@ func _get_units_in_box() -> Array[Unit]:
     var units_in_box: Array[Unit] = []
     var selection_rect = Rect2(box_start_position, box_end_position - box_start_position).abs()
     
-    # ClientDisplayManager holds the client-side unit nodes
-    var display_manager = get_node_or_null("/root/UnifiedMain/ClientDisplayManager")
-    if not display_manager: 
+    var units_to_check: Array = []
+
+    if multiplayer.is_server():
+        # On host/server, get units from the authoritative game state.
+        # This is because ClientDisplayManager doesn't populate `displayed_units` for the host.
+        var game_state = get_node_or_null("/root/DependencyContainer/GameState")
+        if game_state:
+            units_to_check = game_state.units.values()
+    else:
+        # On a pure client, get units from the display manager.
+        var display_manager = get_node_or_null("/root/UnifiedMain/ClientDisplayManager")
+        if display_manager:
+            units_to_check = display_manager.displayed_units.values()
+            
+    if units_to_check.is_empty():
         return []
     
-    for unit_id in display_manager.displayed_units:
-        var unit = display_manager.displayed_units[unit_id]
+    for unit in units_to_check:
         if is_instance_valid(unit):
             # Check if unit has is_dead property, otherwise assume it's alive
             var is_unit_dead = false

@@ -149,7 +149,7 @@ func lay_mines(_params: Dictionary):
 	current_state = GameEnums.UnitState.IDLE
 
 func construct_turret(_params: Dictionary):
-	print("DEBUG: Engineer %s - construct_turret called (is_constructing_turret: %s, current_state: %s)" % [unit_id, is_constructing_turret, current_state])
+	GameConstants.debug_print("Engineer %s - construct_turret called (is_constructing_turret: %s, current_state: %s)" % [unit_id, is_constructing_turret, current_state], "UNITS")
 	
 	# Check if already constructing something
 	if current_state == GameEnums.UnitState.CONSTRUCTING:

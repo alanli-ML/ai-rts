@@ -1,5 +1,45 @@
 # GameConstants.gd - Shared constants (not an autoload)
 
+# Debug configuration
+const DEBUG_ENABLED: bool = false
+const DEBUG_UNITS: bool = false
+const DEBUG_ANIMATIONS: bool = false
+const DEBUG_SELECTION: bool = false
+const DEBUG_WEAPONS: bool = false
+const DEBUG_NAVIGATION: bool = false
+const DEBUG_AI: bool = false
+const DEBUG_NETWORK: bool = false
+
+# Debug utility function
+static func debug_print(message: String, category: String = "GENERAL") -> void:
+    if not DEBUG_ENABLED:
+        return
+        
+    match category.to_upper():
+        "UNITS":
+            if DEBUG_UNITS:
+                print("DEBUG: %s" % message)
+        "ANIMATIONS":
+            if DEBUG_ANIMATIONS:
+                print("DEBUG: %s" % message)
+        "SELECTION":
+            if DEBUG_SELECTION:
+                print("DEBUG: %s" % message)
+        "WEAPONS":
+            if DEBUG_WEAPONS:
+                print("DEBUG: %s" % message)
+        "NAVIGATION":
+            if DEBUG_NAVIGATION:
+                print("DEBUG: %s" % message)
+        "AI":
+            if DEBUG_AI:
+                print("DEBUG: %s" % message)
+        "NETWORK":
+            if DEBUG_NETWORK:
+                print("DEBUG: %s" % message)
+        _:
+            print("DEBUG: %s" % message)
+
 # Game balance constants
 const TICK_RATE: int = 60
 const NETWORK_TICK_RATE: int = 30

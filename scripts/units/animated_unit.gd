@@ -751,10 +751,10 @@ func _play_attack_while_moving_animation():
 	# Try preferred animations in order
 	for anim in preferred_animations:
 		if animation_player.has_animation(anim):
-			print("DEBUG: Unit %s playing attack-while-moving animation: %s" % [unit_id, anim])
+			GameConstants.debug_print("Unit %s playing attack-while-moving animation: %s" % [unit_id, anim], "ANIMATIONS")
 			animation_player.play(anim)
 			return
 	
 	# Final fallback: use the animation mapping system
-	print("DEBUG: Unit %s falling back to Run animation for attack-while-moving" % unit_id)
+	GameConstants.debug_print("Unit %s falling back to Run animation for attack-while-moving" % unit_id, "ANIMATIONS")
 	play_animation("Run")

@@ -19,6 +19,10 @@ var teams: Dictionary = {}  # team_id -> TeamData
 # Resources
 var team_resources: Dictionary = {}  # team_id -> ResourceData
 
+# Fog of War
+const VisibilityManager = preload("res://scripts/server/visibility_manager.gd")
+var visibility_manager: VisibilityManager
+
 # System references (injected via dependency container)
 var ai_command_processor: Node
 var team_unit_spawner: Node
@@ -66,101 +70,176 @@ func _log_error(component: String, message: String):
         logger.error(component, message)
     else:
         print("[ERROR] %s: %s" % [component, message])
+
+@rpc("any_peer", "call_local", "reliable")
+func request_spawn_unit_rpc(archetype: String, requesting_peer_id: int) -> void:
+    """Handle direct unit spawn request from UI - bypasses AI command processor"""
+    # Only process on the server/authority
+    if not multiplayer.is_server():
+        return
+        
+    _log_info("ServerGameState", "Direct spawn request for %s from peer %d" % [archetype, requesting_peer_id])
+    
+    # Find the player and their team
+    var player_id = "player_%d" % requesting_peer_id
+    var player_data = null
+    var team_id = 1  # Default fallback
+    
+    # Find player data in the players dictionary
+    for pid in players.keys():
+        var pdata = players[pid]
+        if pdata.peer_id == requesting_peer_id:
+            player_data = pdata
+            team_id = pdata.team_id
+            player_id = pid
+            break
+    
+    if not player_data:
+        _log_warning("ServerGameState", "Could not find player data for peer %d, using defaults" % requesting_peer_id)
+    
+    # Check if we have enough energy (server-side validation)
+    if resource_manager:
+        var current_energy = resource_manager.team_resources.get(team_id, {}).get("energy", 0)
+        var spawn_cost = 100  # Standard unit cost
+        
+        if current_energy < spawn_cost:
+            _log_warning("ServerGameState", "Team %d has insufficient energy to spawn %s (need %d, have %d)" % [team_id, archetype, spawn_cost, current_energy])
+            # TODO: Send failure message back to client
+            return
+        
+        # Deduct energy cost
+        resource_manager.team_resources[team_id]["energy"] = current_energy - spawn_cost
+        _log_info("ServerGameState", "Deducted %d energy from team %d (remaining: %d)" % [spawn_cost, team_id, current_energy - spawn_cost])
+    
+    # Get spawn position near team's base
+    var spawn_position = _get_team_spawn_position(team_id)
+    
+    # Spawn the unit
+    var unit_id = await spawn_unit(archetype, team_id, spawn_position, player_id)
+    
+    if unit_id != "":
+        _log_info("ServerGameState", "Successfully spawned %s unit %s for team %d at %s" % [archetype, unit_id, team_id, spawn_position])
+    else:
+        _log_error("ServerGameState", "Failed to spawn %s unit for team %d" % [archetype, team_id])
+
+func _get_team_spawn_position(team_id: int) -> Vector3:
+    """Get a safe spawn position for the team"""
+    # Try to use home base manager first
+    var home_base_manager = get_tree().get_first_node_in_group("home_base_managers")
+    if home_base_manager:
+        return home_base_manager.get_spawn_position_with_offset(team_id)
+    
+    # Fallback to basic team positions
+    match team_id:
+        1:
+            return Vector3(-20, 1, 0)
+        2:
+            return Vector3(20, 1, 0)
+        _:
+            return Vector3(0, 1, 0)
+
 func _ready() -> void:
     # Systems will be initialized via dependency injection
-    pass
+    add_to_group("server_game_state")  # Add to group for easy discovery
+    _log_info("ServerGameState", "ServerGameState ready and added to group")
 
 func _physics_process(_delta: float) -> void:
     if match_state != "active":
         return
+
+    if visibility_manager:
+        visibility_manager.update_visibility(units, node_capture_system.control_points)
 
     tick_counter += 1
     if tick_counter >= NETWORK_TICK_RATE:
         tick_counter = 0
         _broadcast_game_state()
 
-func _gather_game_state() -> Dictionary:
+func _gather_filtered_game_state_for_team(team_id: int) -> Dictionary:
     var state = {
         "units": [],
         "mines": [],
-        "control_points": []
+        "control_points": [],
+        "visibility_data": {}
     }
     
     var entity_manager = get_node("/root/DependencyContainer").get_entity_manager()
+
+    # Filter units based on visibility
+    for unit_id in units:
+        var unit = units[unit_id]
+        if is_instance_valid(unit):
+            var is_visible = (unit.team_id == team_id) or (visibility_manager.is_position_visible(team_id, unit.global_position) and unit.can_be_targeted())
+            
+            if is_visible:
+                var plan_summary = "Idle"
+                var full_plan_data = []
+
+                if "current_reactive_state" in unit:
+                    plan_summary = unit.current_reactive_state.capitalize()
+
+                var unit_data = {
+                    "id": unit.unit_id,
+                    "archetype": unit.archetype,
+                    "team_id": unit.team_id,
+                    "position": { "x": unit.global_position.x, "y": unit.global_position.y, "z": unit.global_position.z },
+                    "velocity": { "x": unit.velocity.x, "y": unit.velocity.y, "z": unit.velocity.z },
+                    "basis": {
+                        "x": [unit.transform.basis.x.x, unit.transform.basis.x.y, unit.transform.basis.x.z],
+                        "y": [unit.transform.basis.y.x, unit.transform.basis.y.y, unit.transform.basis.y.z],
+                        "z": [unit.transform.basis.z.x, unit.transform.basis.z.y, unit.transform.basis.z.z]
+                    },
+                    "current_state": unit.current_state,
+                    "health": unit.current_health,
+                    "current_health": unit.current_health,
+                    "max_health": unit.max_health,
+                    "is_dead": unit.is_dead,
+                    "is_respawning": unit.is_respawning,
+                    "respawn_timer": unit.respawn_timer if "respawn_timer" in unit else 0.0,
+                    "is_stealthed": unit.is_stealthed if "is_stealthed" in unit else false,
+                    "shield_active": false,
+                    "shield_pct": 0.0,
+                    "plan_summary": plan_summary,
+                    "full_plan": full_plan_data,
+                    "strategic_goal": unit.strategic_goal,
+                    "control_point_attack_sequence": unit.control_point_attack_sequence if "control_point_attack_sequence" in unit else [],
+                    "current_attack_sequence_index": unit.current_attack_sequence_index if "current_attack_sequence_index" in unit else 0,
+                    "waiting_for_first_command": unit.waiting_for_first_command if "waiting_for_first_command" in unit else true,
+                    "has_received_first_command": unit.has_received_first_command if "has_received_first_command" in unit else false,
+                    "waiting_for_ai": false, # This is now deprecated
+                    "active_triggers": [],  # Deprecated
+                    "all_triggers": {},     # Deprecated
+                    "behavior_matrix": unit.behavior_matrix if "behavior_matrix" in unit else {},
+                    "last_action_scores": unit.last_action_scores if "last_action_scores" in unit else {},
+                    "last_state_variables": unit.last_state_variables if "last_state_variables" in unit else {},
+                    "current_reactive_state": unit.current_reactive_state if "current_reactive_state" in unit else "defend"
+                }
+                
+                if unit.archetype == "sniper" and unit.current_state == GameEnums.UnitState.CHARGING_SHOT:
+                    if "charge_timer" in unit and "charge_time" in unit:
+                        unit_data["charge_timer"] = unit.charge_timer
+                        unit_data["charge_time"] = unit.charge_time
+                if unit.has_method("get") and "shield_active" in unit:
+                    unit_data["shield_active"] = unit.shield_active
+                    if unit.max_shield_health > 0:
+                        unit_data["shield_pct"] = (unit.shield_health / unit.max_shield_health) * 100.0
+                state.units.append(unit_data)
+
+    # Filter mines based on visibility
     if entity_manager:
-        # Get mines data from EntityManager
-        var mines_data = []
         var all_entities = entity_manager.get_all_entities()
         for mine_id in all_entities.mines:
             var mine = all_entities.mines[mine_id]
             if is_instance_valid(mine):
-                mines_data.append({
-                    "id": mine_id,
-                    "team_id": mine.team_id,
-                    "position": { "x": mine.global_position.x, "y": mine.global_position.y, "z": mine.global_position.z }
-                })
-        state.mines = mines_data
-        
-    for unit_id in units:
-        var unit = units[unit_id]
-        if is_instance_valid(unit):
-            var plan_summary = "Idle"
-            var full_plan_data = []
-
-            # The new behavior matrix system doesn't use sequential plans anymore
-            # Plan summary comes from the unit's current reactive state
-            if "current_reactive_state" in unit:
-                plan_summary = unit.current_reactive_state.capitalize()
-
-            var unit_data = {
-                "id": unit.unit_id,
-                "archetype": unit.archetype,
-                "team_id": unit.team_id,
-                "position": { "x": unit.global_position.x, "y": unit.global_position.y, "z": unit.global_position.z },
-                "velocity": { "x": unit.velocity.x, "y": unit.velocity.y, "z": unit.velocity.z },
-                "basis": {
-                    "x": [unit.transform.basis.x.x, unit.transform.basis.x.y, unit.transform.basis.x.z],
-                    "y": [unit.transform.basis.y.x, unit.transform.basis.y.y, unit.transform.basis.y.z],
-                    "z": [unit.transform.basis.z.x, unit.transform.basis.z.y, unit.transform.basis.z.z]
-                },
-                "current_state": unit.current_state,
-                "health": unit.current_health,
-                "current_health": unit.current_health,
-                "max_health": unit.max_health,
-                "is_dead": unit.is_dead,
-                "is_respawning": unit.is_respawning,
-                "respawn_timer": unit.respawn_timer if "respawn_timer" in unit else 0.0,
-                "is_stealthed": unit.is_stealthed if "is_stealthed" in unit else false,
-                "shield_active": false,
-                "shield_pct": 0.0,
-                "plan_summary": plan_summary,
-                "full_plan": full_plan_data,
-                "strategic_goal": unit.strategic_goal,
-                "control_point_attack_sequence": unit.control_point_attack_sequence if "control_point_attack_sequence" in unit else [],
-                "current_attack_sequence_index": unit.current_attack_sequence_index if "current_attack_sequence_index" in unit else 0,
-                "waiting_for_first_command": unit.waiting_for_first_command if "waiting_for_first_command" in unit else true,
-                "has_received_first_command": unit.has_received_first_command if "has_received_first_command" in unit else false,
-                "waiting_for_ai": false, # This is now deprecated
-                "active_triggers": [],  # Deprecated - use behavior matrix data instead
-                "all_triggers": {},     # Deprecated - use behavior matrix data instead
-                # New behavior data for UI
-                "behavior_matrix": unit.behavior_matrix if "behavior_matrix" in unit else {},
-                "last_action_scores": unit.last_action_scores if "last_action_scores" in unit else {},
-                "last_state_variables": unit.last_state_variables if "last_state_variables" in unit else {},
-                "current_reactive_state": unit.current_reactive_state if "current_reactive_state" in unit else "defend"
-            }
-            
-            # Add charge shot data for sniper units
-            if unit.archetype == "sniper" and unit.current_state == GameEnums.UnitState.CHARGING_SHOT:
-                if "charge_timer" in unit and "charge_time" in unit:
-                    unit_data["charge_timer"] = unit.charge_timer
-                    unit_data["charge_time"] = unit.charge_time
-            if unit.has_method("get") and "shield_active" in unit:
-                unit_data["shield_active"] = unit.shield_active
-                if unit.max_shield_health > 0:
-                    unit_data["shield_pct"] = (unit.shield_health / unit.max_shield_health) * 100.0
-            state.units.append(unit_data)
-
+                var is_visible = (mine.team_id == team_id) or visibility_manager.is_position_visible(team_id, mine.global_position)
+                if is_visible:
+                    state.mines.append({
+                        "id": mine_id,
+                        "team_id": mine.team_id,
+                        "position": { "x": mine.global_position.x, "y": mine.global_position.y, "z": mine.global_position.z }
+                    })
+    
+    # Control points are always sent
     if node_capture_system and not node_capture_system.control_points.is_empty():
         for cp in node_capture_system.control_points:
             if is_instance_valid(cp):
@@ -169,6 +248,14 @@ func _gather_game_state() -> Dictionary:
                     "team_id": cp.get_controlling_team(),
                     "capture_value": cp.capture_value
                 })
+
+    # Add visibility data for the client's renderer
+    state["visibility_data"] = {
+        "grid": visibility_manager.get_visibility_data_for_team(team_id),
+        "map_size": [visibility_manager.map_size.x, visibility_manager.map_size.y],
+        "cell_size": visibility_manager.cell_size,
+    }
+    
     return state
 
 func get_units_in_radius(p_position: Vector3, p_radius: float, p_team_to_exclude: int = -1, p_team_to_find: int = -1) -> Array[Unit]:
@@ -217,14 +304,27 @@ func _broadcast_game_state() -> void:
     if not session_manager or session_manager.get_session_count() == 0:
         return
 
-    var state = _gather_game_state()
-    
+    var root_node = get_tree().get_root().get_node("UnifiedMain")
+    if not root_node:
+        return
+        
     # Assume one session for now
     var session_id = session_manager.sessions.keys()[0]
-    var peer_ids = session_manager.get_all_peer_ids_in_session(session_id)
-    
-    var root_node = get_tree().get_root().get_node("UnifiedMain")
-    if root_node:
+    var session = session_manager.get_session(session_id)
+
+    # Loop through teams and send filtered state
+    var teams_to_process = {} # team_id -> [peer_ids]
+    for player_id in session.players:
+        var player_data = session.players[player_id]
+        var team_id = player_data.team_id
+        var peer_id = player_data.peer_id
+        if not teams_to_process.has(team_id):
+            teams_to_process[team_id] = []
+        teams_to_process[team_id].append(peer_id)
+
+    for team_id in teams_to_process:
+        var state = _gather_filtered_game_state_for_team(team_id)
+        var peer_ids = teams_to_process[team_id]
         for peer_id in peer_ids:
             root_node.rpc_id(peer_id, "_on_game_state_update", state)
 
@@ -233,6 +333,9 @@ func setup(logger_ref: Node, game_constants_ref, network_messages_ref) -> void:
     logger = logger_ref
     game_constants = game_constants_ref
     network_messages = network_messages_ref
+    
+    # Fog of War setup
+    visibility_manager = VisibilityManager.new(Vector2(120, 120), 4.0) # Map size, cell size
     
     # Get system references from dependency container
     var dependency_container = get_node("/root/DependencyContainer")
@@ -307,7 +410,8 @@ func _on_ai_plan_processed(plans: Array, message: String, originating_peer_id: i
     # This ensures goals are visible on the host side without waiting for network loop-back
     var client_display_manager = get_node_or_null("/root/UnifiedMain/ClientDisplayManager")
     if client_display_manager:
-        var current_state = _gather_game_state()
+        # Host is typically on team 1, so gather state filtered for team 1
+        var current_state = _gather_filtered_game_state_for_team(1)
         client_display_manager.update_state(current_state)
         _log_info("ServerGameState", "Updated host client display manager with new goal data")
     

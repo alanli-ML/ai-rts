@@ -19,6 +19,9 @@ func _ready() -> void:
     # Ensure start message appears above all other UI
     z_index = 90  # Below victory screen (100) but above everything else
     
+    # Allow mouse events to pass through to children (buttons)
+    mouse_filter = Control.MOUSE_FILTER_PASS
+    
     # Hide by default
     visible = false
     is_visible = false

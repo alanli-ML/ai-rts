@@ -36,7 +36,7 @@ max_buildings_per_district = 20
 
 [node name="RTSCamera" type="Node3D" parent="."]
 script = ExtResource("2")
-min_x = -60.0
-max_x = 60.0
-min_z = -60.0
-max_z = 60.0
+min_x = -75.0
+max_x = 75.0
+min_z = -75.0
+max_z = 75.0

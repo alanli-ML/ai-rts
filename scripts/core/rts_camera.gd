@@ -19,10 +19,10 @@ extends Node3D
 # Bounds settings
 @export_group("Bounds")
 @export var use_bounds: bool = true
-@export var min_x: float = -75.0  # Expanded from -50 for 3x larger map
-@export var max_x: float = 250.0  # Expanded from 150 for 3x larger map  
-@export var min_z: float = -75.0  # Expanded from -50 for 3x larger map
-@export var max_z: float = 250.0  # Expanded from 150 for 3x larger map
+@export var min_x: float = -90.0  # Expanded for more camera movement
+@export var max_x: float = 280.0  # Expanded for more camera movement  
+@export var min_z: float = -90.0  # Expanded for more camera movement
+@export var max_z: float = 280.0  # Expanded for more camera movement
 
 # Mouse drag settings
 @export_group("Mouse Drag")

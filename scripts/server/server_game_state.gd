@@ -2,6 +2,8 @@
 # Server-authoritative game state manager
 extends Node
 
+const GameConstants = preload("res://scripts/shared/constants/game_constants.gd")
+
 # Load shared enums
 const GameEnums = preload("res://scripts/shared/types/game_enums.gd")
 
@@ -159,6 +161,23 @@ func _physics_process(_delta: float) -> void:
 
     if visibility_manager:
         visibility_manager.update_visibility(units, node_capture_system.control_points)
+        
+        # Debug: Log visibility updates every few seconds
+        if Engine.get_frames_drawn() % 180 == 0:  # Every 3 seconds
+            var team1_grid = visibility_manager.get_visibility_grid_data(1)
+            var team2_grid = visibility_manager.get_visibility_grid_data(2)
+            var visible_count_t1 = 0
+            var visible_count_t2 = 0
+            
+            for i in range(team1_grid.size()):
+                if team1_grid[i] == 255:
+                    visible_count_t1 += 1
+            
+            for i in range(team2_grid.size()):
+                if team2_grid[i] == 255:
+                    visible_count_t2 += 1
+            
+            _log_info("ServerGameState", "Visibility update: Team 1 visible cells: %d/%d, Team 2: %d/%d, Units: %d" % [visible_count_t1, team1_grid.size(), visible_count_t2, team2_grid.size(), units.size()])
 
     tick_counter += 1
     if tick_counter >= NETWORK_TICK_RATE:
@@ -227,7 +246,9 @@ func _gather_filtered_game_state_for_team(team_id: int) -> Dictionary:
                     unit_data["control_point_attack_sequence"] = unit.control_point_attack_sequence if "control_point_attack_sequence" in unit else []
                     unit_data["current_attack_sequence_index"] = unit.current_attack_sequence_index if "current_attack_sequence_index" in unit else 0
                     _log_info("ServerGameState", "Including goal data for unit %s: %s" % [unit.unit_id, unit_data.get("strategic_goal", "none")])
-                    print("DEBUG: ServerGameState - Sending goal update for unit %s: strategic_goal='%s', sequence=%s" % [unit.unit_id, unit_data.get("strategic_goal", ""), unit_data.get("control_point_attack_sequence", [])])
+                    GameConstants.debug_print("ServerGameState - Sending goal update for unit %s: strategic_goal='%s', sequence=%s" % [unit.unit_id, unit_data.get("strategic_goal", ""), unit_data.get("control_point_attack_sequence", [])], "NETWORK")
+                else:
+                    GameConstants.debug_print("ServerGameState - NOT including goal data for unit %s (marked: %s, detected change: %s)" % [unit.unit_id, unit_needs_goal_update, has_goal_changes], "NETWORK")
                 
                 if unit.archetype == "sniper" and unit.current_state == GameEnums.UnitState.CHARGING_SHOT:
                     if "charge_timer" in unit and "charge_time" in unit:
@@ -260,11 +281,8 @@ func _gather_filtered_game_state_for_team(team_id: int) -> Dictionary:
                 })
 
     # Add visibility data for the client's renderer
-    state["visibility_data"] = {
-        "grid": visibility_manager.get_visibility_data_for_team(team_id),
-        "map_size": [visibility_manager.map_size.x, visibility_manager.map_size.y],
-        "cell_size": visibility_manager.cell_size,
-    }
+    state["visibility_grid"] = visibility_manager.get_visibility_grid_data(team_id)
+    state["visibility_grid_meta"] = visibility_manager.get_grid_metadata()
     
     # Add team AI coordination status to state
     if match_started_but_waiting_for_commands:
@@ -333,6 +351,8 @@ func _broadcast_game_state() -> void:
     if not root_node:
         return
         
+    GameConstants.debug_print("ServerGameState - Broadcasting game state update with %d units marked for goal updates: %s" % [units_with_goal_changes.size(), str(units_with_goal_changes)], "NETWORK")
+        
     # Assume one session for now
     var session_id = session_manager.sessions.keys()[0]
     var session = session_manager.get_session(session_id)
@@ -354,6 +374,8 @@ func _broadcast_game_state() -> void:
             root_node.rpc_id(peer_id, "_on_game_state_update", state)
     
     # Clear the goal changes list after broadcasting
+    if not units_with_goal_changes.is_empty():
+        GameConstants.debug_print("ServerGameState - Clearing goal changes list after broadcast (%d units had changes): %s" % [units_with_goal_changes.size(), str(units_with_goal_changes)], "NETWORK")
     units_with_goal_changes.clear()
 
 func _broadcast_ui_data() -> void:
@@ -388,7 +410,10 @@ func setup(logger_ref: Node, game_constants_ref, network_messages_ref) -> void:
     network_messages = network_messages_ref
     
     # Fog of War setup
-    visibility_manager = VisibilityManager.new(Vector2(120, 120), 4.0) # Map size, cell size
+    visibility_manager = VisibilityManager.new()
+    visibility_manager.name = "VisibilityManager"
+    add_child(visibility_manager)
+    visibility_manager.setup(Vector2(120, 120), 4.0) # Map size, cell size
     
     # Get system references from dependency container
     var dependency_container = get_node("/root/DependencyContainer")
@@ -477,10 +502,14 @@ func _on_ai_plan_processed(plans: Array, message: String, originating_peer_id: i
     # This ensures goals are visible on the host side without waiting for network loop-back
     var client_display_manager = get_node_or_null("/root/UnifiedMain/ClientDisplayManager")
     if client_display_manager:
-        # Host is typically on team 1, so gather state filtered for team 1
-        var current_state = _gather_filtered_game_state_for_team(1)
-        client_display_manager.update_state(current_state)
-        _log_info("ServerGameState", "Updated host client display manager with new goal data")
+        # Find the host's actual team ID instead of hardcoding team 1
+        var host_team_id = _get_host_team_id()
+        if host_team_id != -1:
+            var current_state = _gather_filtered_game_state_for_team(host_team_id)
+            client_display_manager.update_state(current_state)
+            _log_info("ServerGameState", "Updated host client display manager with new goal data for team %d" % host_team_id)
+        else:
+            _log_warning("ServerGameState", "Could not determine host team ID, skipping immediate host update")
     
     # Send AI command feedback only to the originating peer (not broadcast to all)
     var root_node = get_tree().get_root().get_node_or_null("UnifiedMain")
@@ -759,9 +788,9 @@ func spawn_unit(archetype: String, team_id: int, position: Vector3, owner_id: St
     
     _log_info("ServerGameState", "About to spawn unit with TeamUnitSpawner: %s" % team_unit_spawner.name)
     
-    print("DEBUG: ServerGameState - Calling team_unit_spawner.spawn_unit for %s" % archetype)
+    GameConstants.debug_print("ServerGameState - Calling team_unit_spawner.spawn_unit for %s" % archetype, "NETWORK")
     var unit = await team_unit_spawner.spawn_unit(team_id, position, archetype)
-    print("DEBUG: ServerGameState - team_unit_spawner.spawn_unit returned: %s" % unit)
+    GameConstants.debug_print("ServerGameState - team_unit_spawner.spawn_unit returned: %s" % unit, "NETWORK")
     
     if unit and is_instance_valid(unit):
         var unit_id = ""
@@ -773,7 +802,7 @@ func spawn_unit(archetype: String, team_id: int, position: Vector3, owner_id: St
             # Fallback ID generation using archetype and team
             unit_id = _generate_fallback_unit_id(archetype, team_id)
             
-        print("DEBUG: ServerGameState - Unit ID determined as: '%s'" % unit_id)
+        GameConstants.debug_print("ServerGameState - Unit ID determined as: '%s'" % unit_id, "NETWORK")
             
         if not unit_id.is_empty():
             units[unit_id] = unit
@@ -789,11 +818,11 @@ func spawn_unit(archetype: String, team_id: int, position: Vector3, owner_id: St
             
             unit_spawned.emit(unit_id)
             _log_info("ServerGameState", "Added unit %s (%s) to game state for team %d" % [unit_id, archetype, team_id])
-            print("DEBUG: ServerGameState - Successfully spawned and registered unit %s" % unit_id)
+            GameConstants.debug_print("ServerGameState - Successfully spawned and registered unit %s" % unit_id, "NETWORK")
             return unit_id
-    
+
     _log_error("ServerGameState", "Failed to spawn unit or unit initialization failed for archetype %s." % archetype)
-    print("DEBUG: ServerGameState - FAILED to spawn unit for archetype %s" % archetype)
+    GameConstants.debug_print("ServerGameState - FAILED to spawn unit for archetype %s" % archetype, "NETWORK")
     return ""
 
 func _on_unit_died(unit_id: String):
@@ -1012,15 +1041,19 @@ func _initialize_team_ai_coordination() -> void:
     
     _log_info("ServerGameState", "Initialized AI coordination for teams: %s" % str(active_teams.keys()))
     _log_info("ServerGameState", "All mobile units will wait until both teams receive their first AI commands (turrets excluded)")
+    GameConstants.debug_print("ServerGameState", "Synchronized start initialized - teams_awaiting_first_command: %s" % str(teams_awaiting_first_command))
+    GameConstants.debug_print("ServerGameState", "match_started_but_waiting_for_commands = true")
 
 func _check_team_ai_readiness(team_id: int) -> void:
     """Check if a team has received their first AI commands and handle synchronized release"""
     if not teams_awaiting_first_command.has(team_id):
+        GameConstants.debug_print("ServerGameState", "Team %d not tracked for synchronized start" % team_id)
         return  # Team not tracked or already processed
     
     # Mark this team as having received their first command
     teams_awaiting_first_command[team_id] = false
     _log_info("ServerGameState", "Team %d has received their first AI commands" % team_id)
+    GameConstants.debug_print("ServerGameState", "Team %d marked ready - teams_awaiting_first_command now: %s" % [team_id, str(teams_awaiting_first_command)])
     
     # Check if all teams have received their first commands
     var all_teams_ready = true
@@ -1029,12 +1062,16 @@ func _check_team_ai_readiness(team_id: int) -> void:
             all_teams_ready = false
             break
     
+    GameConstants.debug_print("ServerGameState", "All teams ready check: %s" % str(all_teams_ready))
+    
     if all_teams_ready and match_started_but_waiting_for_commands:
         _log_info("ServerGameState", "ALL TEAMS READY - Releasing units to begin coordinated match!")
+        GameConstants.debug_print("ServerGameState", "Calling _release_all_units_for_synchronized_start()")
         _release_all_units_for_synchronized_start()
 
 func _release_all_units_for_synchronized_start() -> void:
     """Release all mobile units from waiting state for synchronized match start"""
+    GameConstants.debug_print("ServerGameState", "_release_all_units_for_synchronized_start() called")
     match_started_but_waiting_for_commands = false
     var units_released = 0
     
@@ -1047,8 +1084,10 @@ func _release_all_units_for_synchronized_start() -> void:
                 unit.waiting_for_first_command = false
                 unit.has_received_first_command = true
                 units_released += 1
+                GameConstants.debug_print("ServerGameState", "Released unit %s (%s) from waiting state" % [unit.unit_id, unit.archetype])
     
     _log_info("ServerGameState", "Released %d mobile units for synchronized match start (turrets remain autonomous)" % units_released)
+    GameConstants.debug_print("ServerGameState", "Total units released: %d, match_started_but_waiting_for_commands = false" % units_released)
     
     # Broadcast immediate state update to show the coordination
     _broadcast_game_state()
@@ -1096,6 +1135,9 @@ func _check_and_cache_unit_goal_changes(unit_id: String, unit: Node) -> bool:
     var current_sequence = unit.control_point_attack_sequence if "control_point_attack_sequence" in unit else []
     var current_index = unit.current_attack_sequence_index if "current_attack_sequence_index" in unit else 0
     
+    # Check if this is the first time we're caching this unit's data
+    var is_first_time = not unit_goal_cache.has(unit_id)
+    
     var cached_data = unit_goal_cache.get(unit_id, {})
     var cached_goal = cached_data.get("strategic_goal", "")
     var cached_sequence = cached_data.get("control_sequence", [])
@@ -1106,7 +1148,13 @@ func _check_and_cache_unit_goal_changes(unit_id: String, unit: Node) -> bool:
                       not _arrays_equal(current_sequence, cached_sequence) or 
                       current_index != cached_index)
     
+    # Always treat first-time caching as a change (for initial goal setting)
+    if is_first_time and not current_goal.is_empty():
+        has_changes = true
+        GameConstants.debug_print("ServerGameState", "First-time goal caching for unit %s: goal='%s', sequence=%s" % [unit_id, current_goal, current_sequence])
+    
     if has_changes:
+        GameConstants.debug_print("ServerGameState", "Goal change detected for unit %s: goal '%s' -> '%s', sequence %s -> %s" % [unit_id, cached_goal, current_goal, cached_sequence, current_sequence])
         # Update cache
         unit_goal_cache[unit_id] = {
             "strategic_goal": current_goal,
@@ -1125,3 +1173,24 @@ func _arrays_equal(arr1: Array, arr2: Array) -> bool:
         if arr1[i] != arr2[i]:
             return false
     return true
+
+func _get_host_team_id() -> int:
+    """Determine the team ID of the host player"""
+    var session_manager = get_node("/root/DependencyContainer").get_node_or_null("SessionManager")
+    if not session_manager or session_manager.get_session_count() == 0:
+        _log_warning("ServerGameState", "No session manager or sessions available to determine host team ID")
+        return -1
+
+    var session_id = session_manager.sessions.keys()[0]
+    var session = session_manager.get_session(session_id)
+    var host_peer_id = multiplayer.get_unique_id()
+
+    # Find the host player by their peer ID
+    for player_id in session.players:
+        var player_data = session.players[player_id]
+        if player_data.peer_id == host_peer_id:
+            _log_info("ServerGameState", "Found host player %s (peer %d) on team %d" % [player_id, host_peer_id, player_data.team_id])
+            return player_data.team_id
+
+    _log_warning("ServerGameState", "Could not find host player (peer_id %d) in session" % host_peer_id)
+    return -1

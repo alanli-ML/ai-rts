@@ -46,15 +46,18 @@ func execute_plan(plan_data: Dictionary) -> bool:
 
     if unit.has_method("set_behavior_plan"):
         # Update unit's strategic goal first
+        GameConstants.debug_print("PlanExecutor - Setting strategic goal for unit %s: '%s' (was: '%s')" % [unit.unit_id, goal, unit.strategic_goal], "AI")
         unit.strategic_goal = goal
         
         # Mark this unit for goal update broadcast to clients
         var game_state = get_node_or_null("/root/DependencyContainer/GameState")
         if game_state and game_state.has_method("mark_unit_goal_changed"):
             game_state.mark_unit_goal_changed(unit.unit_id)
+            GameConstants.debug_print("PlanExecutor - Marked unit %s for goal update broadcast" % unit.unit_id, "AI")
         
         # Set the tuned matrix on the unit (this will also refresh the status bar)
         unit.set_behavior_plan(tuned_matrix, attack_sequence)
+        GameConstants.debug_print("PlanExecutor - Completed behavior plan setup for unit %s" % unit.unit_id, "AI")
         
         # 4. Broadcast the static plan data to all clients via a reliable RPC.
         var unified_main = get_node_or_null("/root/UnifiedMain")

@@ -18,23 +18,31 @@ var box_start_position: Vector2 = Vector2.ZERO
 var box_end_position: Vector2 = Vector2.ZERO
 
 func _ready():
-    print("EnhancedSelectionSystem: Initializing selection system...")
+    GameConstants.debug_print("EnhancedSelectionSystem: Initializing selection system...", "SELECTION")
+    
+    # Add to selection_systems group so GameHUD can find us
+    add_to_group("selection_systems")
     
     # Configure Control node to receive mouse events properly
     # Set mouse filter to STOP to ensure we receive events but don't pass them through
     mouse_filter = Control.MOUSE_FILTER_STOP
-    set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)  # Cover full screen
     
-    # Ensure we can receive focus and input events
-    focus_mode = Control.FOCUS_ALL
+    # Set size to fill the screen to capture all mouse events
+    set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     
-    # Add to group for discovery
-    add_to_group("selection_systems")
+    # Ensure this node is positioned correctly in the scene tree
+    # Move to front if it's not already, so mouse events reach us first
+    move_to_front()
     
-    # Defer camera finding until the scene is fully set up
+    # Get viewport size for box selection
+    var viewport = get_viewport()
+    if viewport:
+        size = viewport.get_visible_rect().size
+    
+    GameConstants.debug_print("EnhancedSelectionSystem: Setup complete, mouse_filter=%d, waiting for camera..." % mouse_filter, "SELECTION")
+    
+    # Find camera after a frame delay
     call_deferred("_find_camera")
-    
-    print("EnhancedSelectionSystem: Setup complete, mouse_filter=%d, waiting for camera..." % mouse_filter)
 
 func _find_camera():
     # Wait a frame to ensure all nodes are ready
@@ -301,7 +309,7 @@ func _get_units_in_box() -> Array[Unit]:
 
 func _handle_right_click(screen_pos: Vector2):
     if selected_units.is_empty(): 
-        print("EnhancedSelectionSystem: Right-click ignored - no units selected")
+        GameConstants.debug_print("EnhancedSelectionSystem: Right-click ignored - no units selected", "SELECTION")
         return
 
     var unit_ids = []
@@ -318,7 +326,7 @@ func _handle_right_click(screen_pos: Vector2):
             "target_id": target_unit.unit_id,
             "units": unit_ids
         }
-        print("EnhancedSelectionSystem: Generated attack command data: %s" % str(command_data))
+        GameConstants.debug_print("EnhancedSelectionSystem: Generated attack command for %d units to target %s (%s)" % [unit_ids.size(), target_unit.unit_id, target_unit.archetype], "SELECTION")
     else:
         # Move command
         var world_pos = _screen_to_world_ground_pos(screen_pos)
@@ -328,12 +336,12 @@ func _handle_right_click(screen_pos: Vector2):
                 "position": world_pos,
                 "units": unit_ids
             }
-            print("EnhancedSelectionSystem: Generated move command data: %s" % str(command_data))
+            GameConstants.debug_print("EnhancedSelectionSystem: Generated move command for %d units to position %s" % [unit_ids.size(), world_pos], "SELECTION")
         else:
-            print("EnhancedSelectionSystem: Failed to calculate world position from screen pos: %s" % screen_pos)
+            GameConstants.debug_print("EnhancedSelectionSystem: Failed to calculate world position from screen pos: %s" % screen_pos, "SELECTION")
 
     if not command_data.is_empty():
-        print("EnhancedSelectionSystem: Sending DIRECT command for %d units" % unit_ids.size())
+        GameConstants.debug_print("EnhancedSelectionSystem: Sending DIRECT command for %d units: %s" % [unit_ids.size(), command_data.action], "SELECTION")
         
         # Find the correct scene root that has the submit_direct_command_rpc method
         var scene_root = get_tree().current_scene
@@ -351,15 +359,15 @@ func _handle_right_click(screen_pos: Vector2):
             var command_sent = false
             for root in possible_roots:
                 if root and root.has_method("submit_direct_command_rpc"):
-                    print("EnhancedSelectionSystem: Found command handler at: %s" % root.get_path())
+                    GameConstants.debug_print("EnhancedSelectionSystem: Found command handler at: %s" % root.get_path(), "SELECTION")
                     root.rpc("submit_direct_command_rpc", command_data)
                     command_sent = true
                     break
             
             if not command_sent:
-                print("EnhancedSelectionSystem: ERROR - Could not find submit_direct_command_rpc method in scene")
+                GameConstants.debug_print("EnhancedSelectionSystem: ERROR - Could not find submit_direct_command_rpc method in scene", "SELECTION")
     else:
-        print("EnhancedSelectionSystem: No command generated for right-click at %s" % screen_pos)
+        GameConstants.debug_print("EnhancedSelectionSystem: No command generated for right-click at %s" % screen_pos, "SELECTION")
 
 func _screen_to_world_ground_pos(screen_pos: Vector2) -> Variant:
     var from = camera.project_ray_origin(screen_pos)

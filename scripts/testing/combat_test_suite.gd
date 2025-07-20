@@ -71,6 +71,14 @@ func execute_command(command: String):
             _test_follow_turret_exclusion()
         "/test_scout_stealth":
             _test_scout_stealth()
+        "/test_fog_debug":
+            _test_fog_debug()
+        "/test_fog_trace":
+            _test_fog_trace()
+        "/test_fog_visibility":
+            _test_fog_visibility()
+        "/test_fog_movement":
+            _test_fog_movement()
         "/test_help":
             _show_help()
         _:
@@ -95,6 +103,10 @@ func _show_help():
     [color=cyan]/test_engineer_turrets[/color] - Tests engineer construct_turret method and limits.
     [color=cyan]/test_follow_turret_exclusion[/color] - Tests that units don't follow turrets in follow state.
     [color=cyan]/test_scout_stealth[/color] - Tests scout stealth mechanics (activation, duration, visual effects, interruption, enemy detection).
+    [color=yellow]/test_fog_debug[/color] - Debug fog of war system and show current status.
+    [color=yellow]/test_fog_trace[/color] - Comprehensive fog data flow tracing.
+    [color=yellow]/test_fog_visibility[/color] - Test fog of war visibility updates with unit movement.
+    [color=yellow]/test_fog_movement[/color] - Spawn units and move them to test fog updates.
     [color=cyan]/test_help[/color] - Shows this help message.
     """
     logger.info("CombatTestSuite", "Displaying help.")
@@ -1072,6 +1084,212 @@ func _test_team_fight():
     
     ai_command_processor.process_command("Attack the enemy team", team1_ids, -1)
     ai_command_processor.process_command("Attack the enemy team", team2_ids, -1)
+
+func _test_fog_debug():
+    logger.info("CombatTestSuite", "Starting fog of war debug test.")
+    
+    # Find the fog of war manager
+    var fog_manager = get_tree().get_root().find_child("FogOfWarManager", true, false)
+    
+    var debug_info = ""
+    if fog_manager:
+        if fog_manager.has_method("get_debug_info"):
+            var info = fog_manager.get_debug_info()
+            debug_info = """
+[b]Fog of War Debug Info:[/b]
+• Update Count: %d
+• Last Update: %.2f seconds ago
+• Has Camera: %s
+• Has Visibility Texture: %s
+• Fog Plane Visible: %s
+• Fog Plane Position: %s
+• Visibility Image Size: %s
+""" % [
+    info.update_count,
+    (Time.get_ticks_msec() / 1000.0) - info.last_update_time,
+    str(info.has_camera),
+    str(info.has_visibility_texture),
+    str(info.fog_plane_visible),
+    str(info.fog_plane_position),
+    str(info.visibility_image_size)
+]
+        else:
+            debug_info = "[color=red]Error: FogOfWarManager missing debug methods[/color]"
+        
+        # Also test visibility manager on server
+        if game_state and game_state.visibility_manager:
+            var vm = game_state.visibility_manager
+            var grid_meta = vm.get_grid_metadata()
+            debug_info += """
+
+[b]Server Visibility Manager:[/b]
+• Grid Size: %dx%d
+• Cell Size: %.1f
+• Map Origin: %s
+• Team 1 Grid Size: %d bytes
+• Team 2 Grid Size: %d bytes
+""" % [
+    grid_meta.width,
+    grid_meta.height,
+    grid_meta.cell_size,
+    str(grid_meta.origin),
+    vm.get_visibility_grid_data(1).size(),
+    vm.get_visibility_grid_data(2).size()
+]
+        else:
+            debug_info += "\n[color=red]Server visibility manager not available[/color]"
+    else:
+        debug_info = "[color=red]Error: FogOfWarManager not found![/color]"
+    
+    var root_node = get_tree().get_root().get_node_or_null("UnifiedMain")
+    if root_node:
+        root_node.rpc("_on_ai_command_feedback_rpc", debug_info, "[color=yellow]Fog Debug[/color]")
+
+func _test_fog_trace():
+    logger.info("CombatTestSuite", "Starting comprehensive fog of war data flow trace.")
+    
+    var debug_info = "[b]Fog of War Data Flow Trace:[/b]\n\n"
+    
+    # 1. Check server-side visibility manager
+    if game_state and game_state.visibility_manager:
+        var vm = game_state.visibility_manager
+        var grid_meta = vm.get_grid_metadata()
+        var team1_grid = vm.get_visibility_grid_data(1)
+        var team2_grid = vm.get_visibility_grid_data(2)
+        
+        var team1_visible = 0
+        var team2_visible = 0
+        for i in range(team1_grid.size()):
+            if team1_grid[i] == 255: team1_visible += 1
+        for i in range(team2_grid.size()):
+            if team2_grid[i] == 255: team2_visible += 1
+        
+        debug_info += """[color=green]✓ Server Visibility Manager:[/color]
+• Grid: %dx%d (cell size: %.1f)
+• Origin: %s
+• Team 1: %d/%d visible cells
+• Team 2: %d/%d visible cells
+• Units being tracked: %d
+
+""" % [grid_meta.width, grid_meta.height, grid_meta.cell_size, str(grid_meta.origin), team1_visible, team1_grid.size(), team2_visible, team2_grid.size(), game_state.units.size()]
+    else:
+        debug_info += "[color=red]✗ Server Visibility Manager: NOT FOUND[/color]\n\n"
+    
+    # 2. Check if units exist and have positions
+    if game_state and not game_state.units.is_empty():
+        debug_info += "[color=green]✓ Server Units:[/color]\n"
+        var count = 0
+        for unit_id in game_state.units:
+            var unit = game_state.units[unit_id]
+            if is_instance_valid(unit) and not unit.is_dead:
+                debug_info += "• %s (Team %d) at %s\n" % [unit_id, unit.team_id, str(unit.global_position)]
+                count += 1
+                if count >= 5: break  # Limit output
+        debug_info += "\n"
+    else:
+        debug_info += "[color=red]✗ Server Units: NONE FOUND[/color]\n\n"
+    
+    # 3. Check client display manager
+    var client_display_manager = get_tree().get_root().find_child("ClientDisplayManager", true, false)
+    if client_display_manager:
+        debug_info += "[color=green]✓ Client Display Manager: Found[/color]\n"
+        if client_display_manager.latest_state.has("visibility_grid"):
+            var grid_data = client_display_manager.latest_state.visibility_grid
+            var visible_count = 0
+            if grid_data:
+                for i in range(grid_data.size()):
+                    if grid_data[i] == 255: visible_count += 1
+            debug_info += "• Last received visibility data: %d visible cells\n" % visible_count
+        else:
+            debug_info += "[color=red]• No visibility data in latest state[/color]\n"
+        debug_info += "\n"
+    else:
+        debug_info += "[color=red]✗ Client Display Manager: NOT FOUND[/color]\n\n"
+    
+    # 4. Check fog manager
+    var fog_manager = get_tree().get_root().find_child("FogOfWarManager", true, false)
+    if fog_manager:
+        debug_info += "[color=green]✓ Fog Manager: Found[/color]\n"
+        if fog_manager.has_method("get_debug_info"):
+            var info = fog_manager.get_debug_info()
+            debug_info += "• Updates received: %d\n" % info.update_count
+            debug_info += "• Has visibility texture: %s\n" % str(info.has_visibility_texture)
+            debug_info += "• Fog plane visible: %s\n" % str(info.fog_plane_visible)
+        debug_info += "\n"
+    else:
+        debug_info += "[color=red]✗ Fog Manager: NOT FOUND[/color]\n\n"
+    
+    # 5. Check match state
+    if game_state:
+        debug_info += "[color=green]✓ Match State: %s[/color]\n" % game_state.match_state
+    else:
+        debug_info += "[color=red]✗ Game State: NOT FOUND[/color]\n"
+    
+    var root_node = get_tree().get_root().get_node_or_null("UnifiedMain")
+    if root_node:
+        root_node.rpc("_on_ai_command_feedback_rpc", debug_info, "[color=yellow]Fog Trace[/color]")
+
+func _test_fog_visibility():
+    logger.info("CombatTestSuite", "Testing fog of war visibility updates.")
+    
+    # Spawn a unit from each team to test visibility
+    var team1_unit = await _spawn_unit_for_test("scout", 1, Vector3(-30, 1, 0))
+    var team2_unit = await _spawn_unit_for_test("scout", 2, Vector3(30, 1, 0))
+    
+    if not is_instance_valid(team1_unit) or not is_instance_valid(team2_unit):
+        logger.error("CombatTestSuite", "Failed to spawn units for fog visibility test.")
+        return
+    
+    var root_node = get_tree().get_root().get_node_or_null("UnifiedMain")
+    if root_node:
+        var info = """
+[b]Fog Visibility Test Started:[/b]
+• Team 1 Scout: %s at %s
+• Team 2 Scout: %s at %s
+
+Watch the fog plane - you should see:
+1. Dark fog covering most of the map
+2. Visible areas around each unit
+3. Fog updating as units move
+
+Use WASD to move camera and observe fog changes.
+""" % [team1_unit.unit_id, str(team1_unit.global_position), team2_unit.unit_id, str(team2_unit.global_position)]
+        
+        root_node.rpc("_on_ai_command_feedback_rpc", info, "[color=yellow]Fog Visibility Test[/color]")
+
+func _test_fog_movement():
+    logger.info("CombatTestSuite", "Testing fog of war with unit movement.")
+    
+    # Spawn units and give them movement commands
+    var scout = await _spawn_unit_for_test("scout", 1, Vector3(-40, 1, 0))
+    
+    if not is_instance_valid(scout):
+        logger.error("CombatTestSuite", "Failed to spawn scout for fog movement test.")
+        return
+    
+    # Move the scout in a pattern to test fog updates
+    ai_command_processor.process_command("Move to the center of the map", [scout.unit_id], -1)
+    
+    await get_tree().create_timer(3.0).timeout
+    
+    ai_command_processor.process_command("Move to the east side", [scout.unit_id], -1)
+    
+    await get_tree().create_timer(3.0).timeout
+    
+    ai_command_processor.process_command("Move back to the west side", [scout.unit_id], -1)
+    
+    var root_node = get_tree().get_root().get_node_or_null("UnifiedMain")
+    if root_node:
+        var info = """
+[b]Fog Movement Test Started:[/b]
+• Scout %s will move in a pattern
+• Watch how the fog reveals areas as the unit moves
+• Previously visited areas should become fogged again
+
+The fog should follow the unit's movement and update in real-time.
+""" % scout.unit_id
+        
+        root_node.rpc("_on_ai_command_feedback_rpc", info, "[color=yellow]Fog Movement Test[/color]")
 
 # --- Helper Functions ---
 

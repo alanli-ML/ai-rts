@@ -1010,14 +1010,19 @@ func set_behavior_plan(matrix: Dictionary, sequence: Array):
 	# Mark that this unit has received its first AI command
 	has_received_first_command = true
 	
-	# Check if the game is using synchronized start coordination
+	# CRITICAL FIX: Do NOT enable movement here during synchronized start
+	# Units should only be released by the server's _release_all_units_for_synchronized_start()
 	var game_state = get_node_or_null("/root/DependencyContainer/GameState")
 	if game_state and "match_started_but_waiting_for_commands" in game_state:
 		if game_state.match_started_but_waiting_for_commands:
-			# Still in synchronized start mode, enable movement when ready
+			# Still in synchronized start mode - DO NOT release this unit yet
+			# waiting_for_first_command stays true until server releases all units
+			print("Unit %s received behavior plan but staying in sync mode until all teams ready" % unit_id)
+		else:
+			# Synchronized start is complete, enable movement immediately
 			waiting_for_first_command = false
 	else:
-		# Normal mode, enable movement immediately
+		# Normal mode (no synchronized start), enable movement immediately
 		waiting_for_first_command = false
 	
 	# Mark this unit for goal update broadcast to clients (control point sequences changed)
@@ -1203,10 +1208,29 @@ func _execute_attack_state():
 	var game_state = get_node("/root/DependencyContainer").get_game_state()
 	if not game_state: return
 
-	# 1. Target Acquisition (in vision range)
-	var enemies_in_vision = game_state.get_units_in_radius(global_position, vision_range, team_id)
-	var current_target = _get_closest_valid_enemy(enemies_in_vision)
-	target_unit = current_target # Update the unit's main target
+	# CRITICAL: Respect player override targets - don't override with AI targets
+	var current_target = null
+	
+	if player_override_active and player_override_action == "attack":
+		# Player has specified a target - use it if still valid
+		if is_instance_valid(target_unit) and target_unit.can_be_targeted():
+			current_target = target_unit
+			GameConstants.debug_print("Unit %s using player-specified target: %s" % [unit_id, target_unit.unit_id], "UNITS")
+		else:
+			# Player target is no longer valid - clear override and fall back to AI
+			GameConstants.debug_print("Unit %s player target invalid, clearing override" % unit_id, "UNITS")
+			clear_player_override()
+			current_target = null
+	
+	# Only use AI target selection if no valid player override target exists
+	if not is_instance_valid(current_target):
+		# 1. AI Target Acquisition (in vision range)
+		var enemies_in_vision = game_state.get_units_in_radius(global_position, vision_range, team_id)
+		current_target = _get_closest_valid_enemy(enemies_in_vision)
+		target_unit = current_target # Update the unit's main target for AI behavior
+		
+		if is_instance_valid(current_target):
+			GameConstants.debug_print("Unit %s using AI-selected target: %s" % [unit_id, current_target.unit_id], "UNITS")
 
 	if not is_instance_valid(current_target):
 		# 2. No enemies in vision: Move to objective
@@ -2112,7 +2136,7 @@ func _execute_player_attack(target_id: String) -> void:
 	"""Execute player-commanded attack"""
 	var game_state = get_node("/root/DependencyContainer").get_game_state()
 	if not game_state:
-		print("WARNING: Unit %s cannot execute player attack - no game state" % unit_id)
+		GameConstants.debug_print("Unit %s cannot execute player attack - no game state" % unit_id, "UNITS")
 		player_override_active = false
 		return
 	
@@ -2125,15 +2149,27 @@ func _execute_player_attack(target_id: String) -> void:
 		# Set attack target
 		target_unit = target
 		current_state = GameEnums.UnitState.ATTACKING
-		print("DEBUG: Unit %s player attack target set to %s" % [unit_id, target_id])
+		
+		# Update strategic goal to show player command
+		strategic_goal = "Attacking %s (player command)" % target.archetype.capitalize()
+		
+		# Mark this unit for goal update broadcast to clients
+		var server_game_state = get_node_or_null("/root/DependencyContainer/GameState")
+		if server_game_state and server_game_state.has_method("mark_unit_goal_changed"):
+			server_game_state.mark_unit_goal_changed(unit_id)
+		
+		# Refresh status bar to show new goal
+		refresh_status_bar()
+		
+		GameConstants.debug_print("Unit %s player attack target set to %s (%s)" % [unit_id, target_id, target.archetype], "UNITS")
 	else:
-		print("WARNING: Unit %s cannot attack invalid or untargetable target %s" % [unit_id, target_id])
+		GameConstants.debug_print("Unit %s cannot attack invalid or untargetable target %s" % [unit_id, target_id], "UNITS")
 		player_override_active = false
 
 func clear_player_override() -> void:
 	"""Clear player override and return to AI control"""
 	if player_override_active:
-		print("DEBUG: Unit %s clearing player override, returning to AI control" % unit_id)
+		GameConstants.debug_print("Unit %s clearing player override, returning to AI control" % unit_id, "UNITS")
 		player_override_active = false
 		player_override_action = ""
 		player_override_target = Vector3.ZERO
@@ -2141,6 +2177,14 @@ func clear_player_override() -> void:
 		
 		# Update strategic goal to reflect return to AI
 		strategic_goal = "Acting autonomously after completing player command"
+		
+		# Mark this unit for goal update broadcast to clients
+		var server_game_state = get_node_or_null("/root/DependencyContainer/GameState")
+		if server_game_state and server_game_state.has_method("mark_unit_goal_changed"):
+			server_game_state.mark_unit_goal_changed(unit_id)
+		
+		# Refresh status bar to show updated goal
+		refresh_status_bar()
 		
 		# Immediately re-evaluate AI behavior
 		_evaluate_reactive_behavior()

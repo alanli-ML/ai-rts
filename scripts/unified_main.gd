@@ -19,6 +19,7 @@ var map_instance: Node
 var client_display_manager: Node
 var combat_test_suite: Node
 var client_team_id: int = -1
+var fog_of_war_manager: Node
 
 func _ready() -> void:
     print("UnifiedMain starting...")
@@ -209,6 +210,28 @@ func _on_match_start_requested() -> void:
         var hud_scene = load(GAME_HUD_SCENE)
         hud_instance = hud_scene.instantiate()
         add_child(hud_instance)
+
+    # Instance and add Fog of War for clients
+    if not multiplayer.is_server() or DisplayServer.get_name() != "headless":
+        # Check if fog manager already exists to avoid duplicates
+        var existing_fog = get_tree().get_root().find_child("FogOfWarManager", true, false)
+        if not existing_fog:
+            var fog_scene = load("res://scenes/fx/FogOfWar.tscn")
+            fog_of_war_manager = fog_scene.instantiate()
+            fog_of_war_manager.name = "FogOfWarManager"
+            
+            # Add to group for easy discovery
+            fog_of_war_manager.add_to_group("fog_managers")
+            
+            add_child(fog_of_war_manager)
+            
+            # Wait a frame to ensure it's properly initialized
+            await get_tree().process_frame
+            
+            logger.info("UnifiedMain", "Fog of War manager instantiated for client at path: %s" % fog_of_war_manager.get_path())
+        else:
+            fog_of_war_manager = existing_fog
+            logger.info("UnifiedMain", "Found existing Fog of War manager: %s" % existing_fog.get_path())
 
     # CRITICAL: Position camera based on player's team after map is loaded
     # Wait a frame to ensure all map components are fully initialized

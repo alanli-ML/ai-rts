@@ -11,6 +11,7 @@ var displayed_control_points: Dictionary = {} # cp_id -> { "node": ControlPoint,
 var units_node: Node
 var mines_node: Node
 var latest_state: Dictionary
+var fog_of_war_manager: Node
 
 func _ready() -> void:
 	# The units_node reference will be set by UnifiedMain after the map is loaded.
@@ -40,6 +41,31 @@ func setup_map_references(map_node: Node) -> void:
 		print("ClientDisplayManager: Found and mapped %d control points." % displayed_control_points.size())
 	else:
 		print("ClientDisplayManager: ERROR - Could not find 'CaptureNodes' container.")
+
+	# Use a more robust method to find fog manager with retries
+	_find_fog_manager()
+
+func _find_fog_manager() -> void:
+	"""Find the fog of war manager with multiple search strategies"""
+	# Strategy 1: Direct find by name
+	fog_of_war_manager = get_tree().get_root().find_child("FogOfWarManager", true, false)
+	
+	if not fog_of_war_manager:
+		# Strategy 2: Search in UnifiedMain
+		var unified_main = get_tree().get_root().find_child("UnifiedMain", true, false)
+		if unified_main:
+			fog_of_war_manager = unified_main.find_child("FogOfWarManager", true, false)
+	
+	if not fog_of_war_manager:
+		# Strategy 3: Search by class type
+		var all_nodes = get_tree().get_nodes_in_group("fog_managers")
+		if all_nodes.size() > 0:
+			fog_of_war_manager = all_nodes[0]
+	
+	if fog_of_war_manager:
+		print("ClientDisplayManager: Found FogOfWarManager: %s" % fog_of_war_manager.get_path())
+	else:
+		print("ClientDisplayManager: Warning - Could not find FogOfWarManager yet, will retry")
 
 func _physics_process(delta: float) -> void:
 	# On the host/server, only update plan data for UI, not visual rendering
@@ -110,30 +136,102 @@ func _physics_process(delta: float) -> void:
 func update_state(state: Dictionary) -> void:
 	# Always store latest state, even on server for UI plan data
 	latest_state = state
+	
+	# Pass visibility data to the fog of war manager
+	if state.has("visibility_grid"):
+		# Retry finding fog manager if we don't have one
+		if not is_instance_valid(fog_of_war_manager):
+			_find_fog_manager()
+		
+		if is_instance_valid(fog_of_war_manager):
+			var grid_data = state.visibility_grid
+			var grid_meta = state.visibility_grid_meta
+			
+			# Debug: Log visibility data reception
+			if grid_data and grid_meta:
+				var visible_count = 0
+				for i in range(grid_data.size()):
+					if grid_data[i] == 255:
+						visible_count += 1
+				print("ClientDisplayManager: Received visibility data - %d visible cells out of %d total" % [visible_count, grid_data.size()])
+			else:
+				print("ClientDisplayManager: Warning - visibility data is missing or invalid")
+			
+			if fog_of_war_manager.has_method("update_visibility_grid"):
+				fog_of_war_manager.update_visibility_grid(grid_data, grid_meta)
+				print("ClientDisplayManager: Passed visibility data to fog manager")
+			else:
+				print("ClientDisplayManager: Error - fog manager missing update_visibility_grid method")
+		else:
+			print("ClientDisplayManager: Warning - fog manager still not found, visibility data will be skipped this frame")
+	else:
+		print("ClientDisplayManager: No visibility data in state update")
 
 func _update_host_plan_data() -> void:
 	"""Update plan data on host units for UI display without visual rendering"""
 	if not latest_state or not latest_state.has("units"):
 		return
 	
-	# Get the server game state to access actual unit instances
-	var server_game_state = get_node_or_null("/root/DependencyContainer/GameState")
-	if not server_game_state:
-		return
-	
-	# Update plan data on server unit instances for UI access
+	# IMPORTANT: Only update units that are in the filtered state data
+	# This ensures the host only sees units they should be able to see
 	for unit_data in latest_state.units:
 		var unit_id = unit_data.id
-		if server_game_state.units.has(unit_id):
-			var unit_instance = server_game_state.units[unit_id]
+		
+		# Update the displayed_units dictionary for consistency with client behavior
+		if not displayed_units.has(unit_id):
+			# Create a lightweight unit reference for UI purposes
+			var unit_placeholder = Node.new()
+			unit_placeholder.name = "HostUnit_%s" % unit_id
+			unit_placeholder.set("unit_id", unit_id)
+			unit_placeholder.set("team_id", unit_data.team_id)
+			unit_placeholder.set("archetype", unit_data.archetype)
+			unit_placeholder.set("current_health", unit_data.get("current_health", 100))
+			unit_placeholder.set("max_health", unit_data.get("max_health", 100))
+			unit_placeholder.set("is_dead", unit_data.get("is_dead", false))
+			unit_placeholder.set("global_position", Vector3(
+				unit_data.position.x, 
+				unit_data.position.y, 
+				unit_data.position.z
+			))
+			displayed_units[unit_id] = unit_placeholder
+		
+		var unit_instance = displayed_units[unit_id]
+		if is_instance_valid(unit_instance):
+			# Update plan data that the UI needs from the filtered data
+			if unit_data.has("strategic_goal"):
+				unit_instance.set("strategic_goal", unit_data.strategic_goal)
+			if unit_data.has("plan_summary"):
+				unit_instance.set("plan_summary", unit_data.plan_summary)
+			if unit_data.has("control_point_attack_sequence"):
+				unit_instance.set("control_point_attack_sequence", unit_data.control_point_attack_sequence)
+			if unit_data.has("current_attack_sequence_index"):
+				unit_instance.set("current_attack_sequence_index", unit_data.current_attack_sequence_index)
+			
+			# Update health and other basic properties
+			if unit_data.has("current_health"):
+				unit_instance.set("current_health", unit_data.current_health)
+			if unit_data.has("is_dead"):
+				unit_instance.set("is_dead", unit_data.is_dead)
+			if unit_data.has("position"):
+				unit_instance.set("global_position", Vector3(
+					unit_data.position.x, 
+					unit_data.position.y, 
+					unit_data.position.z
+				))
+	
+	# Remove units that are no longer in the filtered state (they moved out of vision)
+	var current_unit_ids = []
+	for unit_data in latest_state.units:
+		current_unit_ids.append(unit_data.id)
+	
+	var displayed_unit_ids = displayed_units.keys()
+	for unit_id in displayed_unit_ids:
+		if unit_id not in current_unit_ids:
+			var unit_instance = displayed_units[unit_id]
+			displayed_units.erase(unit_id)
 			if is_instance_valid(unit_instance):
-				# Update plan data that the UI needs
-				if unit_data.has("full_plan"):
-					unit_instance.full_plan = unit_data.full_plan
-				if unit_data.has("strategic_goal"):
-					unit_instance.strategic_goal = unit_data.strategic_goal
-				if unit_data.has("plan_summary"):
-					unit_instance.plan_summary = unit_data.plan_summary
+				unit_instance.queue_free()
+			print("ClientDisplayManager: Host removed unit %s (no longer visible)" % unit_id)
 
 func _create_unit(unit_data: Dictionary) -> void:
 	var unit_id = unit_data.id

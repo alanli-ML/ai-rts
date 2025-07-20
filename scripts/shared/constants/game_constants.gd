@@ -1,10 +1,10 @@
 # GameConstants.gd - Shared constants (not an autoload)
 
-# Debug configuration
+# Debug configuration - All disabled by default for performance
 const DEBUG_ENABLED: bool = false
 const DEBUG_UNITS: bool = false
 const DEBUG_ANIMATIONS: bool = false
-const DEBUG_SELECTION: bool = false
+const DEBUG_SELECTION: bool = false  # Right-click target selection, unit selection
 const DEBUG_WEAPONS: bool = false
 const DEBUG_NAVIGATION: bool = false
 const DEBUG_AI: bool = false
@@ -128,10 +128,10 @@ const UNIT_CONFIGS: Dictionary = {
         "build_time": 10.0
     },
     "turret": {
-        "health": 150,
+        "health": 175,
         "speed": 0.0,
         "damage": 15,
-        "range": 15.0,
+        "range": 18.0,
         "vision": 15.0,
         "cost": 100,
         "build_time": 5.0

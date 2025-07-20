@@ -184,49 +184,69 @@ func _process(delta: float) -> void:
     # Smooth zoom
     if abs(current_zoom - target_zoom) > 0.1:
         current_zoom = lerp(current_zoom, target_zoom, zoom_smoothing * delta)
-        _update_camera_position()  # Don't force center look during zoom changes
+        _update_zoom_distance()  # Use dedicated zoom function instead
+
+func _update_zoom_distance() -> void:
+    """Update camera distance along current direction without changing angles or focus"""
+    if not camera_3d:
+        return
+    
+    # Store the camera's current world position before any changes
+    var current_camera_world_pos = camera_3d.global_position
+    var current_look_direction = -camera_3d.global_transform.basis.z
+    
+    # Calculate where the camera is currently looking at the ground
+    var ground_focus_point = _get_ground_intersection(current_camera_world_pos, current_look_direction)
+    
+    # Fallback: if no ground intersection, project current look direction to ground
+    if ground_focus_point == Vector3.INF:
+        # Project the camera's look direction forward to find a ground point
+        var forward_distance = 20.0
+        ground_focus_point = current_camera_world_pos + current_look_direction * forward_distance
+        ground_focus_point.y = 0  # Project to ground plane
+    
+    # Calculate the direction from focus point to camera NODE (not camera_3d)
+    # This preserves the current viewing direction
+    var focus_to_camera_node = global_position - ground_focus_point
+    focus_to_camera_node.y = 0  # Only horizontal component
+    
+    # If we don't have a clear direction (camera directly above), derive from camera look direction
+    if focus_to_camera_node.length() < 0.1:
+        # Use the camera's current look direction to determine node offset direction
+        var horizontal_look = current_look_direction
+        horizontal_look.y = 0
+        horizontal_look = horizontal_look.normalized()
+        # Camera node should be opposite to look direction
+        focus_to_camera_node = -horizontal_look * current_zoom * 0.8
+    else:
+        # Scale the existing direction to match new zoom distance
+        focus_to_camera_node = focus_to_camera_node.normalized() * current_zoom * 0.8
+    
+    # Apply the new camera node position
+    global_position = ground_focus_point + focus_to_camera_node
+    global_position.y = current_zoom * 0.6  # Set height based on zoom level
+    
+    # Update camera local position to maintain tactical angle
+    var angle = deg_to_rad(-55)
+    camera_3d.position = Vector3(
+        0,
+        current_zoom * sin(-angle),
+        current_zoom * cos(-angle)
+    )
+    
+    # Ensure camera still looks at the same focus point
+    camera_3d.look_at(ground_focus_point, Vector3.UP)
 
 func _update_camera_position() -> void:
     if camera_3d:
-        # Simple approach: maintain current look direction and adjust distance
-        var current_look_direction = -camera_3d.global_transform.basis.z
-        
-        # Find where we're currently looking on the ground
-        var camera_world_pos = camera_3d.global_position
-        var ground_focus_point = _get_ground_intersection(camera_world_pos, current_look_direction)
-        
-        # Fallback if no ground intersection
-        if ground_focus_point == Vector3.INF:
-            # Use current camera XZ position projected to ground as focus
-            ground_focus_point = Vector3(camera_world_pos.x, 0, camera_world_pos.z)
-        
-        # Calculate where camera node should be to achieve desired zoom distance
-        var horizontal_distance = current_zoom * 0.8
-        var height = current_zoom * 0.6
-        
-        # Get direction from focus point to current camera position (horizontal only)
-        var current_direction = global_position - ground_focus_point
-        current_direction.y = 0
-        current_direction = current_direction.normalized()
-        
-        # If no clear direction (camera directly above focus), use a default
-        if current_direction.length() < 0.1:
-            current_direction = Vector3(0, 0, 1)  # Default backward direction
-        
-        # Position camera node at zoom distance from focus point
-        global_position = ground_focus_point + current_direction * horizontal_distance
-        global_position.y = height
-        
-        # Update camera local position for tactical angle
+        # Only update camera local position and angle - used for initial setup and orbiting
         var angle = deg_to_rad(-55)
         camera_3d.position = Vector3(
             0,
             current_zoom * sin(-angle),
             current_zoom * cos(-angle)
         )
-        
-        # Maintain look at focus point
-        camera_3d.look_at(ground_focus_point, Vector3.UP)
+        # Don't change camera look direction or node position - let other systems handle that
 
 func _update_camera_position_with_center_look() -> void:
     """Update camera position and force it to look at center - used for initial positioning only"""
@@ -307,17 +327,32 @@ func position_for_team_base(team_id: int, instant: bool = true) -> void:
         camera_position.x = clamp(camera_position.x, min_x, max_x)
         camera_position.z = clamp(camera_position.z, min_z, max_z)
     
-    # Position the camera
+    # Position the camera node
     if instant:
         position = camera_position
     else:
         # Smooth camera movement (implement tween here if needed)
         position = camera_position
     
-    # Set up team-specific camera angle and direction initially
+    # Set up camera for proper zoom functionality
     if camera_3d:
-        camera_3d.position = Vector3(0, current_zoom * 0.7, current_zoom * 0.3)  # Steeper angle for closer view
-        camera_3d.look_at(look_target - position, Vector3.UP)  # Set initial team-specific look direction
+        # First, set the camera's local position based on current zoom level
+        var angle = deg_to_rad(-55)
+        camera_3d.position = Vector3(
+            0,
+            current_zoom * sin(-angle),
+            current_zoom * cos(-angle)
+        )
+        
+        # Then set the initial look direction toward the battlefield
+        camera_3d.look_at(look_target, Vector3.UP)
+        
+        # CRITICAL: Ensure zoom system is properly initialized after positioning
+        # The zoom function will now work correctly from this position
+        print("RTSCamera: Team positioning complete, zoom system ready at level %.1f" % current_zoom)
+        
+        # Synchronize zoom system state with new position
+        call_deferred("_ensure_zoom_compatibility")
     
     # Log the positioning
     if has_node("/root/Logger"):
@@ -366,6 +401,24 @@ func position_for_map_data(map_data: Dictionary, team_id: int = -1) -> void:
         logger.info("RTSCamera", "Positioned for map: %sx%s units, zoom range: %s-%s, default zoom: %.1f" % [world_width, world_height, min_zoom, max_zoom, current_zoom])
     else:
         print("RTSCamera: Positioned for map: %sx%s units, zoom range: %s-%s, default zoom: %.1f" % [world_width, world_height, min_zoom, max_zoom, current_zoom])
+
+func _ensure_zoom_compatibility() -> void:
+    """Ensure zoom system is properly set up after team positioning or other major camera changes"""
+    if not camera_3d:
+        return
+    
+    # Verify that current_zoom and target_zoom are synchronized
+    target_zoom = current_zoom
+    
+    # Ensure camera local position matches current zoom level
+    var angle = deg_to_rad(-55)
+    camera_3d.position = Vector3(
+        0,
+        current_zoom * sin(-angle),
+        current_zoom * cos(-angle)
+    )
+    
+    print("RTSCamera: Zoom compatibility ensured at level %.1f" % current_zoom)
 
 func shake(_intensity: float = 1.0, _duration: float = 0.5) -> void:
     """Add camera shake effect"""

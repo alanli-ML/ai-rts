@@ -787,6 +787,14 @@ func _refresh_unit_status_display() -> void:
         return
     is_refreshing_units = true
 
+    # Before clearing, try to get fresh goal data from unit instances
+    for unit_id in player_units:
+        var unit_instance = _find_unit_instance_by_id(unit_id)
+        if unit_instance and "strategic_goal" in unit_instance:
+            var unit_goal = unit_instance.strategic_goal
+            if not unit_goal.is_empty():
+                player_units[unit_id]["strategic_goal"] = unit_goal
+
     # Clear existing bars properly
     for bar_data in unit_bars.values():
         if bar_data.has("container") and is_instance_valid(bar_data["container"]):
@@ -956,22 +964,53 @@ func update_unit_data(unit_id: String, unit_data: Dictionary) -> void:
         # Update the unit data whether it exists in player_units or not
         player_units[unit_id] = unit_data
         
+        # ENHANCEMENT: If strategic goal is missing from network data, try to get it from the unit instance
+        if not unit_data.has("strategic_goal") or unit_data.get("strategic_goal", "").is_empty():
+            var unit_instance = _find_unit_instance_by_id(unit_id)
+            if unit_instance and "strategic_goal" in unit_instance:
+                var unit_goal = unit_instance.strategic_goal
+                if not unit_goal.is_empty():
+                    # Add the goal to our stored unit data
+                    player_units[unit_id]["strategic_goal"] = unit_goal
+                    print("GameHUD: Retrieved strategic goal from unit instance for %s: '%s'" % [unit_id, unit_goal])
+        
         # If we already have a UI bar for this unit, update it
         if unit_bars.has(unit_id):
-            _update_unit_bar(unit_id, unit_data)
+            _update_unit_bar(unit_id, player_units[unit_id])  # Use the enhanced data
         else:
             # If no bar exists yet, create one
-            _create_unit_bar(unit_id, unit_data)
+            _create_unit_bar(unit_id, player_units[unit_id])   # Use the enhanced data
         
-        print("GameHUD: Updated unit data for %s - strategic_goal: '%s'" % [unit_id, unit_data.get("strategic_goal", "none")])
+        print("GameHUD: Updated unit data for %s - strategic_goal: '%s'" % [unit_id, player_units[unit_id].get("strategic_goal", "none")])
     else:
         print("GameHUD: Ignoring unit %s - not from player's team (player: %d, unit: %d)" % [unit_id, player_team_id, unit_team_id])
 
-# Add a helper method to force refresh all unit bars when needed
+func _find_unit_instance_by_id(unit_id: String) -> Node:
+    """Find a unit instance by its ID from the ClientDisplayManager"""
+    var client_display_manager = get_node_or_null("/root/UnifiedMain/ClientDisplayManager")
+    if not client_display_manager:
+        return null
+    
+    # Access the displayed_units dictionary from ClientDisplayManager
+    if "displayed_units" in client_display_manager:
+        var displayed_units = client_display_manager.displayed_units
+        if displayed_units.has(unit_id):
+            return displayed_units[unit_id]
+    
+    return null
+
+# Enhanced refresh method that also updates goals from unit instances
 func refresh_all_unit_bars() -> void:
-    """Force refresh all unit bars with current data"""
+    """Force refresh all unit bars with current data, including goals from unit instances"""
     for unit_id in player_units:
         if unit_bars.has(unit_id):
+            # Try to get fresh goal data from unit instance if available
+            var unit_instance = _find_unit_instance_by_id(unit_id)
+            if unit_instance and "strategic_goal" in unit_instance:
+                var unit_goal = unit_instance.strategic_goal
+                if not unit_goal.is_empty():
+                    player_units[unit_id]["strategic_goal"] = unit_goal
+            
             _update_unit_bar(unit_id, player_units[unit_id])
 
 func _on_spawn_scout():

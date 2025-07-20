@@ -51,7 +51,7 @@ const UNIT_CONFIGS: Dictionary = {
         "build_time": 5.0
     },
     "sniper": {
-        "health": 120,
+        "health": 80,
         "speed": 4.0,
         "damage": 35,
         "range": 20.0,
@@ -73,7 +73,7 @@ const UNIT_CONFIGS: Dictionary = {
         "speed": 4.5,
         "damage": 10,
         "range": 6.0,
-        "vision": 16.0,
+        "vision": 24.0,
         "cost": 100,
         "build_time": 12.0,
         "heal_rate": 10.0
@@ -94,7 +94,7 @@ const UNIT_CONFIGS: Dictionary = {
         "range": 15.0,
         "vision": 15.0,
         "cost": 100,
-        "build_time": 15.0
+        "build_time": 5.0
     }
 }
 
@@ -124,9 +124,9 @@ const DEFAULT_BEHAVIOR_MATRICES: Dictionary = {
             "ally_nodes_controlled": 0.0, "bias": 0.0
         },
         "activate_stealth": {
-            "enemies_in_range": 0.5, "current_health": -0.4, "under_attack": 0.8,
+            "enemies_in_range": 0.9, "current_health": -0.4, "under_attack": 0.8,
             "allies_in_range": -0.2, "ally_low_health": 0.0, "enemy_nodes_controlled": 0.0,
-            "ally_nodes_controlled": 0.0, "bias": -0.8
+            "ally_nodes_controlled": 0.0, "bias": -0.2
         },
         "find_cover": {
             "enemies_in_range": 0.3, "current_health": -0.5, "under_attack": 0.7,
@@ -156,9 +156,9 @@ const DEFAULT_BEHAVIOR_MATRICES: Dictionary = {
             "ally_nodes_controlled": 0.0, "bias": 0.0
         },
         "activate_shield": {
-            "enemies_in_range": 0.3, "current_health": -0.5, "under_attack": 0.6,
+            "enemies_in_range": 0.9, "current_health": -0.2, "under_attack": 0.7,
             "allies_in_range": 0.0, "ally_low_health": 0.0, "enemy_nodes_controlled": 0.0,
-            "ally_nodes_controlled": 0.0, "bias": -0.7
+            "ally_nodes_controlled": 0.0, "bias": -0.2
         },
         "taunt_enemies": {
             "enemies_in_range": 0.7, "current_health": 0.5, "under_attack": 0.2,
@@ -220,14 +220,14 @@ const DEFAULT_BEHAVIOR_MATRICES: Dictionary = {
             "ally_nodes_controlled": 0.4, "bias": 0.0
         },
         "follow": {
-            "enemies_in_range": -0.2, "current_health": -0.2, "under_attack": -0.3,
-            "allies_in_range": 0.8, "ally_low_health": 0.5, "enemy_nodes_controlled": 0.0,
+            "enemies_in_range": -0.2, "current_health": 0.0, "under_attack": -0.3,
+            "allies_in_range": 0.8, "ally_low_health": 0.7, "enemy_nodes_controlled": 0.0,
             "ally_nodes_controlled": 0.0, "bias": 0.0
         },
         "heal_ally": {
-            "enemies_in_range": -0.3, "current_health": 0.2, "under_attack": -0.2,
-            "allies_in_range": 0.7, "ally_low_health": 0.9, "enemy_nodes_controlled": 0.0,
-            "ally_nodes_controlled": 0.0, "bias": -0.3
+            "enemies_in_range": 0.1, "current_health": 0.2, "under_attack": -0.1,
+            "allies_in_range": 1.0, "ally_low_health": 2.2, "enemy_nodes_controlled": 0.0,
+            "ally_nodes_controlled": 0.0, "bias": 0.0
         },
         "find_cover": {
             "enemies_in_range": 0.6, "current_health": -0.4, "under_attack": 0.8,
@@ -257,9 +257,9 @@ const DEFAULT_BEHAVIOR_MATRICES: Dictionary = {
             "ally_nodes_controlled": 0.0, "bias": 0.0
         },
         "construct_turret": {
-            "enemies_in_range": -0.7, "current_health": 0.2, "under_attack": -0.5,
-            "allies_in_range": 0.3, "ally_low_health": 0.0, "enemy_nodes_controlled": 0.0,
-            "ally_nodes_controlled": 0.5, "bias": -0.6
+            "enemies_in_range": 0.3, "current_health": 0.4, "under_attack": -0.5,
+            "allies_in_range": 0.3, "ally_low_health": 0.3, "enemy_nodes_controlled": 0.0,
+            "ally_nodes_controlled": 0.8, "bias": -0.4
         },
         "repair": {
             "enemies_in_range": -0.4, "current_health": 0.0, "under_attack": -0.3,

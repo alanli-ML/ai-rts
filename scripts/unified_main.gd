@@ -269,6 +269,27 @@ func spawn_impact_effect_rpc(position: Vector3):
         logger.info("UnifiedMain", "Spawned impact effect at %s" % str(position))
 
 @rpc("any_peer", "unreliable")
+func spawn_healing_effect_rpc(position: Vector3):
+    # This runs on clients to show a visual-only healing effect
+    if multiplayer.is_server(): return
+
+    var healing_effect_scene = preload("res://scenes/fx/HealingEffect.tscn")
+    if healing_effect_scene:
+        var effect = healing_effect_scene.instantiate()
+        get_tree().root.add_child(effect)
+        effect.global_position = position
+        effect.emitting = true
+        logger.info("UnifiedMain", "Spawned healing effect at %s" % str(position))
+        
+        # Auto-remove effect after duration
+        await get_tree().create_timer(3.0).timeout
+        if is_instance_valid(effect):
+            effect.emitting = false
+            await get_tree().create_timer(2.0).timeout
+            if is_instance_valid(effect):
+                effect.queue_free()
+
+@rpc("any_peer", "unreliable")
 func spawn_visual_projectile_rpc(start_pos: Vector3, p_direction: Vector3, p_team_id: int, p_speed: float, p_lifetime: float):
     # This runs on clients
     if multiplayer.is_server(): return

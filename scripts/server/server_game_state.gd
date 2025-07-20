@@ -86,9 +86,20 @@ func _gather_game_state() -> Dictionary:
         "control_points": []
     }
     
-    var placeable_entity_manager = get_node("/root/DependencyContainer").get_placeable_entity_manager()
-    if placeable_entity_manager:
-        state.mines = placeable_entity_manager.get_all_mines_data()
+    var entity_manager = get_node("/root/DependencyContainer").get_entity_manager()
+    if entity_manager:
+        # Get mines data from EntityManager
+        var mines_data = []
+        var all_entities = entity_manager.get_all_entities()
+        for mine_id in all_entities.mines:
+            var mine = all_entities.mines[mine_id]
+            if is_instance_valid(mine):
+                mines_data.append({
+                    "id": mine_id,
+                    "team_id": mine.team_id,
+                    "position": { "x": mine.global_position.x, "y": mine.global_position.y, "z": mine.global_position.z }
+                })
+        state.mines = mines_data
         
     for unit_id in units:
         var unit = units[unit_id]
@@ -177,6 +188,29 @@ func get_units_in_radius(p_position: Vector3, p_radius: float, p_team_to_exclude
         if unit.global_position.distance_squared_to(p_position) < radius_sq:
             units_in_range.append(unit)
     return units_in_range
+
+func get_units_by_archetype(archetype: String, team_id: int = -1) -> Array:
+    """Get all units of a specific archetype, optionally filtered by team"""
+    var matching_units = []
+    
+    for unit_id in units:
+        var unit = units[unit_id]
+        if not is_instance_valid(unit):
+            continue
+            
+        # Check archetype match
+        if unit.archetype != archetype:
+            continue
+            
+        # Check team filter (if specified)
+        if team_id != -1 and unit.team_id != team_id:
+            continue
+            
+        # Include both dead and alive units for accurate counting
+        # (dead turrets are removed from the dictionary, but this covers edge cases)
+        matching_units.append(unit)
+    
+    return matching_units
 
 func _broadcast_game_state() -> void:
     var session_manager = get_node("/root/DependencyContainer").get_node("SessionManager")
@@ -503,7 +537,10 @@ func spawn_unit(archetype: String, team_id: int, position: Vector3, owner_id: St
     
     _log_info("ServerGameState", "About to spawn unit with TeamUnitSpawner: %s" % team_unit_spawner.name)
     
+    print("DEBUG: ServerGameState - Calling team_unit_spawner.spawn_unit for %s" % archetype)
     var unit = await team_unit_spawner.spawn_unit(team_id, position, archetype)
+    print("DEBUG: ServerGameState - team_unit_spawner.spawn_unit returned: %s" % unit)
+    
     if unit and is_instance_valid(unit):
         var unit_id = ""
         if "unit_id" in unit:
@@ -513,6 +550,8 @@ func spawn_unit(archetype: String, team_id: int, position: Vector3, owner_id: St
         else:
             # Fallback ID generation using archetype and team
             unit_id = _generate_fallback_unit_id(archetype, team_id)
+            
+        print("DEBUG: ServerGameState - Unit ID determined as: '%s'" % unit_id)
             
         if not unit_id.is_empty():
             units[unit_id] = unit
@@ -528,9 +567,11 @@ func spawn_unit(archetype: String, team_id: int, position: Vector3, owner_id: St
             
             unit_spawned.emit(unit_id)
             _log_info("ServerGameState", "Added unit %s (%s) to game state for team %d" % [unit_id, archetype, team_id])
+            print("DEBUG: ServerGameState - Successfully spawned and registered unit %s" % unit_id)
             return unit_id
     
     _log_error("ServerGameState", "Failed to spawn unit or unit initialization failed for archetype %s." % archetype)
+    print("DEBUG: ServerGameState - FAILED to spawn unit for archetype %s" % archetype)
     return ""
 
 func _on_unit_died(unit_id: String):

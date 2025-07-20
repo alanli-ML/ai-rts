@@ -76,7 +76,7 @@ var _behavior_timer: float = 0.0
 var last_action_scores: Dictionary = {} # For debugging and UI
 var last_state_variables: Dictionary = {} # For debugging and UI
 const REACTIVE_BEHAVIOR_THRESHOLD: float = 0.1 # Min activation to consider a state change
-const INDEPENDENT_ACTION_THRESHOLD: float = 0.6 # Min activation to fire an ability
+const INDEPENDENT_ACTION_THRESHOLD: float = 0.4 # Min activation to fire an ability
 
 # Command state - prevents action until first LLM command received
 var has_received_first_command: bool = false
@@ -387,10 +387,33 @@ func _physics_process(delta: float) -> void:
 	# The NavigationAgent will handle Y-velocity for slopes.
 	if not is_on_floor() and not is_navigating:
 		velocity.y += get_gravity().y * delta
+	
+	# If unit cannot move, ensure it stays stationary horizontally
+	if not can_move:
+		velocity.x = 0
+		velocity.z = 0
+		# Stop navigation agent from computing new paths
+		if navigation_agent:
+			navigation_agent.target_position = global_position
+		
+		# Ensure unit stays grounded during construction/stationary phases
+		if not is_on_floor():
+			velocity.y += get_gravity().y * delta
 
+	# --- Handle Special Unit States (HEALING, CHARGING_SHOT, CONSTRUCTING, etc.) ---
+	# These states override AI behavior and must be processed first
+	if current_state == GameEnums.UnitState.HEALING:
+		_execute_healing_state(delta)
+	elif current_state == GameEnums.UnitState.CONSTRUCTING:
+		_execute_constructing_state(delta)
+	elif current_state == GameEnums.UnitState.REPAIRING:
+		_execute_constructing_state(delta)  # Repairing uses same logic as constructing
+	elif current_state == GameEnums.UnitState.CHARGING_SHOT:
+		# Handle charging shot logic (if needed)
+		pass
 	# --- New Behavior Engine Loop ---
 	# Only run AI behavior if not under player override AND has received first command
-	if not player_override_active and not waiting_for_first_command:
+	elif not player_override_active and not waiting_for_first_command:
 		_evaluate_reactive_behavior()
 		_execute_current_state(delta)
 	elif waiting_for_first_command:
@@ -414,12 +437,13 @@ func _physics_process(delta: float) -> void:
 	# --- End New Behavior Engine Loop ---
 
 	# Calculate desired velocity for NavigationAgent3D for path following and local avoidance
-	if is_navigating:
+	if is_navigating and can_move:
 		var next_global_path_point = navigation_agent.get_next_path_position()
 		var desired_velocity = (next_global_path_point - global_position).normalized() * movement_speed
 		navigation_agent.set_velocity(desired_velocity)
 	else:
-		# If not navigating, stop horizontal movement. The NavigationAgent is done or disabled.
+		# If not navigating or cannot move, stop horizontal movement. 
+		# The NavigationAgent is done, disabled, or unit is restricted from moving.
 		# The velocity_computed signal will not be emitted, so we must control velocity here.
 		velocity.x = 0
 		velocity.z = 0
@@ -462,8 +486,15 @@ func _physics_process(delta: float) -> void:
 # New function to receive velocity computed by NavigationAgent3D (including RVO avoidance)
 func _on_navigation_velocity_computed(safe_velocity: Vector3) -> void:
 	# This is the velocity adjusted by NavigationAgent3D for local avoidance and slope pathing.
-	# We apply it directly to the CharacterBody3D's velocity.
-	self.velocity = safe_velocity
+	# Only apply it if the unit is allowed to move
+	if can_move:
+		self.velocity = safe_velocity
+	else:
+		# Unit is not allowed to move (e.g., during construction)
+		# Keep horizontal velocity at zero and preserve only gravity
+		self.velocity.x = 0
+		self.velocity.z = 0
+		# Keep existing Y velocity for gravity/physics
 
 func move_to(target_position: Vector3) -> void:
 	current_state = GameEnums.UnitState.MOVING
@@ -587,10 +618,10 @@ func get_unit_info() -> Dictionary:
 		info["target_id"] = target_unit.unit_id
 
 	# Add archetype-specific info safely
-	#if "is_stealthed" in self:
-	#    info["is_stealthed"] = self.is_stealthed
-	#if "shield_active" in self:
-	#    info["shield_active"] = self.shield_active
+	if "is_stealthed" in self:
+		info["is_stealthed"] = self.is_stealthed
+	if "shield_active" in self:
+		info["shield_active"] = self.shield_active
 	
 	return info
 
@@ -989,6 +1020,13 @@ func _evaluate_reactive_behavior() -> void:
 	last_state_variables = state_vars
 	last_action_scores = activation_levels
 	
+	# Debug output for medics every few seconds
+	if archetype == "medic" and int(Time.get_ticks_msec() / 1000.0) % 3 == 0:
+		var heal_score = activation_levels.get("heal_ally", 0.0)
+		if heal_score > 0.1 or state_vars.get("ally_low_health", 0.0) > 0.1:
+			# print("DEBUG: Medic %s state - allies_in_range: %.2f, ally_low_health: %.2f, heal_ally score: %.2f" % [unit_id, state_vars.get("allies_in_range", 0.0), state_vars.get("ally_low_health", 0.0), heal_score])
+			pass
+	
 	# Only execute actions if we have valid state
 	if not state_vars.is_empty():
 		_decide_and_execute_actions(activation_levels)
@@ -1024,6 +1062,9 @@ func _gather_state_variables() -> Dictionary:
 
 	# Get nearby units
 	var enemies = game_state.get_units_in_radius(global_position, attack_range, team_id)
+	# Filter out untargetable units (dead or stealthed)
+	enemies = enemies.filter(func(u): return u.can_be_targeted())
+	
 	var allies = game_state.get_units_in_radius(global_position, vision_range, -1, team_id)
 	
 	state["enemies_in_range"] = clamp(float(enemies.size()) / 5.0, 0.0, 1.0) # Normalize by typical squad size
@@ -1078,12 +1119,26 @@ func _decide_and_execute_actions(activations: Dictionary) -> void:
 		# Only consider actions valid for this archetype
 		if action_name not in valid_actions:
 			continue
+		
+		var activation_score = activations.get(action_name, 0.0)
+		
+		# Debug output for heal_ally specifically
+		if action_name == "heal_ally" and archetype == "medic":
+			if activation_score > 0.1:  # Only log if there's some activation
+				# print("DEBUG: Medic %s heal_ally activation: %.2f (threshold: %.2f)" % [unit_id, activation_score, INDEPENDENT_ACTION_THRESHOLD])
+				pass
 			
-		if activations.get(action_name, 0.0) > INDEPENDENT_ACTION_THRESHOLD:
+		if activation_score > INDEPENDENT_ACTION_THRESHOLD:
 			# Check if we can execute this ability (e.g., not on cooldown)
 			if has_method(action_name):
 				# Abilities are context-sensitive, so we need to find a target if required
 				var params = _get_context_for_action(action_name)
+				
+				# Debug for heal_ally
+				if action_name == "heal_ally" and archetype == "medic":
+					# print("DEBUG: Medic %s attempting heal_ally with params: %s" % [unit_id, str(params)])
+					pass
+				
 				call(action_name, params)
 
 	# --- 2. Process Mutually Exclusive State Actions ---
@@ -1370,13 +1425,155 @@ func _fallback_to_next_best_state():
 	current_reactive_state = best_action
 	print("Unit %s: Follow fallback to %s (score: %.2f)" % [unit_id, best_action, max_score])
 
+func _execute_healing_state(delta: float) -> void:
+	"""Execute healing behavior: move to target ally and heal them over time"""
+	if not is_instance_valid(target_unit):
+		print("Medic %s: Healing target lost, returning to AI control" % unit_id)
+		current_state = GameEnums.UnitState.IDLE
+		return
+	
+	# Check if target is still a valid healing candidate
+	if target_unit.is_dead or target_unit.team_id != team_id:
+		print("Medic %s: Healing target invalid, returning to AI control" % unit_id)
+		current_state = GameEnums.UnitState.IDLE
+		target_unit = null
+		return
+	
+	# Check if target is already at full health
+	if target_unit.get_health_percentage() >= 1.0:
+		print("Medic %s: Target %s healed to full health" % [unit_id, target_unit.unit_id])
+		current_state = GameEnums.UnitState.IDLE
+		target_unit = null
+		return
+	
+	var distance_to_target = global_position.distance_to(target_unit.global_position)
+	var heal_range = attack_range  # Medics use attack_range as heal_range
+	
+	# Move toward target if not in range
+	if distance_to_target > heal_range:
+		navigation_agent.target_position = target_unit.global_position
+		# Update strategic goal for UI
+		strategic_goal = "Moving to heal %s" % target_unit.unit_id
+		return
+	
+	# In healing range - perform healing
+	strategic_goal = "Healing %s" % target_unit.unit_id
+	
+	# Face the target while healing for visual consistency
+	look_at(target_unit.global_position, Vector3.UP)
+	
+	# Get heal rate from medic unit or use default
+	var heal_amount = 45.0
+	if "heal_rate" in self:
+		heal_amount = self.heal_rate
+	
+	# Apply healing over time
+	target_unit.receive_healing(heal_amount * delta)
+	
+	# Play healing sound occasionally
+	if int(Time.get_ticks_msec() / 1000.0) % 2 == 0:  # Every 2 seconds
+		var audio_manager = get_node_or_null("/root/DependencyContainer/AudioManager")
+		if audio_manager:
+			audio_manager.play_sound_3d("res://assets/audio/sfx/blaster_support_01.wav", global_position)
+	
+	# Trigger healing animation if available
+	if has_method("play_animation"):
+		call("play_animation", "Heal")
+	
+	# Trigger healing animation via AnimationController if available
+	var anim_controller = get_node_or_null("AnimationController")
+	if anim_controller and anim_controller.has_method("start_healing"):
+		anim_controller.start_healing()
+	
+	# Create healing visual effects
+	_create_healing_effects()
+	
+	# Check if healing is complete
+	if target_unit.get_health_percentage() >= 1.0:
+		print("Medic %s: Successfully healed %s to full health" % [unit_id, target_unit.unit_id])
+		
+		# Finish healing animation
+		var animation_controller = get_node_or_null("AnimationController")
+		if animation_controller and animation_controller.has_method("finish_healing"):
+			animation_controller.finish_healing()
+		
+		current_state = GameEnums.UnitState.IDLE
+		target_unit = null
+
+func _execute_constructing_state(delta: float) -> void:
+	"""Execute constructing behavior: play construction animation and handle building progress"""
+	# Trigger construction animation if available
+	if has_method("play_animation"):
+		call("play_animation", "Construct")
+	
+	# Trigger construction animation via AnimationController if available
+	var anim_controller = get_node_or_null("AnimationController")
+	if anim_controller and anim_controller.has_method("start_constructing"):
+		anim_controller.start_constructing()
+	
+	# Update strategic goal for UI
+	if current_state == GameEnums.UnitState.REPAIRING:
+		strategic_goal = "Repairing..."
+	else:
+		strategic_goal = "Constructing..."
+	
+	# Check if we have a target building to work on
+	if is_instance_valid(target_building):
+		# Move toward building if not close enough
+		var distance_to_building = global_position.distance_to(target_building.global_position)
+		var build_range = 5.0  # Range to start building
+		
+		if distance_to_building > build_range:
+			navigation_agent.target_position = target_building.global_position
+			if current_state == GameEnums.UnitState.REPAIRING:
+				strategic_goal = "Moving to repair site..."
+			else:
+				strategic_goal = "Moving to construction site..."
+			return
+		
+		# In range - perform construction
+		if current_state == GameEnums.UnitState.REPAIRING:
+			strategic_goal = "Repairing building..."
+		else:
+			strategic_goal = "Building..."
+		
+		# Get build rate from engineer unit or use default
+		var build_amount = 0.2  # Default build rate
+		if "build_rate" in self:
+			build_amount = self.build_rate
+		
+		# Apply building progress over time
+		if target_building.has_method("add_build_progress"):
+			target_building.add_build_progress(build_amount * delta)
+		
+		# Play construction sound occasionally
+		if int(Time.get_ticks_msec() / 1000.0) % 3 == 0:  # Every 3 seconds
+			var audio_manager = get_node_or_null("/root/DependencyContainer/AudioManager")
+			if audio_manager:
+				audio_manager.play_sound_3d("res://assets/audio/sfx/blaster_utility_01.wav", global_position)
+	else:
+		# No valid building target, return to idle
+		print("Engineer %s: No valid building target, returning to idle" % unit_id)
+		
+		# Finish construction animation
+		var animation_controller = get_node_or_null("AnimationController")
+		if animation_controller and animation_controller.has_method("finish_constructing"):
+			animation_controller.finish_constructing()
+		
+		current_state = GameEnums.UnitState.IDLE
+		target_building = null
+
 func _get_nearest_ally(allies: Array) -> Unit:
-	"""Get the nearest ally from a list of allies."""
+	"""Get the nearest ally from a list of allies (excludes turrets)."""
 	var nearest_ally = null
 	var nearest_distance = INF
 	
 	for ally in allies:
 		if not is_instance_valid(ally) or ally == self or ally.is_dead:
+			continue
+		
+		# Skip turrets - they are stationary and shouldn't be followed
+		if ally.archetype == "turret":
 			continue
 		
 		var distance = global_position.distance_to(ally.global_position)
@@ -1419,11 +1616,11 @@ func _resolve_mutual_following(target_ally: Unit) -> Unit:
 		return null
 
 func _get_closest_valid_enemy(enemies: Array) -> Unit:
-	"""Get the closest valid enemy from a list of enemies"""
+	"""Get the closest valid enemy from a list of enemies (excludes stealthed units)"""
 	var closest_enemy = null
 	var closest_distance = INF
 	for enemy in enemies:
-		if is_instance_valid(enemy) and not enemy.is_dead:
+		if is_instance_valid(enemy) and enemy.can_be_targeted():
 			var distance = global_position.distance_to(enemy.global_position)
 			if distance < closest_distance:
 				closest_distance = distance
@@ -1482,6 +1679,9 @@ func _attempt_attack_target(target: Unit) -> void:
 	var distance = global_position.distance_to(target.global_position)
 	if distance > attack_range:
 		return
+	
+	# Face the target before attacking for visual consistency
+	look_at(target.global_position, Vector3.UP)
 	
 	# print("DEBUG: Unit %s attempting to attack target %s" % [unit_id, target.unit_id])  # TEMPORARILY DISABLED
 	
@@ -1548,12 +1748,29 @@ func _get_visible_entities(group_name: String) -> Array:
 func _get_lowest_health_ally_in_vision() -> Unit:
 	var allies = _get_visible_entities("units").filter(func(u): return u.team_id == self.team_id)
 	var lowest_health_ally: Unit = null
-	var lowest_health_pct = 1.1
+	var lowest_health_pct = 1.0  # Changed from 1.1 to 1.0 to find allies with less than 100% health
+	
 	for ally in allies:
+		if ally.is_dead:
+			continue  # Added: skip dead allies
+		
+		# Skip turrets - they should be repaired by engineers, not healed by medics
+		if ally.archetype == "turret":
+			continue
+		
 		var ally_health_pct = ally.get_health_percentage()
 		if ally_health_pct < lowest_health_pct:
 			lowest_health_pct = ally_health_pct
 			lowest_health_ally = ally
+	
+	# Debug output for medics to help diagnose healing issues
+	if archetype == "medic" and allies.size() > 0:
+		var injured_allies = allies.filter(func(u): return u.get_health_percentage() < 1.0 and not u.is_dead and u.archetype != "turret")
+		if injured_allies.size() > 0 and lowest_health_ally == null:
+			print("DEBUG: Medic %s found %d injured allies but couldn't select target. Lowest health: %.1f%%" % [unit_id, injured_allies.size(), lowest_health_pct * 100])
+		elif lowest_health_ally:
+			print("DEBUG: Medic %s selected healing target %s (%.1f%% health)" % [unit_id, lowest_health_ally.unit_id, lowest_health_pct * 100])
+	
 	return lowest_health_ally
 
 func _get_closest_enemy_in_vision() -> Unit:
@@ -1561,6 +1778,10 @@ func _get_closest_enemy_in_vision() -> Unit:
 	var closest_enemy: Unit = null
 	var closest_dist = 9999.0
 	for enemy in enemies:
+		# Check if enemy can be targeted (excludes stealthed units)
+		if not enemy.can_be_targeted():
+			continue
+			
 		var dist = global_position.distance_to(enemy.global_position)
 		if dist < closest_dist:
 			closest_dist = dist
@@ -1717,7 +1938,7 @@ func _get_default_behavior_matrix() -> Dictionary:
 		},
 		"charge_shot": {"bias": -1.0},
 		"heal_ally": {
-			"allies_in_range": 0.8, "ally_low_health": 0.9, "bias": -0.3
+			"allies_in_range": 1.0, "ally_low_health": 2.0, "bias": 0.0
 		},
 		"lay_mines": {"bias": -1.0}, "construct": {"bias": -1.0}, "repair": {"bias": -1.0},
 		"find_cover": {
@@ -1818,7 +2039,7 @@ func _execute_player_attack(target_id: String) -> void:
 		return
 	
 	var target = game_state.units.get(target_id)
-	if is_instance_valid(target) and not target.is_dead:
+	if is_instance_valid(target) and target.can_be_targeted():
 		# Clear other targets
 		follow_target = null
 		target_building = null
@@ -1828,7 +2049,7 @@ func _execute_player_attack(target_id: String) -> void:
 		current_state = GameEnums.UnitState.ATTACKING
 		print("DEBUG: Unit %s player attack target set to %s" % [unit_id, target_id])
 	else:
-		print("WARNING: Unit %s cannot attack invalid target %s" % [unit_id, target_id])
+		print("WARNING: Unit %s cannot attack invalid or untargetable target %s" % [unit_id, target_id])
 		player_override_active = false
 
 func clear_player_override() -> void:
@@ -1845,3 +2066,92 @@ func clear_player_override() -> void:
 		
 		# Immediately re-evaluate AI behavior
 		_evaluate_reactive_behavior()
+
+func _create_healing_effects() -> void:
+	"""Create visual healing effects at the target location"""
+	if not is_instance_valid(target_unit):
+		return
+	
+	# Only create effects on the server (they will be synced to clients)
+	if not multiplayer.is_server():
+		return
+	
+	# Create healing particle effect at target position
+	var healing_effect_scene = preload("res://scenes/fx/HealingEffect.tscn")
+	var healing_effect = healing_effect_scene.instantiate()
+	
+	# Position effect above the target unit
+	healing_effect.global_position = target_unit.global_position + Vector3(0, 1.5, 0)
+	
+	# Add to scene tree
+	get_tree().current_scene.add_child(healing_effect)
+	
+	# Start emitting particles
+	healing_effect.emitting = true
+	
+	# Remove effect after a short duration
+	await get_tree().create_timer(3.0).timeout
+	if is_instance_valid(healing_effect):
+		healing_effect.emitting = false
+		await get_tree().create_timer(2.0).timeout
+		if is_instance_valid(healing_effect):
+			healing_effect.queue_free()
+
+func launch_healing_projectile(target_position: Vector3) -> void:
+	"""Launch a healing projectile toward the target position"""
+	if not multiplayer.is_server():
+		return
+	
+	# IMPORTANT: Face the target before launching projectile for visual consistency
+	look_at(target_position, Vector3.UP)
+	
+	# Get the projectile launch position
+	var launch_position = global_position + Vector3(0, 1.0, 0)
+	
+	# If the medic has a weapon attachment with muzzle point, use that for better accuracy
+	var launch_direction: Vector3
+	if weapon_attachment and weapon_attachment.has_method("get_muzzle_position"):
+		var muzzle_pos = weapon_attachment.get_muzzle_position()
+		if muzzle_pos != Vector3.ZERO:
+			launch_position = muzzle_pos
+			# Use the weapon's forward direction for consistency with regular attacks
+			launch_direction = -transform.basis.z
+		else:
+			# Fallback to direct targeting
+			launch_direction = (target_position - launch_position).normalized()
+	else:
+		# No weapon attachment, use direct targeting
+		launch_direction = (target_position - launch_position).normalized()
+	
+	var healing_projectile_scene = preload("res://scenes/fx/HealingProjectile.tscn")
+	var healing_projectile = healing_projectile_scene.instantiate()
+	
+	# Set projectile properties
+	healing_projectile.global_position = launch_position
+	healing_projectile.shooter_team_id = team_id
+	healing_projectile.direction = launch_direction
+	healing_projectile.heal_amount = 35.0
+	
+	# Add to scene
+	get_tree().current_scene.add_child(healing_projectile)
+	
+	# Play projectile launch sound
+	var audio_manager = get_node_or_null("/root/DependencyContainer/AudioManager")
+	if audio_manager:
+		audio_manager.play_sound_3d("res://assets/audio/sfx/blaster_utility_01.wav", global_position)
+	
+	print("Medic %s launched healing projectile toward %s" % [unit_id, target_position])
+
+func can_be_targeted() -> bool:
+	"""Check if this unit can be targeted by enemies (excludes stealthed scouts)"""
+	if is_dead:
+		return false
+	
+	# Stealthed scouts cannot be targeted
+	if "is_stealthed" in self and self.is_stealthed:
+		# Debug: Log when stealth prevents targeting
+		if archetype == "scout":
+			print("DEBUG: Scout %s is stealthed and cannot be targeted" % unit_id)
+		return false
+	
+	return true

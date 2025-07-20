@@ -110,7 +110,6 @@ func _create_attachment_points() -> void:
 
 func equip_weapon(unit: Node3D, weapon_variant: String, team_id: int = 1) -> bool:
 	"""Equip a weapon to a unit"""
-	#print("DEBUG: WeaponAttachment.equip_weapon() called - unit: %s, weapon: %s, team: %d" % [unit.name if unit else "null", weapon_variant, team_id])
 	if not unit:
 		_log_error("Cannot equip weapon: unit is null")
 		return false
@@ -118,42 +117,31 @@ func equip_weapon(unit: Node3D, weapon_variant: String, team_id: int = 1) -> boo
 	parent_unit = unit
 	weapon_type = weapon_variant
 	
-	# Get skeleton from unit
-	if unit.has_method("get_skeleton"):
-		parent_skeleton = unit.get_skeleton()
-		#print("DEBUG: WeaponAttachment.equip_weapon() - unit has get_skeleton method, result: %s" % ("found" if parent_skeleton else "null"))
-	else:
-		print("DEBUG: WeaponAttachment.equip_weapon() - unit has no get_skeleton method")
-	
-	# Load weapon model
-	#print("DEBUG: WeaponAttachment.equip_weapon() - loading weapon model")
+	# Load weapon model first
 	if not _load_weapon_model(weapon_variant):
 		_log_error("Failed to load weapon model: %s" % weapon_variant)
 		return false
 	
-	# Try skeleton attachment first, fall back to static if no skeleton
-	var attachment_success = false
-	if parent_skeleton:
-		#print("DEBUG: WeaponAttachment.equip_weapon() - attempting skeleton attachment")
-		attachment_success = _attach_to_skeleton()
-		#print("DEBUG: WeaponAttachment.equip_weapon() - skeleton attachment result: %s" % ("success" if attachment_success else "failed"))
+	# Try to attach to 'arm-right' sub-mesh first
+	var attachment_success = _attach_to_arm_right_submesh()
 	
+	# If arm-right sub-mesh not found, try skeleton attachment
 	if not attachment_success:
-		#print("DEBUG: WeaponAttachment.equip_weapon() - attempting static fallback attachment")
-		# Use static fallback positioning
+		if unit.has_method("get_skeleton"):
+			parent_skeleton = unit.get_skeleton()
+			if parent_skeleton:
+				attachment_success = _attach_to_skeleton()
+	
+	# If both methods fail, use static fallback
+	if not attachment_success:
 		attachment_success = _attach_weapon_static_fallback()
-		#print("DEBUG: WeaponAttachment.equip_weapon() - static attachment result: %s" % ("success" if attachment_success else "failed"))
 	
 	if not attachment_success:
 		_log_error("Failed to attach weapon using any method")
 		return false
 	
-	# Apply team colors
-	#print("DEBUG: WeaponAttachment.equip_weapon() - applying team colors")
+	# Apply team colors and load stats
 	_apply_team_colors(team_id)
-	
-	# Load weapon stats
-	#print("DEBUG: WeaponAttachment.equip_weapon() - loading weapon stats")
 	_load_weapon_stats(weapon_variant)
 	
 	is_equipped = true
@@ -163,9 +151,67 @@ func equip_weapon(unit: Node3D, weapon_variant: String, team_id: int = 1) -> boo
 	else:
 		print("WeaponAttachment: Equipped weapon %s to unit %s" % [weapon_variant, unit.name])
 	
-	#print("DEBUG: WeaponAttachment.equip_weapon() - weapon equipped successfully (damage: %.1f, ammo: %d/%d)" % [damage, current_ammo, max_ammo])
 	weapon_equipped.emit(weapon_type)
 	return true
+
+func _attach_to_arm_right_submesh() -> bool:
+	"""Attach weapon to the 'arm-right' sub-mesh in the character model"""
+	if not parent_unit or not weapon_model:
+		return false
+	
+	# Look for arm-right sub-mesh in the model container
+	var model_container = null
+	if "model_container" in parent_unit and is_instance_valid(parent_unit.model_container):
+		model_container = parent_unit.model_container
+	else:
+		print("DEBUG: No model_container found in parent unit")
+		return false
+	
+	# Find the arm-right mesh in the character model
+	var arm_right_mesh = _find_arm_right_mesh(model_container)
+	
+	if not arm_right_mesh:
+		print("DEBUG: No 'arm-right' sub-mesh found in character model")
+		print("DEBUG: Available nodes in model hierarchy:")
+		_debug_print_hierarchy(model_container, 0)
+		return false
+	
+	# Remove this weapon attachment from its current parent
+	if get_parent():
+		get_parent().remove_child(self)
+	
+	# Attach to the arm-right mesh
+	arm_right_mesh.add_child(self)
+	
+	# Set weapon position relative to arm-right mesh
+	position = Vector3(0, -1.5, -0.5)  # Slight forward offset from arm
+	rotation_degrees = Vector3(-90, 180, 0)  # Natural forward orientation
+	
+	print("DEBUG: Successfully attached weapon to arm-right sub-mesh")
+	return true
+
+func _find_arm_right_mesh(node: Node) -> Node3D:
+	"""Recursively search for arm-right mesh in the model hierarchy"""
+	# Check if current node is the arm-right mesh
+	if node.name.to_lower().contains("arm") and node.name.to_lower().contains("right"):
+		print("DEBUG: Found arm-right mesh: %s" % node.name)
+		return node
+	
+	# Also check for variations like "arm_right", "armright", etc.
+	var node_name_lower = node.name.to_lower()
+	if (node_name_lower.contains("arm") and node_name_lower.contains("r")) or \
+	   node_name_lower == "arm-right" or node_name_lower == "arm_right" or \
+	   node_name_lower == "armright" or node_name_lower == "right_arm":
+		print("DEBUG: Found arm-right mesh variation: %s" % node.name)
+		return node
+	
+	# Recursively search children
+	for child in node.get_children():
+		var result = _find_arm_right_mesh(child)
+		if result:
+			return result
+	
+	return null
 
 func _load_weapon_model(weapon_variant: String) -> bool:
 	"""Load the weapon model from assets"""
@@ -194,7 +240,7 @@ func _load_weapon_model(weapon_variant: String) -> bool:
 	weapon_model.name = "WeaponModel"
 	
 	# Scale weapon appropriately
-	var scale_factor = 1.0  # Weapons are already properly scaled
+	var scale_factor = 2.0  # Scale weapons 2x larger
 	weapon_model.scale = Vector3(scale_factor, scale_factor, scale_factor)
 	
 	# Add to scene with error checking
@@ -265,38 +311,61 @@ func _find_hand_bone() -> int:
 	if not parent_skeleton:
 		return -1
 	
-	# Common hand bone names to try
+	# Extended list of possible hand bone names for different character models
 	var hand_bone_names = [
-		"hand_right", "Hand_R", "RightHand", "hand.R",
-		"hand_r", "HandR", "Right_Hand", "R_Hand"
+		# Standard naming conventions
+		"hand_right", "Hand_R", "RightHand", "hand.R", "hand_r", "HandR", "Right_Hand", "R_Hand",
+		# Kenney and other common conventions
+		"hand.right", "Hand.R", "hand_Right", "Hand_Right", "RIGHT_HAND", "right_hand",
+		"RHand", "r_hand", "r.hand", "R.Hand", "arm_right", "Arm_R", "wrist_right", "Wrist_R",
+		# Blender/generic conventions
+		"hand.001", "hand.002", "Bone.001", "Bone.002", "Hand", "hand", "RIGHT", "right"
 	]
 	
+	# Debug: List all available bones
+	if parent_skeleton.get_bone_count() > 0:
+		print("DEBUG: Available bones in skeleton:")
+		for i in range(parent_skeleton.get_bone_count()):
+			var bone_name = parent_skeleton.get_bone_name(i)
+			print("  - Bone %d: '%s'" % [i, bone_name])
+	else:
+		print("DEBUG: No bones found in skeleton")
+	
+	# Try to find hand bone
 	for bone_name in hand_bone_names:
 		var bone_id = parent_skeleton.find_bone(bone_name)
 		if bone_id != -1:
+			print("DEBUG: Found hand bone '%s' with ID %d" % [bone_name, bone_id])
 			return bone_id
 	
+	print("DEBUG: No hand bone found, will use static fallback")
 	return -1
 
 func _adjust_weapon_positioning() -> void:
 	"""Adjust weapon position and rotation for proper grip"""
-	# Standard weapon positioning (can be customized per weapon type)
-	position = Vector3(0.05, 0.05, 0.1)  # Slight offset from hand
-	rotation_degrees = Vector3(0, -90, 0)  # Rotate to face forward (-Z)
+	# Improved weapon positioning for natural hand grip
+	position = Vector3(0.05, 0.02, 0.12)  # Slight offset from hand bone
+	rotation_degrees = Vector3(0, 90, 0)   # Natural forward orientation
 	
-	# Weapon-specific adjustments
+	# Weapon-specific adjustments for different grip styles
 	match weapon_type:
 		"blaster-a", "blaster-b", "blaster-c":  # Pistols
-			position = Vector3(0.02, 0.02, 0.08)
-			rotation_degrees = Vector3(0, 90, 0)
-		"blaster-d", "blaster-i", "blaster-m":  # Rifles
-			position = Vector3(0.08, 0.08, 0.15)
-			rotation_degrees = Vector3(0, 90, 0)
+			position = Vector3(0.03, 0.01, 0.1)
+			rotation_degrees = Vector3(-10, 90, 0)  # Natural pistol angle
+		"blaster-d", "blaster-i", "blaster-m":  # Rifles/Snipers
+			position = Vector3(0.08, 0.05, 0.18)
+			rotation_degrees = Vector3(0, 90, 0)   # Horizontal rifle grip
 		"blaster-j", "blaster-k", "blaster-n":  # Heavy weapons
-			position = Vector3(0.1, 0.1, 0.2)
-			rotation_degrees = Vector3(0, 90, 0)
+			position = Vector3(0.1, 0.08, 0.22)
+			rotation_degrees = Vector3(-5, 90, 0)  # Slightly downward for stability
+		"blaster-p", "blaster-r":  # Support weapons
+			position = Vector3(0.06, 0.03, 0.15)
+			rotation_degrees = Vector3(-8, 90, 0)  # Support weapon angle
+		"blaster-e", "blaster-g", "blaster-o":  # Carbines/Utility
+			position = Vector3(0.07, 0.04, 0.16)
+			rotation_degrees = Vector3(-3, 90, 0)  # Carbine grip angle
 		_:  # Default positioning
-			position = Vector3(0.05, 0.05, 0.1)
+			position = Vector3(0.05, 0.02, 0.12)
 			rotation_degrees = Vector3(0, 90, 0)
 
 func _apply_team_colors(team_id: int) -> void:
@@ -577,17 +646,24 @@ func _spawn_projectile() -> void:
 	projectile.shooter_team_id = parent_unit.team_id if parent_unit else 1
 	projectile.lifetime = range / 20.0
 	
-	# Calculate direction (forward from muzzle point)
-	var muzzle_transform = muzzle_point.global_transform
-	var forward_direction = -muzzle_transform.basis.z
+	# Calculate direction (use unit's forward direction, not muzzle point's rotated direction)
+	var forward_direction: Vector3
+	if parent_unit:
+		# Use the parent unit's forward direction for consistent aiming
+		forward_direction = -parent_unit.transform.basis.z
+	else:
+		# Fallback to muzzle point direction if no parent unit
+		var muzzle_transform = muzzle_point.global_transform
+		forward_direction = -muzzle_transform.basis.z
 	
 	# Add some accuracy variation (cone of fire)
 	var accuracy_spread = (1.0 - accuracy) * 0.2 # Max deviation angle in radians
 	var spread_x = randf_range(-accuracy_spread, accuracy_spread)
 	var spread_y = randf_range(-accuracy_spread, accuracy_spread)
 	
-	# Rotate the forward vector by random amounts around the muzzle's local up and right axes
-	var final_direction = forward_direction.rotated(muzzle_transform.basis.y, spread_x).rotated(muzzle_transform.basis.x, spread_y)
+	# Rotate the forward vector by random amounts using consistent basis vectors
+	var unit_basis = parent_unit.transform.basis if parent_unit else muzzle_point.global_transform.basis
+	var final_direction = forward_direction.rotated(unit_basis.y, spread_x).rotated(unit_basis.x, spread_y)
 
 	projectile.direction = final_direction.normalized()
 	
@@ -716,27 +792,27 @@ func _set_static_weapon_position() -> void:
 	# Get parent unit archetype for positioning
 	var archetype = parent_unit.archetype if parent_unit.has_method("archetype") else "soldier"
 	
-	# Base positions for different archetypes (right hand estimated positions)
+	# Base positions for different archetypes (proper hand positions at chest/shoulder level)
 	var base_positions = {
-		"scout": Vector3(0.3, 0.8, 0.2),      # Light, agile stance
-		"soldier": Vector3(0.35, 0.9, 0.25),  # Standard military stance  
-		"tank": Vector3(0.4, 0.85, 0.3),      # Heavy, lower stance
-		"sniper": Vector3(0.32, 0.95, 0.28),  # Precision, higher stance
-		"medic": Vector3(0.28, 0.85, 0.22),   # Support, closer stance
-		"engineer": Vector3(0.33, 0.88, 0.26) # Utility, balanced stance
+		"scout": Vector3(0.2, 1.3, 0.3),      # Light, agile stance - hand level
+		"soldier": Vector3(0.25, 1.4, 0.35),  # Standard military stance - hand level
+		"tank": Vector3(0.3, 1.2, 0.4),       # Heavy, lower stance - hand level
+		"sniper": Vector3(0.22, 1.5, 0.38),   # Precision, higher stance - hand level
+		"medic": Vector3(0.18, 1.3, 0.32),    # Support, closer stance - hand level
+		"engineer": Vector3(0.23, 1.35, 0.36) # Utility, balanced stance - hand level
 	}
 	
-	# Base rotations for different weapon types
+	# Base rotations for different weapon types (improved for hand grip)
 	var base_rotations = {
-		"pistol": Vector3(0, 180, -10),    # Slight downward angle
-		"rifle": Vector3(0, 180, 0),       # Horizontal
-		"sniper": Vector3(0, 180, 5),      # Slight upward angle
-		"heavy": Vector3(0, 180, -5),      # Slight downward for stability
-		"support": Vector3(0, 180, -8),    # Supportive angle
-		"carbine": Vector3(0, 180, -3),    # Slight downward
-		"smg": Vector3(0, 180, -12),       # More downward angle
-		"marksman": Vector3(0, 180, 3),    # Slight upward
-		"utility": Vector3(0, 180, -6)     # Utility angle
+		"pistol": Vector3(-10, 90, 0),     # Natural pistol grip angle
+		"rifle": Vector3(0, 90, 0),        # Horizontal rifle grip
+		"sniper": Vector3(5, 90, 0),       # Slight upward for precision
+		"heavy": Vector3(-5, 90, 0),       # Slight downward for stability
+		"support": Vector3(-8, 90, 0),     # Supportive downward angle
+		"carbine": Vector3(-3, 90, 0),     # Slight downward carbine grip
+		"smg": Vector3(-12, 90, 0),        # More aggressive downward angle
+		"marksman": Vector3(3, 90, 0),     # Slight upward for precision
+		"utility": Vector3(-6, 90, 0)      # Utility grip angle
 	}
 	
 	# Get weapon category from weapon name
@@ -815,14 +891,14 @@ func _get_base_weapon_position() -> Vector3:
 	"""Get the base weapon position for current archetype"""
 	var archetype = parent_unit.archetype if parent_unit and parent_unit.has_method("archetype") else "soldier"
 	var base_positions = {
-		"scout": Vector3(0.3, 0.8, 0.2),
-		"soldier": Vector3(0.35, 0.9, 0.25),
-		"tank": Vector3(0.4, 0.85, 0.3),
-		"sniper": Vector3(0.32, 0.95, 0.28),
-		"medic": Vector3(0.28, 0.85, 0.22),
-		"engineer": Vector3(0.33, 0.88, 0.26)
+		"scout": Vector3(0.2, 1.3, 0.3),      # Light, agile stance - hand level
+		"soldier": Vector3(0.25, 1.4, 0.35),  # Standard military stance - hand level
+		"tank": Vector3(0.3, 1.2, 0.4),       # Heavy, lower stance - hand level
+		"sniper": Vector3(0.22, 1.5, 0.38),   # Precision, higher stance - hand level
+		"medic": Vector3(0.18, 1.3, 0.32),    # Support, closer stance - hand level
+		"engineer": Vector3(0.23, 1.35, 0.36) # Utility, balanced stance - hand level
 	}
-	return base_positions.get(archetype, Vector3(0.35, 0.9, 0.25))
+	return base_positions.get(archetype, Vector3(0.25, 1.4, 0.35))
 
 func _play_fire_sound():
 	var specs = weapon_db.get_weapon_specs(weapon_type)
@@ -846,7 +922,7 @@ func _get_base_weapon_rotation() -> Vector3:
 		match weapon_suffix:
 			"a", "c":  # Pistols
 				weapon_category = "pistol"
-			"d", "i", "m":  # Snipers  
+			"g", "f", "e":  # Snipers  
 				weapon_category = "sniper"
 			"j", "k", "n":  # Heavy weapons
 				weapon_category = "heavy"
@@ -864,14 +940,23 @@ func _get_base_weapon_rotation() -> Vector3:
 				weapon_category = "rifle"
 	
 	var base_rotations = {
-		"pistol": Vector3(0, -90, -10),
-		"rifle": Vector3(0, -90, 0),
-		"sniper": Vector3(0, -90, 5),
-		"heavy": Vector3(0, -90, -5),
-		"support": Vector3(0, -90, -8),
-		"carbine": Vector3(0, -90, -3),
-		"smg": Vector3(0, -90, -12),
-		"marksman": Vector3(0, -90, 3),
-		"utility": Vector3(0, -90, -6)
+		"pistol": Vector3(-10, 90, 0),
+		"rifle": Vector3(0, 90, 0),
+		"sniper": Vector3(5, 90, 0),
+		"heavy": Vector3(-5, 90, 0),
+		"support": Vector3(-8, 90, 0),
+		"carbine": Vector3(-3, 90, 0),
+		"smg": Vector3(-12, 90, 0),
+		"marksman": Vector3(3, 90, 0),
+		"utility": Vector3(-6, 90, 0)
 	}
-	return base_rotations.get(weapon_category, Vector3(0, -90, 0))
+	return base_rotations.get(weapon_category, Vector3(0, 90, 0))
+
+func _debug_print_hierarchy(node: Node, indent: int) -> void:
+	"""Helper function to recursively print node hierarchy for debugging"""
+	var indent_str = ""
+	for i in range(indent):
+		indent_str += "  "
+	print("%s%s" % [indent_str, node.name])
+	for child in node.get_children():
+		_debug_print_hierarchy(child, indent + 1)

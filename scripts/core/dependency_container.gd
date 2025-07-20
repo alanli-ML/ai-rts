@@ -20,7 +20,7 @@ var plan_executor: Node
 var resource_manager: Node
 var node_capture_system: Node
 var team_unit_spawner: Node
-var placeable_entity_manager: Node
+var entity_manager: Node
 var openai_client: Node
 var langsmith_client: Node
 var audio_manager: Node
@@ -53,7 +53,7 @@ const LangSmithClientClass = preload("res://scripts/ai/langsmith_client.gd")
 const ResourceManagerClass = preload("res://scripts/gameplay/resource_manager.gd")
 const NodeCaptureSystemClass = preload("res://scripts/gameplay/node_capture_system.gd")
 const TeamUnitSpawnerClass = preload("res://scripts/units/team_unit_spawner.gd")
-const PlaceableEntityManagerClass = preload("res://scripts/server/placeable_entity_manager.gd")
+const EntityManagerClass = preload("res://scripts/core/entity_manager.gd")
 
 # Preload UI system classes
 const SpeechBubbleManagerClass = preload("res://scripts/ui/speech_bubble_manager.gd")
@@ -136,9 +136,9 @@ func create_server_dependencies() -> void:
     team_unit_spawner.name = "TeamUnitSpawner"
     add_child(team_unit_spawner)
 
-    placeable_entity_manager = PlaceableEntityManagerClass.new()
-    placeable_entity_manager.name = "PlaceableEntityManager"
-    add_child(placeable_entity_manager)
+    entity_manager = EntityManagerClass.new()
+    entity_manager.name = "EntityManager"
+    add_child(entity_manager)
 
     _setup_server_dependencies()
     logger.info("DependencyContainer", "Server dependencies created")
@@ -156,7 +156,9 @@ func _setup_server_dependencies() -> void:
     
     # Setup gameplay systems
     team_unit_spawner.resource_manager = resource_manager
-    placeable_entity_manager.setup(logger)
+    # EntityManager setup: (logger, asset_loader, map_generator, resource_manager)
+    # asset_loader and map_generator might be null initially, which is handled by EntityManager
+    entity_manager.setup(logger, null, null, resource_manager)
     
     _connect_server_systems()
     logger.info("DependencyContainer", "Server dependencies setup complete")
@@ -214,7 +216,7 @@ func get_ai_command_processor(): return ai_command_processor
 func get_resource_manager(): return resource_manager
 func get_node_capture_system(): return node_capture_system
 func get_team_unit_spawner(): return team_unit_spawner
-func get_placeable_entity_manager(): return placeable_entity_manager
+func get_entity_manager(): return entity_manager
 func get_game_hud(): return null  # GameHUD is created from scene when match starts
 func get_speech_bubble_manager(): return speech_bubble_manager
 func get_plan_progress_manager(): return plan_progress_manager

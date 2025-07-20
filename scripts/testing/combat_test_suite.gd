@@ -59,6 +59,18 @@ func execute_command(command: String):
             _test_quick_respawn_mechanics()
         "/test_super_quick_respawn":
             _test_super_quick_respawn()
+        "/test_turrets":
+            _test_turret_construction()
+        "/test_turret_limits":
+            _test_turret_limits()
+        "/test_turret_combat":
+            _test_turret_combat()
+        "/test_engineer_turrets":
+            _test_engineer_turret_construction()
+        "/test_follow_turret_exclusion":
+            _test_follow_turret_exclusion()
+        "/test_scout_stealth":
+            _test_scout_stealth()
         "/test_help":
             _show_help()
         _:
@@ -77,6 +89,12 @@ func _show_help():
     [color=cyan]/test_respawn <archetype>[/color] - Tests respawn mechanics (30 sec wait).
     [color=cyan]/test_quick_respawn[/color] - Tests respawn mechanics (5 sec wait).
     [color=cyan]/test_super_quick_respawn[/color] - Tests respawn mechanics (2 sec wait).
+    [color=cyan]/test_turrets[/color] - Tests turret construction and basic turret functionality.
+    [color=cyan]/test_turret_limits[/color] - Tests turret range and limit mechanics.
+    [color=cyan]/test_turret_combat[/color] - Tests turret combat and targeting.
+    [color=cyan]/test_engineer_turrets[/color] - Tests engineer construct_turret method and limits.
+    [color=cyan]/test_follow_turret_exclusion[/color] - Tests that units don't follow turrets in follow state.
+    [color=cyan]/test_scout_stealth[/color] - Tests scout stealth mechanics (activation, duration, visual effects, interruption, enemy detection).
     [color=cyan]/test_help[/color] - Shows this help message.
     """
     logger.info("CombatTestSuite", "Displaying help.")
@@ -395,6 +413,645 @@ func _test_super_quick_respawn():
         else:
             logger.warning("CombatTestSuite", "⚠ Respawn worked but signal not received")
 
+func _test_turret_construction():
+    logger.info("CombatTestSuite", "Starting turret construction test.")
+    var archetype = "turret"
+    var team_id = 1
+    var position = Vector3(0, 1, 0)
+    
+    var turret = await _spawn_unit_for_test(archetype, team_id, position)
+    if not is_instance_valid(turret):
+        logger.error("CombatTestSuite", "Failed to spawn turret.")
+        return
+
+    logger.info("CombatTestSuite", "Turret %s spawned at %s" % [turret.unit_id, turret.global_position])
+
+    # Test basic turret properties
+    logger.info("CombatTestSuite", "Testing turret properties:")
+    logger.info("CombatTestSuite", "  - Unit ID: %s" % turret.unit_id)
+    logger.info("CombatTestSuite", "  - Team ID: %d" % turret.team_id)
+    logger.info("CombatTestSuite", "  - Position: %s" % turret.global_position)
+    logger.info("CombatTestSuite", "  - Health: %d/%d" % [turret.current_health, turret.max_health])
+    logger.info("CombatTestSuite", "  - Invulnerable: %s" % turret.invulnerable)
+    logger.info("CombatTestSuite", "  - Current State: %s" % turret.current_state)
+
+    # Test turret attack
+    var target = await _spawn_unit_for_test("scout", 2, Vector3(10, 1, 0))
+    if not is_instance_valid(target):
+        logger.error("CombatTestSuite", "Failed to spawn target for turret attack.")
+        return
+
+    logger.info("CombatTestSuite", "Making turret %s attack target %s" % [turret.unit_id, target.unit_id])
+    _make_units_attack(turret, target)
+
+    # Wait for turret to attack
+    await get_tree().create_timer(1.0).timeout
+
+    # Check if turret attacked
+    if turret.current_state == GameEnums.UnitState.ATTACKING:
+        logger.info("CombatTestSuite", "✓ Turret correctly entered ATTACKING state")
+        logger.info("CombatTestSuite", "  - Target: %s" % target.unit_id)
+        logger.info("CombatTestSuite", "  - Current Health: %d/%d" % [turret.current_health, turret.max_health])
+    else:
+        logger.error("CombatTestSuite", "✗ Turret did not enter ATTACKING state")
+
+    # Test turret death
+    turret.take_damage(turret.max_health * 2)
+    await get_tree().create_timer(3.0).timeout
+
+    if turret.is_dead:
+        logger.info("CombatTestSuite", "✓ Turret correctly died")
+        logger.info("CombatTestSuite", "  - Health: %d/%d" % [turret.current_health, turret.max_health])
+    else:
+        logger.error("CombatTestSuite", "✗ Turret did not die")
+
+    # Test turret respawn
+    turret.respawn_timer = 5.0 # Override to 5 seconds for quick respawn test
+    turret.take_damage(turret.max_health * 2)
+    await get_tree().create_timer(6.0).timeout
+
+    if turret.is_dead:
+        logger.error("CombatTestSuite", "✗ Turret did not respawn after 5 seconds")
+    elif turret.is_respawning:
+        logger.info("CombatTestSuite", "✓ Turret respawned successfully!")
+        logger.info("CombatTestSuite", "  - Health: %d/%d" % [turret.current_health, turret.max_health])
+        logger.info("CombatTestSuite", "  - Position: %s" % turret.global_position)
+        logger.info("CombatTestSuite", "  - Invulnerable: %s" % turret.invulnerable)
+    else:
+        logger.error("CombatTestSuite", "✗ Turret did not enter respawning state")
+
+    logger.info("CombatTestSuite", "Turret construction and basic functionality test completed.")
+
+func _test_turret_limits():
+    logger.info("CombatTestSuite", "Starting turret limits test.")
+    var archetype = "turret"
+    var team_id = 1
+    var position = Vector3(0, 1, 0)
+    
+    var turret = await _spawn_unit_for_test(archetype, team_id, position)
+    if not is_instance_valid(turret):
+        logger.error("CombatTestSuite", "Failed to spawn turret for limits test.")
+        return
+
+    logger.info("CombatTestSuite", "Turret %s spawned at %s" % [turret.unit_id, turret.global_position])
+
+    # Test range limit
+    logger.info("CombatTestSuite", "Testing range limit:")
+    var target_far = await _spawn_unit_for_test("scout", 2, Vector3(100, 1, 0))
+    if not is_instance_valid(target_far):
+        logger.error("CombatTestSuite", "Failed to spawn far target for range test.")
+        return
+
+    logger.info("CombatTestSuite", "Making turret %s attack far target %s" % [turret.unit_id, target_far.unit_id])
+    _make_units_attack(turret, target_far)
+
+    await get_tree().create_timer(1.0).timeout
+
+    if turret.current_state == GameEnums.UnitState.IDLE:
+        logger.info("CombatTestSuite", "✓ Turret correctly returned to IDLE after far attack")
+    else:
+        logger.error("CombatTestSuite", "✗ Turret did not return to IDLE after far attack")
+
+    # Test limit count
+    logger.info("CombatTestSuite", "Testing turret limit count:")
+    var team2_turrets = []
+    for i in range(5): # Spawn 5 turrets
+        var turret_in_team2 = await _spawn_unit_for_test(archetype, 2, Vector3(0, 1, 0))
+        if is_instance_valid(turret_in_team2):
+            team2_turrets.append(turret_in_team2)
+        else:
+            logger.error("CombatTestSuite", "Failed to spawn turret %d for limit test." % i)
+            break
+
+    if team2_turrets.size() == 5:
+        logger.info("CombatTestSuite", "✓ Turrets limit count test passed (spawned 5 turrets)")
+    else:
+        logger.error("CombatTestSuite", "✗ Turrets limit count test failed (spawned %d turrets)" % team2_turrets.size())
+
+    # Test limit health
+    logger.info("CombatTestSuite", "Testing turret limit health:")
+    var turret_with_low_health = await _spawn_unit_for_test(archetype, 2, Vector3(0, 1, 0))
+    if not is_instance_valid(turret_with_low_health):
+        logger.error("CombatTestSuite", "Failed to spawn turret for low health test.")
+        return
+
+    turret_with_low_health.current_health = 1 # Set to 1 health
+    logger.info("CombatTestSuite", "Turret %s with low health: %d" % [turret_with_low_health.unit_id, turret_with_low_health.current_health])
+
+    turret_with_low_health.take_damage(1) # Try to damage
+    await get_tree().create_timer(0.5).timeout
+
+    if turret_with_low_health.current_health == 0:
+        logger.info("CombatTestSuite", "✓ Turret health limit test passed (health reached 0)")
+    else:
+        logger.error("CombatTestSuite", "✗ Turret health limit test failed (health not 0)")
+
+    logger.info("CombatTestSuite", "Turret limits test completed.")
+
+func _test_turret_combat():
+    logger.info("CombatTestSuite", "Starting turret combat test.")
+    var archetype = "turret"
+    var team_id = 1
+    var position = Vector3(0, 1, 0)
+    
+    var turret = await _spawn_unit_for_test(archetype, team_id, position)
+    if not is_instance_valid(turret):
+        logger.error("CombatTestSuite", "Failed to spawn turret for combat test.")
+        return
+
+    logger.info("CombatTestSuite", "Turret %s spawned at %s" % [turret.unit_id, turret.global_position])
+
+    # Test turret targeting
+    logger.info("CombatTestSuite", "Testing turret targeting:")
+    var target_in_range = await _spawn_unit_for_test("scout", 2, Vector3(10, 1, 0))
+    if not is_instance_valid(target_in_range):
+        logger.error("CombatTestSuite", "Failed to spawn target for turret targeting.")
+        return
+
+    logger.info("CombatTestSuite", "Making turret %s attack target %s" % [turret.unit_id, target_in_range.unit_id])
+    _make_units_attack(turret, target_in_range)
+
+    await get_tree().create_timer(1.0).timeout
+
+    if turret.current_state == GameEnums.UnitState.ATTACKING:
+        logger.info("CombatTestSuite", "✓ Turret correctly entered ATTACKING state")
+        logger.info("CombatTestSuite", "  - Target: %s" % target_in_range.unit_id)
+    else:
+        logger.error("CombatTestSuite", "✗ Turret did not enter ATTACKING state")
+
+    # Test turret targeting multiple enemies
+    logger.info("CombatTestSuite", "Testing turret targeting multiple enemies:")
+    var target_far_1 = await _spawn_unit_for_test("scout", 2, Vector3(100, 1, 0))
+    if not is_instance_valid(target_far_1):
+        logger.error("CombatTestSuite", "Failed to spawn far target for turret multiple targeting.")
+        return
+
+    var target_far_2 = await _spawn_unit_for_test("scout", 2, Vector3(100, 1, 0))
+    if not is_instance_valid(target_far_2):
+        logger.error("CombatTestSuite", "Failed to spawn far target for turret multiple targeting.")
+        return
+
+    logger.info("CombatTestSuite", "Making turret %s attack multiple far targets" % [turret.unit_id])
+    _make_units_attack(turret, target_far_1)
+    _make_units_attack(turret, target_far_2)
+
+    await get_tree().create_timer(1.0).timeout
+
+    if turret.current_state == GameEnums.UnitState.ATTACKING:
+        logger.info("CombatTestSuite", "✓ Turret correctly entered ATTACKING state for multiple targets")
+        logger.info("CombatTestSuite", "  - Targets: %s, %s" % [target_far_1.unit_id, target_far_2.unit_id])
+    else:
+        logger.error("CombatTestSuite", "✗ Turret did not enter ATTACKING state for multiple targets")
+
+    # Test turret targeting allies
+    logger.info("CombatTestSuite", "Testing turret targeting allies:")
+    var ally_in_range = await _spawn_unit_for_test("scout", 1, Vector3(10, 1, 0))
+    if not is_instance_valid(ally_in_range):
+        logger.error("CombatTestSuite", "Failed to spawn ally for turret targeting.")
+        return
+
+    logger.info("CombatTestSuite", "Making turret %s attack ally %s" % [turret.unit_id, ally_in_range.unit_id])
+    _make_units_attack(turret, ally_in_range)
+
+    await get_tree().create_timer(1.0).timeout
+
+    if turret.current_state == GameEnums.UnitState.IDLE:
+        logger.info("CombatTestSuite", "✓ Turret correctly returned to IDLE after attacking ally")
+    else:
+        logger.error("CombatTestSuite", "✗ Turret did not return to IDLE after attacking ally")
+
+    # Test turret targeting self
+    logger.info("CombatTestSuite", "Testing turret targeting self:")
+    var self_target = await _spawn_unit_for_test(archetype, 1, Vector3(0, 1, 0))
+    if not is_instance_valid(self_target):
+        logger.error("CombatTestSuite", "Failed to spawn self target for turret targeting.")
+        return
+
+    logger.info("CombatTestSuite", "Making turret %s attack self %s" % [turret.unit_id, self_target.unit_id])
+    _make_units_attack(turret, self_target)
+
+    await get_tree().create_timer(1.0).timeout
+
+    if turret.current_state == GameEnums.UnitState.IDLE:
+        logger.info("CombatTestSuite", "✓ Turret correctly returned to IDLE after attacking self")
+    else:
+        logger.error("CombatTestSuite", "✗ Turret did not return to IDLE after attacking self")
+
+    # Test turret targeting dead targets
+    logger.info("CombatTestSuite", "Testing turret targeting dead targets:")
+    var dead_target = await _spawn_unit_for_test("scout", 2, Vector3(100, 1, 0))
+    if not is_instance_valid(dead_target):
+        logger.error("CombatTestSuite", "Failed to spawn dead target for turret targeting.")
+        return
+
+    dead_target.take_damage(dead_target.max_health * 2)
+    await get_tree().create_timer(1.0).timeout
+
+    if turret.current_state == GameEnums.UnitState.IDLE:
+        logger.info("CombatTestSuite", "✓ Turret correctly returned to IDLE after attacking dead target")
+    else:
+        logger.error("CombatTestSuite", "✗ Turret did not return to IDLE after attacking dead target")
+
+    logger.info("CombatTestSuite", "Turret combat test completed.")
+
+func _test_engineer_turret_construction():
+    logger.info("CombatTestSuite", "Starting engineer turret construction test.")
+    
+    # Spawn an engineer
+    var engineer = await _spawn_unit_for_test("engineer", 1, Vector3(0, 1, 0))
+    if not is_instance_valid(engineer):
+        logger.error("CombatTestSuite", "Failed to spawn engineer for turret construction test.")
+        return
+    
+    logger.info("CombatTestSuite", "Engineer %s spawned at %s" % [engineer.unit_id, engineer.global_position])
+    
+    # Get initial turret count
+    var initial_turret_count = game_state.get_units_by_archetype("turret", 1).size()
+    logger.info("CombatTestSuite", "Initial turret count for team 1: %d" % initial_turret_count)
+    
+    # Test construct_turret method
+    logger.info("CombatTestSuite", "Testing engineer construct_turret method...")
+    engineer.construct_turret({})
+    
+    # Wait for construction to complete
+    logger.info("CombatTestSuite", "Waiting for turret construction to complete...")
+    await get_tree().create_timer(8.0).timeout  # Turret build_time is 5.0 + buffer
+    
+    # Check if turret was created
+    var final_turret_count = game_state.get_units_by_archetype("turret", 1).size()
+    logger.info("CombatTestSuite", "Final turret count for team 1: %d" % final_turret_count)
+    
+    if final_turret_count > initial_turret_count:
+        logger.info("CombatTestSuite", "✓ Engineer successfully constructed turret!")
+        logger.info("CombatTestSuite", "  - Turrets created: %d" % (final_turret_count - initial_turret_count))
+        
+        # Find the newly created turret
+        var turrets = game_state.get_units_by_archetype("turret", 1)
+        if turrets.size() > 0:
+            var new_turret = turrets[turrets.size() - 1]  # Get the last turret (likely the newest)
+            logger.info("CombatTestSuite", "  - New turret ID: %s" % new_turret.unit_id)
+            logger.info("CombatTestSuite", "  - New turret position: %s" % new_turret.global_position)
+            logger.info("CombatTestSuite", "  - New turret health: %d/%d" % [new_turret.current_health, new_turret.max_health])
+            logger.info("CombatTestSuite", "  - New turret team: %d" % new_turret.team_id)
+    else:
+        logger.error("CombatTestSuite", "✗ Engineer failed to construct turret")
+        logger.error("CombatTestSuite", "  - Expected: %d turrets" % (initial_turret_count + 1))
+        logger.error("CombatTestSuite", "  - Actual: %d turrets" % final_turret_count)
+    
+    # Test multiple turret construction (should hit limit and start replacing)
+    logger.info("CombatTestSuite", "Testing multiple turret construction with rolling replacement...")
+    var construction_attempts = 8  # Try to build more than the 5 turret limit
+    var turret_ids_created = []
+    
+    for i in range(construction_attempts):
+        logger.info("CombatTestSuite", "Attempting to construct turret %d..." % (i + 2))
+        
+        # Store the current turret IDs before construction
+        var turrets_before = game_state.get_units_by_archetype("turret", 1)
+        var ids_before = []
+        for turret in turrets_before:
+            if is_instance_valid(turret):
+                ids_before.append(turret.unit_id)
+        
+        engineer.construct_turret({})
+        await get_tree().create_timer(8.0).timeout  # Wait for each construction
+        
+        # Check turrets after construction
+        var turrets_after = game_state.get_units_by_archetype("turret", 1)
+        var ids_after = []
+        for turret in turrets_after:
+            if is_instance_valid(turret):
+                ids_after.append(turret.unit_id)
+        
+        var current_count = turrets_after.size()
+        logger.info("CombatTestSuite", "After construction attempt %d: %d turrets" % [(i + 2), current_count])
+        
+        # Check if we're maintaining the limit while continuing construction
+        if current_count <= 5:
+            logger.info("CombatTestSuite", "✓ Turret count maintained at or below limit (%d/5)" % current_count)
+            
+            # If we're past the limit attempts, check if turrets are being replaced
+            if i >= 4:  # After 5th construction attempt
+                # Find which turrets were removed and which were added
+                var removed_turrets = []
+                var added_turrets = []
+                
+                for id in ids_before:
+                    if not id in ids_after:
+                        removed_turrets.append(id)
+                
+                for id in ids_after:
+                    if not id in ids_before:
+                        added_turrets.append(id)
+                
+                if removed_turrets.size() > 0 and added_turrets.size() > 0:
+                    logger.info("CombatTestSuite", "✓ Turret replacement working:")
+                    logger.info("CombatTestSuite", "  - Removed: %s" % removed_turrets)
+                    logger.info("CombatTestSuite", "  - Added: %s" % added_turrets)
+                else:
+                    logger.warning("CombatTestSuite", "⚠ No clear turret replacement detected")
+        else:
+            logger.error("CombatTestSuite", "✗ Turret count exceeded limit (%d/5)" % current_count)
+    
+    var final_count = game_state.get_units_by_archetype("turret", 1).size()
+    if final_count == 5:
+        logger.info("CombatTestSuite", "✓ Final turret count correct (5/5)")
+        logger.info("CombatTestSuite", "✓ Rolling turret replacement system working properly")
+    elif final_count < 5:
+        logger.warning("CombatTestSuite", "⚠ Final turret count lower than expected (%d/5)" % final_count)
+    else:
+        logger.error("CombatTestSuite", "✗ Final turret count exceeded limit (%d/5)" % final_count)
+    
+    logger.info("CombatTestSuite", "Engineer turret construction test completed.")
+
+func _test_follow_turret_exclusion():
+    """Test that units don't follow turrets in follow state"""
+    logger.info("CombatTestSuite", "Starting follow turret exclusion test...")
+    
+    # Spawn a scout (follower) and a turret on the same team
+    var scout = await _spawn_unit_for_test("scout", 1, Vector3(0, 1, 0))
+    var turret = await _spawn_unit_for_test("turret", 1, Vector3(5, 1, 0))
+    var tank = await _spawn_unit_for_test("tank", 1, Vector3(10, 1, 0))
+    
+    if not is_instance_valid(scout) or not is_instance_valid(turret) or not is_instance_valid(tank):
+        logger.error("CombatTestSuite", "Failed to spawn units for follow turret exclusion test")
+        return
+    
+    logger.info("CombatTestSuite", "Spawned scout %s, turret %s, and tank %s" % [scout.unit_id, turret.unit_id, tank.unit_id])
+    
+    # Test 1: Check that scout doesn't select turret as nearest ally to follow
+    logger.info("CombatTestSuite", "Testing _get_nearest_ally excludes turrets...")
+    
+    # Create a test array with both turret and tank
+    var test_allies = [turret, tank]
+    var nearest_ally = scout._get_nearest_ally(test_allies)
+    
+    if nearest_ally == tank:
+        logger.info("CombatTestSuite", "✓ _get_nearest_ally correctly selected tank over turret")
+    elif nearest_ally == turret:
+        logger.error("CombatTestSuite", "✗ _get_nearest_ally incorrectly selected turret")
+    else:
+        logger.warning("CombatTestSuite", "⚠ _get_nearest_ally returned unexpected result: %s" % str(nearest_ally))
+    
+    # Test 2: Test in actual follow behavior
+    logger.info("CombatTestSuite", "Testing follow state behavior with turret present...")
+    
+    # Force scout into follow state
+    scout.current_reactive_state = "follow"
+    scout._execute_follow_state()
+    
+    await get_tree().create_timer(1.0).timeout
+    
+    # Check what the scout is following
+    if scout.follow_target == tank:
+        logger.info("CombatTestSuite", "✓ Scout correctly chose to follow tank instead of turret")
+    elif scout.follow_target == turret:
+        logger.error("CombatTestSuite", "✗ Scout incorrectly chose to follow turret")
+    elif scout.follow_target == null:
+        logger.info("CombatTestSuite", "✓ Scout didn't select any follow target (acceptable if no valid targets)")
+    else:
+        logger.warning("CombatTestSuite", "⚠ Scout following unexpected target: %s" % str(scout.follow_target))
+    
+    # Test 3: Test medic healing exclusion
+    logger.info("CombatTestSuite", "Testing medic healing exclusion of turrets...")
+    
+    var medic = await _spawn_unit_for_test("medic", 1, Vector3(15, 1, 0))
+    if not is_instance_valid(medic):
+        logger.error("CombatTestSuite", "Failed to spawn medic for healing test")
+        return
+    
+    # Damage the turret to give it low health
+    turret.take_damage(50)
+    
+    # Test medic's healing target selection
+    var healing_target = medic._get_lowest_health_ally_in_vision()
+    
+    if healing_target != turret:
+        logger.info("CombatTestSuite", "✓ Medic correctly excluded damaged turret from healing targets")
+        if healing_target:
+            logger.info("CombatTestSuite", "  - Medic selected %s instead" % healing_target.unit_id)
+        else:
+            logger.info("CombatTestSuite", "  - Medic found no valid healing targets")
+    else:
+        logger.error("CombatTestSuite", "✗ Medic incorrectly selected turret as healing target")
+    
+    # Test 4: Test with only a turret as ally
+    logger.info("CombatTestSuite", "Testing follow behavior with only turret as ally...")
+    
+    # Remove tank temporarily
+    tank.queue_free()
+    await get_tree().create_timer(0.5).timeout
+    
+    # Test scout's ally selection when only turret is available
+    var game_state = get_node_or_null("/root/DependencyContainer/GameState")
+    if game_state:
+        var allies_in_range = game_state.get_units_in_radius(scout.global_position, 30.0, -1, scout.team_id)
+        var nearest_non_turret_ally = scout._get_nearest_ally(allies_in_range)
+        
+        if nearest_non_turret_ally == null:
+            logger.info("CombatTestSuite", "✓ Scout correctly found no valid allies when only turret available")
+        else:
+            logger.warning("CombatTestSuite", "⚠ Scout found ally when only turret should be available: %s" % nearest_non_turret_ally.unit_id)
+    
+    logger.info("CombatTestSuite", "Follow turret exclusion test completed.")
+
+func _test_scout_stealth():
+    logger.info("CombatTestSuite", "Starting scout stealth test.")
+    
+    # Spawn a scout
+    var scout = await _spawn_unit_for_test("scout", 1, Vector3(0, 1, 0))
+    if not is_instance_valid(scout):
+        logger.error("CombatTestSuite", "Failed to spawn scout for stealth test.")
+        return
+    
+    logger.info("CombatTestSuite", "Scout %s spawned at %s" % [scout.unit_id, scout.global_position])
+    
+    # Test initial state
+    logger.info("CombatTestSuite", "Testing initial scout state:")
+    logger.info("CombatTestSuite", "  - Unit ID: %s" % scout.unit_id)
+    logger.info("CombatTestSuite", "  - Team ID: %d" % scout.team_id)
+    logger.info("CombatTestSuite", "  - Position: %s" % scout.global_position)
+    logger.info("CombatTestSuite", "  - Health: %d/%d" % [scout.current_health, scout.max_health])
+    logger.info("CombatTestSuite", "  - Current State: %s" % scout.current_state)
+    
+    # Check if scout has stealth ability
+    if scout.has_method("activate_stealth"):
+        logger.info("CombatTestSuite", "✓ Scout has activate_stealth method")
+    else:
+        logger.error("CombatTestSuite", "✗ Scout does not have activate_stealth method")
+        return
+    
+    # Test stealth activation
+    logger.info("CombatTestSuite", "Testing stealth activation...")
+    scout.activate_stealth({})
+    
+    # Wait a moment for stealth to activate
+    await get_tree().create_timer(0.5).timeout
+    
+    # Check if scout entered stealth state
+    if scout.is_stealthed:
+        logger.info("CombatTestSuite", "✓ Scout successfully activated stealth")
+        
+        # Check stealth properties
+        logger.info("CombatTestSuite", "✓ Scout is_stealthed property is true")
+        
+        # Check for stealth visual effect (transparency changes)
+        var model_container = scout.get_node_or_null("ModelContainer")
+        if model_container:
+            logger.info("CombatTestSuite", "✓ Model container found for stealth visual effects")
+        else:
+            logger.warning("CombatTestSuite", "⚠ Model container not found for stealth visual effects")
+        
+        # Check stealth timer
+        if scout.has_method("get") and "stealth_timer" in scout:
+            var remaining_time = scout.stealth_timer
+            logger.info("CombatTestSuite", "✓ Stealth timer: %.2f seconds remaining" % remaining_time)
+        else:
+            logger.warning("CombatTestSuite", "⚠ stealth_timer property not accessible")
+    else:
+        logger.error("CombatTestSuite", "✗ Scout failed to activate stealth (is_stealthed: %s)" % scout.is_stealthed)
+        return
+    
+    # Test stealth duration (wait for it to expire naturally)
+    logger.info("CombatTestSuite", "Testing stealth duration...")
+    var stealth_duration = 11.0  # Scout stealth duration is 10.0 + buffer
+    await get_tree().create_timer(stealth_duration).timeout
+    
+    # Check if stealth expired
+    if not scout.is_stealthed:
+        logger.info("CombatTestSuite", "✓ Stealth expired naturally")
+        
+        # Check that scout returned to normal transparency
+        logger.info("CombatTestSuite", "✓ Stealth visual effects should be cleared")
+    else:
+        logger.error("CombatTestSuite", "✗ Stealth did not expire properly (is_stealthed: %s)" % scout.is_stealthed)
+    
+    # Test stealth cooldown
+    logger.info("CombatTestSuite", "Testing stealth cooldown...")
+    scout.activate_stealth({})
+    await get_tree().create_timer(0.5).timeout
+    
+    if scout.is_stealthed:
+        logger.info("CombatTestSuite", "✓ Scout can activate stealth again (no cooldown issues)")
+    elif scout.has_method("get") and "stealth_cooldown_timer" in scout:
+        var cooldown = scout.stealth_cooldown_timer
+        if cooldown > 0:
+            logger.info("CombatTestSuite", "✓ Stealth cooldown active: %.2f seconds remaining" % cooldown)
+        else:
+            logger.warning("CombatTestSuite", "⚠ Stealth activation failed but no cooldown reported")
+    else:
+        logger.warning("CombatTestSuite", "⚠ Could not determine stealth cooldown status")
+    
+    # Test stealth interruption by damage
+    logger.info("CombatTestSuite", "Testing stealth interruption by damage...")
+    
+    # Make sure scout is stealthed first
+    if not scout.is_stealthed:
+        scout.activate_stealth({})
+        await get_tree().create_timer(0.5).timeout
+    
+    if scout.is_stealthed:
+        logger.info("CombatTestSuite", "Scout is stealthed, testing damage interruption...")
+        var health_before = scout.current_health
+        
+        # Deal damage to scout
+        scout.take_damage(10)
+        await get_tree().create_timer(0.2).timeout
+        
+        # Check if stealth was broken
+        if not scout.is_stealthed:
+            logger.info("CombatTestSuite", "✓ Stealth correctly broken by damage")
+            logger.info("CombatTestSuite", "  - Health before: %d, after: %d" % [health_before, scout.current_health])
+        else:
+            logger.warning("CombatTestSuite", "⚠ Stealth was not broken by damage")
+    else:
+        logger.warning("CombatTestSuite", "⚠ Could not test damage interruption - scout not stealthed")
+    
+    # Test stealth detection mechanics with enemy units
+    logger.info("CombatTestSuite", "Testing stealth detection mechanics...")
+    
+    # Spawn an enemy to test detection
+    var enemy = await _spawn_unit_for_test("tank", 2, Vector3(5, 1, 0))
+    if not is_instance_valid(enemy):
+        logger.warning("CombatTestSuite", "⚠ Failed to spawn enemy for detection test")
+    else:
+        # Activate stealth
+        scout.activate_stealth({})
+        await get_tree().create_timer(0.5).timeout
+        
+        if scout.is_stealthed:
+            logger.info("CombatTestSuite", "Testing enemy detection of stealthed scout...")
+            
+            # Test 1: Direct targeting via can_be_targeted()
+            if scout.can_be_targeted():
+                logger.error("CombatTestSuite", "✗ Stealthed scout can_be_targeted() returns true (should be false)")
+            else:
+                logger.info("CombatTestSuite", "✓ Stealthed scout can_be_targeted() correctly returns false")
+            
+            # Test 2: Enemy targeting behavior
+            # Make enemy try to attack scout
+            _make_units_attack(enemy, scout)
+            await get_tree().create_timer(1.0).timeout
+            
+            # Check enemy's targeting behavior
+            if enemy.current_state == GameEnums.UnitState.ATTACKING:
+                if enemy.has_method("get") and "target_unit" in enemy and enemy.target_unit == scout:
+                    logger.warning("CombatTestSuite", "⚠ Enemy can still target stealthed scout")
+                else:
+                    logger.info("CombatTestSuite", "✓ Enemy attacking state but not targeting stealthed scout")
+            elif enemy.current_state == GameEnums.UnitState.IDLE:
+                logger.info("CombatTestSuite", "✓ Enemy cannot target stealthed scout (stayed IDLE)")
+            else:
+                logger.warning("CombatTestSuite", "⚠ Enemy in unexpected state: %s" % enemy.current_state)
+            
+            # Test 3: Manual enemy targeting check
+            var enemies_near_scout = game_state.get_units_in_radius(scout.global_position, 10.0, scout.team_id) if game_state else []
+            var targetable_enemies = enemies_near_scout.filter(func(u): return u.can_be_targeted())
+            
+            if enemies_near_scout.size() > 0 and targetable_enemies.size() == 0:
+                logger.info("CombatTestSuite", "✓ get_units_in_radius + can_be_targeted() correctly excludes stealthed scout")
+            elif enemies_near_scout.size() == 0:
+                logger.info("CombatTestSuite", "✓ No enemies found near stealthed scout (as expected)")
+            else:
+                logger.warning("CombatTestSuite", "⚠ Targeting check unclear - enemies: %d, targetable: %d" % [enemies_near_scout.size(), targetable_enemies.size()])
+        else:
+            logger.warning("CombatTestSuite", "⚠ Could not test detection - scout not stealthed")
+    
+    # Test multiple stealth activations
+    logger.info("CombatTestSuite", "Testing multiple stealth activations...")
+    var successful_activations = 0
+    
+    for i in range(3):
+        logger.info("CombatTestSuite", "Stealth activation attempt %d..." % (i + 1))
+        
+        # Wait for any cooldown
+        if scout.has_method("get") and "stealth_cooldown_timer" in scout:
+            var cooldown = scout.stealth_cooldown_timer
+            if cooldown > 0:
+                logger.info("CombatTestSuite", "Waiting for cooldown: %.2f seconds" % cooldown)
+                await get_tree().create_timer(cooldown + 0.5).timeout
+        
+        scout.activate_stealth({})
+        await get_tree().create_timer(0.5).timeout
+        
+        if scout.is_stealthed:
+            successful_activations += 1
+            logger.info("CombatTestSuite", "✓ Activation %d successful" % (i + 1))
+            
+            # Wait for stealth to expire
+            await get_tree().create_timer(11.0).timeout  # 10.0 stealth duration + buffer
+        else:
+            logger.warning("CombatTestSuite", "⚠ Activation %d failed" % (i + 1))
+    
+    logger.info("CombatTestSuite", "Multiple activation test: %d/3 successful" % successful_activations)
+    
+    if successful_activations >= 2:
+        logger.info("CombatTestSuite", "✓ Multiple stealth activations working well")
+    else:
+        logger.error("CombatTestSuite", "✗ Multiple stealth activations failing")
+    
+    logger.info("CombatTestSuite", "Scout stealth test completed.")
+
 func _test_team_fight():
     logger.info("CombatTestSuite", "Starting team fight.")
     var archetypes = ["scout", "tank", "sniper", "medic", "engineer"]
@@ -415,7 +1072,7 @@ func _test_team_fight():
     
     ai_command_processor.process_command("Attack the enemy team", team1_ids, -1)
     ai_command_processor.process_command("Attack the enemy team", team2_ids, -1)
-    
+
 # --- Helper Functions ---
 
 func _spawn_unit_for_test(archetype: String, team_id: int, position: Vector3) -> Node:

@@ -315,19 +315,9 @@ func _update_unit(unit_data: Dictionary, delta: float) -> void:
 		unit_instance.set("current_reactive_state", unit_data.current_reactive_state)
 		behavior_data_updated = true
 	
-	# Refresh status bar when behavior matrix data changes
-	if behavior_data_updated:
-		# Force status bar to refresh its behavior matrix display
-		if unit_instance.has_method("refresh_status_bar"):
-			unit_instance.refresh_status_bar()
-		
-		# Also force the status bar to update its behavior display directly
-		var status_bar = unit_instance.get_node_or_null("UnitStatusBar")
-		if status_bar and status_bar.has_method("force_refresh"):
-			status_bar.force_refresh()
-		
-		# Also refresh the HUD selection display if this unit is currently selected
-		_refresh_hud_if_unit_selected(unit_instance)
+	# NOTE: The GameHUD and UnitStatusBar now use their own timers to refresh their displays
+	# periodically. Forcing an update here on every network tick was causing severe performance
+	# degradation. The UI components will pick up the data changes on their own schedule.
 
 	# Update shield visual (only for units that support shields)
 	if unit_data.has("shield_active") and "shield_node" in unit_instance:

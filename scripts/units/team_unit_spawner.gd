@@ -36,14 +36,20 @@ func request_spawn_unit(team_id: int, archetype: String) -> bool:
 	return false
 
 func spawn_unit(team_id: int, position: Vector3, archetype: String = "scout") -> Node:
+	print("DEBUG: TeamUnitSpawner - spawn_unit called for %s, team %d at %s" % [archetype, team_id, position])
+	
 	var unit = UNIT_SCENE.instantiate()
 
 	# Attach the correct script based on the archetype
 	var script_path = ARCHETYPE_SCRIPTS.get(archetype)
+	print("DEBUG: TeamUnitSpawner - Script path for %s: %s" % [archetype, script_path])
+	
 	if script_path:
 		var script = load(script_path)
+		print("DEBUG: TeamUnitSpawner - Script loaded successfully: %s" % (script != null))
 		if script:
 			unit.set_script(script)
+			print("DEBUG: TeamUnitSpawner - Script attached to unit")
 		else:
 			print("TeamUnitSpawner: ERROR - Could not load script for archetype %s at path %s" % [archetype, script_path])
 			unit.queue_free()
@@ -55,6 +61,8 @@ func spawn_unit(team_id: int, position: Vector3, archetype: String = "scout") ->
 	
 	# Find the "Units" container node to keep the scene tree clean
 	var units_node = get_tree().get_root().find_child("Units", true, false)
+	print("DEBUG: TeamUnitSpawner - Units container found: %s" % (units_node != null))
+	
 	if not units_node:
 		print("TeamUnitSpawner: ERROR - 'Units' node not found in scene tree. Cannot spawn unit.")
 		unit.queue_free()
@@ -63,15 +71,19 @@ func spawn_unit(team_id: int, position: Vector3, archetype: String = "scout") ->
 	# Set properties that don't depend on the scene tree
 	unit.team_id = team_id
 	unit.archetype = archetype
+	print("DEBUG: TeamUnitSpawner - Set team_id=%d, archetype=%s" % [team_id, archetype])
 	
 	# Add to the Units node FIRST
 	units_node.add_child(unit)
+	print("DEBUG: TeamUnitSpawner - Added unit to scene tree")
 	
 	# NOW set properties that require the node to be in the tree
 	unit.global_position = position
+	print("DEBUG: TeamUnitSpawner - Set position to %s" % position)
 	
 	# The engine will call _ready() automatically. We await a frame to ensure it runs.
 	await get_tree().process_frame
+	print("DEBUG: TeamUnitSpawner - Waited for _ready() to complete")
 
 	if not is_instance_valid(unit) or not unit.has_method("get_unit_info"):
 		print("TeamUnitSpawner: ERROR - Unit failed to initialize properly. Script not attached correctly.")

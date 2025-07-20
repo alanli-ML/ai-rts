@@ -16,6 +16,7 @@ func _physics_process(delta: float):
 		if not is_instance_valid(target_unit):
 			current_state = GameEnums.UnitState.IDLE
 		else:
+			# Continuously face the target while charging for visual consistency
 			look_at(target_unit.global_position, Vector3.UP)
 			charge_timer -= delta
 			if charge_timer <= 0:

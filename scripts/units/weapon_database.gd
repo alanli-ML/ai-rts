@@ -5,7 +5,7 @@ extends Node
 # Weapon-to-archetype mapping with multiple variants per archetype
 const WEAPON_ASSIGNMENTS = {
 	"scout": {
-		"primary": ["blaster-a", "blaster-c", "blaster-h"],  # Light, fast weapons
+		"primary": ["blaster-a", "blaster-c", "blaster-c"],  # Light, fast weapons
 		"secondary": ["blaster-e"],                           # Backup weapons
 		"attachments": ["scope_small", "clip_small"],
 		"preferred_range": "short_medium",
@@ -26,14 +26,14 @@ const WEAPON_ASSIGNMENTS = {
 		"combat_style": "close_combat"
 	},
 	"sniper": {
-		"primary": ["blaster-d", "blaster-i", "blaster-m"],  # Precision weapons
+		"primary": ["blaster-e", "blaster-f", "blaster-g"],  # Precision weapons
 		"secondary": ["blaster-q"],                           # Backup weapons
 		"attachments": ["scope_large_a", "scope_large_b"],
 		"preferred_range": "long",
 		"combat_style": "precision"
 	},
 	"medic": {
-		"primary": ["blaster-p", "blaster-r"],               # Support weapons
+		"primary": ["blaster-q", "blaster-r"],               # Support weapons
 		"secondary": ["blaster-a"],                           # Backup weapons
 		"attachments": ["scope_small", "clip_small"],
 		"preferred_range": "short",
@@ -47,12 +47,13 @@ const WEAPON_ASSIGNMENTS = {
 		"combat_style": "utility"
 	},
 	"turret": {
-		"primary": ["blaster-e"], # Engineer's utility carbine
+		"primary": ["blaster-o"],  # Top-mounted utility carbine
 		"secondary": [],
 		"attachments": [],
 		"preferred_range": "medium",
 		"combat_style": "defensive"
 	}
+	# Note: Turrets use custom top-mounting instead of hand attachment
 }
 
 # Weapon specifications database

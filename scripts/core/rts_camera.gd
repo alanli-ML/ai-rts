@@ -66,21 +66,27 @@ func _ready() -> void:
     else:
         print("RTSCamera: RTS Camera initialized")
 
-func _input(event: InputEvent) -> void:
-    # Mouse wheel zoom
+func _unhandled_input(event: InputEvent) -> void:
+    # Use _unhandled_input to avoid interfering with selection system
+    # Only handle mouse events that don't conflict with left-click selection
+    
     if event is InputEventMouseButton:
+        # Mouse wheel zoom (these don't conflict with selection)
         if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
             target_zoom = clamp(target_zoom - zoom_speed, min_zoom, max_zoom)
+            get_viewport().set_input_as_handled()
         elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
             target_zoom = clamp(target_zoom + zoom_speed, min_zoom, max_zoom)
+            get_viewport().set_input_as_handled()
         
-        # Middle mouse button drag
+        # Middle mouse button drag (doesn't conflict with left-click selection)
         elif event.button_index == MOUSE_BUTTON_MIDDLE:
             is_dragging = event.pressed
             if is_dragging:
                 last_mouse_position = event.position
+            get_viewport().set_input_as_handled()
     
-    # Mouse motion for dragging
+    # Mouse motion for camera dragging (only when middle mouse is held)
     elif event is InputEventMouseMotion and is_dragging:
         var delta = event.position - last_mouse_position
         last_mouse_position = event.position
@@ -100,6 +106,7 @@ func _input(event: InputEvent) -> void:
         right = right.normalized()
         
         velocity = right * movement.x + forward * movement.z
+        get_viewport().set_input_as_handled()
 
 func _process(delta: float) -> void:
     # Keyboard input

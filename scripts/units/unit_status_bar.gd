@@ -24,7 +24,7 @@ var processing_animation_time: float = 0.0
 var last_known_action_scores: Dictionary = {}
 var last_known_reactive_state: String = ""
 var auto_update_timer: float = 0.0
-const AUTO_UPDATE_INTERVAL: float = 0.05  # Update 20 times per second for more responsive display
+const AUTO_UPDATE_INTERVAL: float = 1.0  # Update once per second for responsive display
 
 # Material for the quad
 var status_material: StandardMaterial3D
@@ -49,26 +49,26 @@ func _ready() -> void:
 	
 	# Expand viewport size to accommodate all triggers and content (larger for complete trigger display)
 	if status_viewport:
-		status_viewport.size = Vector2i(800, 600)  # Increased to fit all triggers
+		status_viewport.size = Vector2i(800, 300)  # Increased to fit all triggers
 	
 	# Expand panel size to match viewport
 	if status_panel:
-		status_panel.custom_minimum_size = Vector2(800, 600)
-		status_panel.size = Vector2(800, 600)
+		status_panel.custom_minimum_size = Vector2(800, 300)
+		status_panel.size = Vector2(800, 300)
 		# Set panel anchors to fill the viewport
 		status_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	
 	# Expand and configure the status label to use full area
 	if status_label:
 		status_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		status_label.custom_minimum_size = Vector2(780, 580)  # Leave some margin
-		status_label.size = Vector2(780, 580)
+		status_label.custom_minimum_size = Vector2(780, 280)  # Leave some margin
+		status_label.size = Vector2(780, 280)
 		status_label.vertical_alignment = VERTICAL_ALIGNMENT_TOP  # Align content to top
 		status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART  # Enable text wrapping
 	
 	# Expand status quad size to match the larger viewport
 	if status_quad:
-		status_quad.scale = Vector3(8.0, 6.0, 1.0)  # Scale to match the larger viewport size
+		status_quad.scale = Vector3(8.0, 3.0, 1.0)  # Scale to match the larger viewport size
 	
 	# Set up the material for the quad
 	_setup_material()
@@ -558,7 +558,7 @@ func _get_active_triggers_display() -> String:
 	
 	exclusive_scores.sort_custom(func(a, b): return a.score > b.score)
 	
-	if not exclusive_scores.is_empty():
+	'''if not exclusive_scores.is_empty():
 		display_lines.append("[color=white][b]Primary States:[/b][/color]")
 		for item in exclusive_scores:
 			var action = item.action
@@ -571,7 +571,7 @@ func _get_active_triggers_display() -> String:
 			var line = "[color=%s]%s %s[/color] %s [color=gray]%.2f[/color]" % [
 				action_color, state_indicator, action.capitalize(), activation_bar, score
 			]
-			display_lines.append(line)
+			display_lines.append(line)'''
 	
 	# Show independent actions that are above threshold
 	var independent_threshold = 0.6  # Match the threshold from unit.gd

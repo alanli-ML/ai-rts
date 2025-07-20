@@ -221,14 +221,16 @@ func _on_ai_input_submitted(command: String) -> void:
 func _on_ai_command_entered(command: String) -> void:
     Logger.info("MainClient", "AI command processed: %s" % command)
 
-func _input(event: InputEvent) -> void:
+func _unhandled_input(event: InputEvent) -> void:
+    """Handle input events that don't conflict with selection system"""
     if not is_in_game:
         return
     
-    # Handle camera movement
+    # Handle camera movement with keyboard
     if event is InputEventKey:
         _handle_camera_input(event)
-    elif event is InputEventMouseButton:
+    # Handle mouse wheel zoom but avoid left/right click to not interfere with selection
+    elif event is InputEventMouseButton and (event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN):
         _handle_mouse_input(event)
 
 func _handle_camera_input(event: InputEventKey) -> void:
@@ -239,27 +241,34 @@ func _handle_camera_input(event: InputEventKey) -> void:
         match event.keycode:
             KEY_W, KEY_UP:
                 camera_pivot.translate(Vector3(0, 0, -camera_delta))
+                get_viewport().set_input_as_handled()
             KEY_S, KEY_DOWN:
                 camera_pivot.translate(Vector3(0, 0, camera_delta))
+                get_viewport().set_input_as_handled()
             KEY_A, KEY_LEFT:
                 camera_pivot.translate(Vector3(-camera_delta, 0, 0))
+                get_viewport().set_input_as_handled()
             KEY_D, KEY_RIGHT:
                 camera_pivot.translate(Vector3(camera_delta, 0, 0))
+                get_viewport().set_input_as_handled()
             KEY_ENTER:
                 # Focus AI input
                 var ai_input = game_ui.get_node("AIInput") as LineEdit
                 ai_input.grab_focus()
+                get_viewport().set_input_as_handled()
 
 func _handle_mouse_input(event: InputEventMouseButton) -> void:
-    # Mouse wheel for zoom
+    # Only handle mouse wheel for zoom - avoid left/right click to not interfere with selection
     if event.button_index == MOUSE_BUTTON_WHEEL_UP:
         var new_pos = camera.position * 0.9
         camera.position = new_pos
         camera.look_at(Vector3.ZERO, Vector3.UP)
+        get_viewport().set_input_as_handled()
     elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
         var new_pos = camera.position * 1.1
         camera.position = new_pos
         camera.look_at(Vector3.ZERO, Vector3.UP)
+        get_viewport().set_input_as_handled()
 
 func _process(delta: float) -> void:
     # Update camera to follow action if needed

@@ -13,7 +13,9 @@ enum AnimationState {
 	VICTORY,
 	ATTACK_MOVING,
 	TAKE_COVER,
-	STUNNED
+	STUNNED,
+	HEALING,
+	CONSTRUCTING
 }
 
 # Animation transition events
@@ -32,7 +34,11 @@ enum AnimationEvent {
 	ENTER_COVER,
 	EXIT_COVER,
 	GET_STUNNED,
-	RECOVER_STUN
+	RECOVER_STUN,
+	START_HEALING,
+	FINISH_HEALING,
+	START_CONSTRUCTING,
+	FINISH_CONSTRUCTING
 }
 
 # Current state
@@ -70,7 +76,9 @@ var available_animations: Dictionary = {
 	"death": ["death", "die", "fall", "idle"],
 	"victory": ["victory", "celebrate", "cheer", "idle"],
 	"take_cover": ["cover", "crouch", "duck", "idle"],
-	"stunned": ["stunned", "dazed", "hurt", "idle"]
+	"stunned": ["stunned", "dazed", "hurt", "idle"],
+	"healing": ["interact-left", "interact-right", "emote-yes", "idle"],
+	"constructing": ["interact-left", "interact-right", "emote-yes", "pick-up", "idle"]
 }
 
 # State transition table
@@ -105,7 +113,7 @@ func _setup_state_transitions() -> void:
 		AnimationState.IDLE: [
 			AnimationState.WALK, AnimationState.RUN, AnimationState.ATTACK,
 			AnimationState.RELOAD, AnimationState.DEATH, AnimationState.TAKE_COVER,
-			AnimationState.STUNNED
+			AnimationState.STUNNED, AnimationState.HEALING, AnimationState.CONSTRUCTING
 		],
 		AnimationState.WALK: [
 			AnimationState.IDLE, AnimationState.RUN, AnimationState.ATTACK_MOVING,
@@ -136,6 +144,14 @@ func _setup_state_transitions() -> void:
 		],
 		AnimationState.STUNNED: [
 			AnimationState.IDLE, AnimationState.DEATH
+		],
+		AnimationState.HEALING: [
+			AnimationState.IDLE, AnimationState.WALK, AnimationState.RUN,
+			AnimationState.DEATH, AnimationState.STUNNED
+		],
+		AnimationState.CONSTRUCTING: [
+			AnimationState.IDLE, AnimationState.WALK, AnimationState.RUN,
+			AnimationState.DEATH, AnimationState.STUNNED
 		],
 		AnimationState.DEATH: []  # Death is terminal
 	}
@@ -272,6 +288,26 @@ func _determine_new_state(event: AnimationEvent, data: Dictionary) -> AnimationS
 		is_in_combat = false
 		return AnimationState.VICTORY
 	
+	# Handle healing states
+	if event == AnimationEvent.START_HEALING:
+		return AnimationState.HEALING
+	
+	if event == AnimationEvent.FINISH_HEALING:
+		if is_moving:
+			return _get_movement_state()
+		else:
+			return AnimationState.IDLE
+	
+	# Handle constructing states
+	if event == AnimationEvent.START_CONSTRUCTING:
+		return AnimationState.CONSTRUCTING
+	
+	if event == AnimationEvent.FINISH_CONSTRUCTING:
+		if is_moving:
+			return _get_movement_state()
+		else:
+			return AnimationState.IDLE
+	
 	# Default to current state if no transition needed
 	return current_state
 
@@ -363,6 +399,10 @@ func _get_animation_name_for_state(state: AnimationState) -> String:
 			state_key = "take_cover"
 		AnimationState.STUNNED:
 			state_key = "stunned"
+		AnimationState.HEALING:
+			state_key = "healing"
+		AnimationState.CONSTRUCTING:
+			state_key = "constructing"
 	
 	if state_key.is_empty():
 		return ""
@@ -451,6 +491,22 @@ func get_stunned() -> void:
 func recover_from_stun() -> void:
 	"""Called when unit recovers from stun"""
 	handle_event(AnimationEvent.RECOVER_STUN)
+
+func start_healing() -> void:
+	"""Called when unit starts healing"""
+	handle_event(AnimationEvent.START_HEALING)
+
+func finish_healing() -> void:
+	"""Called when unit finishes healing"""
+	handle_event(AnimationEvent.FINISH_HEALING)
+
+func start_constructing() -> void:
+	"""Called when unit starts constructing"""
+	handle_event(AnimationEvent.START_CONSTRUCTING)
+
+func finish_constructing() -> void:
+	"""Called when unit finishes constructing"""
+	handle_event(AnimationEvent.FINISH_CONSTRUCTING)
 
 # Debug and utility methods
 func get_current_state_name() -> String:

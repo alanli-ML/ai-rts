@@ -107,8 +107,8 @@ func _taunt_enemies_in_range() -> int:
 		if not is_instance_valid(enemy_unit):
 			continue
 		
-		# Skip if same team or if unit is dead
-		if enemy_unit.team_id == self.team_id or enemy_unit.is_dead:
+		# Skip if same team or if unit cannot be targeted (dead or stealthed)
+		if enemy_unit.team_id == self.team_id or not enemy_unit.can_be_targeted():
 			continue
 		
 		# Check if enemy is in taunt range

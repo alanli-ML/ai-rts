@@ -8,7 +8,7 @@ const MODEL_PATHS = {
 	"sniper": "res://assets/kenney/kenney_blocky-characters_20/Models/GLB format/character-d.glb",
 	"medic": "res://assets/kenney/kenney_blocky-characters_20/Models/GLB format/character-p.glb",
 	"engineer": "res://assets/kenney/kenney_blocky-characters_20/Models/GLB format/character-o.glb",
-	"turret": "res://assets/kenney/kenney_blocky-characters_20/Models/GLB format/character-h.glb" # Placeholder model
+	"turret": "res://assets/kenney/kenney_city-kit-industrial_1/Models/GLB format/detail-tank.glb"
 }
 
 var animation_player: AnimationPlayer
@@ -50,10 +50,15 @@ func _load_model() -> void:
 		model_container.add_child(model_instance)
 		model_container.rotation_degrees.y = 180.0
 		
+		# Apply scaling for turret models (tank model needs different scaling than blaster)
+		if archetype == "turret":
+			model_container.scale = Vector3(2.5, 2.5, 2.5)
+			print("DEBUG: Applied 2.5x scaling to turret tank model")
+		
 		# Find the animation player in the new model
 		animation_player = model_instance.find_child("AnimationPlayer", true, false)
 		if not animation_player:
-			print("ERROR: AnimationPlayer not found in model %s" % model_path)
+			print("DEBUG: AnimationPlayer not found in model %s (expected for weapon models)" % model_path)
 			
 		play_animation("Idle")
 	else:
@@ -109,7 +114,9 @@ func play_animation(animation_name: String):
 		"Kick": ["attack-kick-left", "attack-kick-right"],
 		"Melee": ["attack-melee-left", "attack-melee-right"],
 		"Interact": ["interact-left", "interact-right", "pick-up"],
-		"Emote": ["emote-yes", "emote-no"]
+		"Emote": ["emote-yes", "emote-no"],
+		"Heal": ["interact-left", "interact-right", "emote-yes", "idle"],
+		"Construct": ["interact-left", "interact-right", "pick-up", "emote-yes", "idle"]
 	}
 	
 	# Try mapped fallbacks

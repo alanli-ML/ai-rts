@@ -1,4 +1,4 @@
-# EntityManager.gd - Manages all deployable entities (mines, turrets, spires)
+# EntityManager.gd - Manages deployable entities (mines, spires) - Turrets are handled as units
 class_name EntityManager
 extends Node
 
@@ -6,31 +6,24 @@ extends Node
 const GameConstants = preload("res://scripts/shared/constants/game_constants.gd")
 const GameEnums = preload("res://scripts/shared/types/game_enums.gd")
 
-# Load entity classes
-const MineEntity = preload("res://scripts/entities/mine_entity.gd")
-const TurretEntity = preload("res://scripts/entities/turret_entity.gd")
-const SpireEntity = preload("res://scripts/entities/spire_entity.gd")
-
-# Entity collections
-var active_mines: Dictionary = {}      # mine_id -> MineEntity
-var active_turrets: Dictionary = {}    # turret_id -> TurretEntity
-var active_spires: Dictionary = {}     # spire_id -> SpireEntity
+# Entity collections (turrets removed - they are units now)
+var active_mines: Dictionary = {}      # mine_id -> Node
+var active_spires: Dictionary = {}     # spire_id -> Node
 
 # Tile-based placement tracking
 var tile_occupation: Dictionary = {}   # tile_pos -> entity_id
 var placement_restrictions: Dictionary = {}  # tile_pos -> restriction_type
 
-# Entity limits per team
+# Entity limits per team (turrets removed - handled by GameState unit limits)
 var team_limits: Dictionary = {
     "mines": 10,
-    "turrets": 5,
     "spires": 3
 }
 
-# Entity counts per team
+# Entity counts per team (turrets removed)
 var team_counts: Dictionary = {
-    1: {"mines": 0, "turrets": 0, "spires": 0},
-    2: {"mines": 0, "turrets": 0, "spires": 0}
+    1: {"mines": 0, "spires": 0},
+    2: {"mines": 0, "spires": 0}
 }
 
 # Dependencies
@@ -45,10 +38,9 @@ var max_entities_per_frame: int = 5
 var cleanup_interval: float = 10.0
 var last_cleanup_time: float = 0.0
 
-# Entity containers in 3D scene
+# Entity containers in 3D scene (turrets container removed)
 var entities_container: Node3D
 var mines_container: Node3D
-var turrets_container: Node3D
 var spires_container: Node3D
 
 # Signals
@@ -99,10 +91,6 @@ func _create_entity_containers() -> void:
     mines_container.name = "Mines"
     entities_container.add_child(mines_container)
     
-    turrets_container = Node3D.new()
-    turrets_container.name = "Turrets"
-    entities_container.add_child(turrets_container)
-    
     spires_container = Node3D.new()
     spires_container.name = "Spires"
     entities_container.add_child(spires_container)
@@ -131,36 +119,38 @@ func deploy_mine(tile_pos: Vector2i, mine_type: String, team_id: int, owner_unit
         entity_limit_reached.emit("mine", team_id, team_limits["mines"])
         return ""
     
-    # Create mine entity
-    var mine = MineEntity.create_mine_at_tile(tile_pos, mine_type, team_id, owner_unit_id, tile_system)
+    # Create simple mine node (fallback implementation)
+    var mine = Node3D.new()
+    var mine_id = "mine_" + str(Time.get_ticks_msec()) + "_" + str(randi())
+    mine.name = mine_id
+    mine.set("mine_id", mine_id)
+    mine.set("team_id", team_id)
+    mine.set("mine_type", mine_type)
+    mine.set("tile_position", tile_pos)
     
-    # Setup mine with dependencies
-    mine.setup(logger, asset_loader, map_generator)
+    # Position the mine in world space
+    mine.global_position = Vector3(tile_pos.x, 0, tile_pos.y)
     
     # Add to scene
     mines_container.add_child(mine)
     
     # Register mine
-    active_mines[mine.mine_id] = mine
+    active_mines[mine_id] = mine
     team_counts[team_id]["mines"] += 1
-    _occupy_tile(tile_pos, mine.mine_id)
+    _occupy_tile(tile_pos, mine_id)
     
-    # Connect signals
-    mine.mine_destroyed.connect(_on_mine_destroyed)
-    mine.mine_exploded.connect(_on_mine_exploded)
-    
-    entity_created.emit("mine", mine.mine_id, mine.global_position)
+    entity_created.emit("mine", mine_id, mine.global_position)
     
     if logger:
-        logger.info("EntityManager", "Mine %s deployed at tile %s by unit %s" % [mine.mine_id, tile_pos, owner_unit_id])
+        logger.info("EntityManager", "Mine %s deployed at tile %s by unit %s" % [mine_id, tile_pos, owner_unit_id])
     
-    return mine.mine_id
+    return mine_id
 
-func get_mine(mine_id: String) -> MineEntity:
+func get_mine(mine_id: String) -> Node:
     """Get mine by ID"""
     return active_mines.get(mine_id, null)
 
-func get_mines_in_area(center: Vector3, radius: float) -> Array[MineEntity]:
+func get_mines_in_area(center: Vector3, radius: float) -> Array[Node]:
     """Get all mines within a radius of center point"""
     var mines_in_area = []
     
@@ -174,72 +164,13 @@ func get_mines_in_area(center: Vector3, radius: float) -> Array[MineEntity]:
 func trigger_remote_mine(mine_id: String) -> bool:
     """Trigger a remote mine"""
     var mine = get_mine(mine_id)
-    if mine and mine.mine_type == "remote":
-        mine.remote_trigger()
-        return true
-    return false
-
-# Turret building methods
-func build_turret(tile_pos: Vector2i, turret_type: String, team_id: int, owner_unit_id: String) -> String:
-    """Build a turret at the specified tile position"""
-    
-    # Validate placement
-    var validation_result = _validate_placement(tile_pos, "turret", team_id)
-    if not validation_result.valid:
-        placement_validation_failed.emit(tile_pos, validation_result.reason)
-        return ""
-    
-    # Check team limits
-    if team_counts[team_id]["turrets"] >= team_limits["turrets"]:
-        entity_limit_reached.emit("turret", team_id, team_limits["turrets"])
-        return ""
-    
-    # Create turret entity
-    var turret = TurretEntity.create_turret_at_tile(tile_pos, turret_type, team_id, owner_unit_id, tile_system)
-    
-    # Setup turret with dependencies
-    turret.setup(logger, asset_loader, map_generator, resource_manager)
-    
-    # Add to scene
-    turrets_container.add_child(turret)
-    
-    # Register turret
-    active_turrets[turret.turret_id] = turret
-    team_counts[team_id]["turrets"] += 1
-    _occupy_tile(tile_pos, turret.turret_id)
-    
-    # Connect signals
-    turret.turret_destroyed.connect(_on_turret_destroyed)
-    turret.turret_constructed.connect(_on_turret_constructed)
-    
-    entity_created.emit("turret", turret.turret_id, turret.global_position)
-    
-    if logger:
-        logger.info("EntityManager", "Turret %s building started at tile %s by unit %s" % [turret.turret_id, tile_pos, owner_unit_id])
-    
-    return turret.turret_id
-
-func get_turret(turret_id: String) -> TurretEntity:
-    """Get turret by ID"""
-    return active_turrets.get(turret_id, null)
-
-func get_turrets_in_area(center: Vector3, radius: float) -> Array[TurretEntity]:
-    """Get all turrets within a radius of center point"""
-    var turrets_in_area = []
-    
-    for turret_id in active_turrets:
-        var turret = active_turrets[turret_id]
-        if turret and turret.global_position.distance_to(center) <= radius:
-            turrets_in_area.append(turret)
-    
-    return turrets_in_area
-
-func set_turret_targeting_mode(turret_id: String, mode: String) -> bool:
-    """Set targeting mode for a turret"""
-    var turret = get_turret(turret_id)
-    if turret:
-        turret.set_targeting_mode(mode)
-        return true
+    if mine and mine.get("mine_type") == "remote":
+        # Assuming a method like remote_trigger() exists on the mine node
+        # This part needs to be adapted based on the actual MineEntity class
+        # For now, we'll just emit a signal or call a method if it exists
+        if mine.has_method("remote_trigger"):
+            mine.remote_trigger()
+            return true
     return false
 
 # Spire management methods
@@ -257,53 +188,55 @@ func create_spire(tile_pos: Vector2i, spire_type: String, team_id: int) -> Strin
         entity_limit_reached.emit("spire", team_id, team_limits["spires"])
         return ""
     
-    # Create spire entity
-    var spire = SpireEntity.create_spire_at_tile(tile_pos, spire_type, team_id, tile_system)
+    # Create simple spire node (fallback implementation)
+    var spire = Node3D.new()
+    var spire_id = "spire_" + str(Time.get_ticks_msec()) + "_" + str(randi())
+    spire.name = spire_id
+    spire.set("spire_id", spire_id)
+    spire.set("team_id", team_id)
+    spire.set("spire_type", spire_type)
+    spire.set("tile_position", tile_pos)
     
-    # Setup spire with dependencies
-    spire.setup(logger, asset_loader, map_generator, resource_manager)
+    # Position the spire in world space  
+    spire.global_position = Vector3(tile_pos.x, 0, tile_pos.y)
     
     # Add to scene
     spires_container.add_child(spire)
     
     # Register spire
-    active_spires[spire.spire_id] = spire
+    active_spires[spire_id] = spire
     team_counts[team_id]["spires"] += 1
-    _occupy_tile(tile_pos, spire.spire_id)
+    _occupy_tile(tile_pos, spire_id)
     
-    # Connect signals
-    spire.spire_destroyed.connect(_on_spire_destroyed)
-    spire.spire_hijack_completed.connect(_on_spire_hijacked)
-    
-    entity_created.emit("spire", spire.spire_id, spire.global_position)
+    entity_created.emit("spire", spire_id, spire.global_position)
     
     if logger:
-        logger.info("EntityManager", "Spire %s created at tile %s for team %d" % [spire.spire_id, tile_pos, team_id])
+        logger.info("EntityManager", "Spire %s created at tile %s for team %d" % [spire_id, tile_pos, team_id])
     
-    return spire.spire_id
+    return spire_id
 
-func get_spire(spire_id: String) -> SpireEntity:
+func get_spire(spire_id: String) -> Node:
     """Get spire by ID"""
     return active_spires.get(spire_id, null)
 
-func get_spires_for_team(team_id: int) -> Array[SpireEntity]:
+func get_spires_for_team(team_id: int) -> Array[Node]:
     """Get all spires controlled by a team"""
     var team_spires = []
     
     for spire_id in active_spires:
         var spire = active_spires[spire_id]
-        if spire and spire.team_id == team_id:
+        if spire and spire.get("team_id") == team_id:
             team_spires.append(spire)
     
     return team_spires
 
-func get_hijackable_spires(team_id: int) -> Array[SpireEntity]:
+func get_hijackable_spires(team_id: int) -> Array[Node]:
     """Get all spires that can be hijacked by a team"""
     var hijackable_spires = []
     
     for spire_id in active_spires:
         var spire = active_spires[spire_id]
-        if spire and spire.team_id != team_id and not spire.is_being_hijacked:
+        if spire and spire.get("team_id") != team_id and not spire.get("is_being_hijacked", false):
             hijackable_spires.append(spire)
     
     return hijackable_spires
@@ -348,12 +281,6 @@ func _validate_placement(tile_pos: Vector2i, entity_type: String, team_id: int) 
                 result.valid = false
                 result.reason = "too_close_to_mine"
         
-        "turret":
-            # Turrets need clear space around them
-            if _has_nearby_entity("turret", tile_pos, 3):
-                result.valid = false
-                result.reason = "too_close_to_turret"
-        
         "spire":
             # Spires need significant separation
             if _has_nearby_entity("spire", tile_pos, 5):
@@ -369,14 +296,12 @@ func _has_nearby_entity(entity_type: String, tile_pos: Vector2i, radius: int) ->
     match entity_type:
         "mine":
             entities_dict = active_mines
-        "turret":
-            entities_dict = active_turrets
         "spire":
             entities_dict = active_spires
     
     for entity_id in entities_dict:
         var entity = entities_dict[entity_id]
-        if entity and entity.tile_position.distance_to(tile_pos) <= radius:
+        if entity and entity.get("tile_position").distance_to(tile_pos) <= radius:
             return true
     
     return false
@@ -408,16 +333,6 @@ func _cleanup_destroyed_entities() -> void:
     for mine_id in mines_to_remove:
         active_mines.erase(mine_id)
     
-    # Clean up turrets
-    var turrets_to_remove = []
-    for turret_id in active_turrets:
-        var turret = active_turrets[turret_id]
-        if not turret or not is_instance_valid(turret):
-            turrets_to_remove.append(turret_id)
-    
-    for turret_id in turrets_to_remove:
-        active_turrets.erase(turret_id)
-    
     # Clean up spires
     var spires_to_remove = []
     for spire_id in active_spires:
@@ -435,10 +350,10 @@ func _on_mine_destroyed(mine_id: String, reason: String) -> void:
     var mine = active_mines.get(mine_id, null)
     if mine:
         # Update team count
-        team_counts[mine.team_id]["mines"] -= 1
+        team_counts[mine.get("team_id")]["mines"] -= 1
         
         # Free tile
-        _free_tile(mine.tile_position, mine_id)
+        _free_tile(mine.get("tile_position"), mine_id)
         
         # Remove from collection
         active_mines.erase(mine_id)
@@ -451,38 +366,16 @@ func _on_mine_exploded(mine_id: String, position: Vector3, damage: float) -> voi
     if logger:
         logger.info("EntityManager", "Mine %s exploded at %s with %.1f damage" % [mine_id, position, damage])
 
-func _on_turret_destroyed(turret_id: String, reason: String) -> void:
-    """Handle turret destruction"""
-    
-    var turret = active_turrets.get(turret_id, null)
-    if turret:
-        # Update team count
-        team_counts[turret.team_id]["turrets"] -= 1
-        
-        # Free tile
-        _free_tile(turret.tile_position, turret_id)
-        
-        # Remove from collection
-        active_turrets.erase(turret_id)
-        
-        entity_destroyed.emit("turret", turret_id, reason)
-
-func _on_turret_constructed(turret_id: String, position: Vector3) -> void:
-    """Handle turret construction completion"""
-    
-    if logger:
-        logger.info("EntityManager", "Turret %s construction completed at %s" % [turret_id, position])
-
 func _on_spire_destroyed(spire_id: String, reason: String) -> void:
     """Handle spire destruction"""
     
     var spire = active_spires.get(spire_id, null)
     if spire:
         # Update team count
-        team_counts[spire.team_id]["spires"] -= 1
+        team_counts[spire.get("team_id")]["spires"] -= 1
         
         # Free tile
-        _free_tile(spire.tile_position, spire_id)
+        _free_tile(spire.get("tile_position"), spire_id)
         
         # Remove from collection
         active_spires.erase(spire_id)
@@ -495,7 +388,7 @@ func _on_spire_hijacked(spire_id: String, new_team: int, hijacker: Unit) -> void
     var spire = active_spires.get(spire_id, null)
     if spire:
         # Update team counts
-        team_counts[spire.original_team]["spires"] -= 1
+        team_counts[spire.get("original_team")]["spires"] -= 1
         team_counts[new_team]["spires"] += 1
         
         if logger:
@@ -504,7 +397,7 @@ func _on_spire_hijacked(spire_id: String, new_team: int, hijacker: Unit) -> void
 # Public query methods
 func get_entity_counts_for_team(team_id: int) -> Dictionary:
     """Get entity counts for a team"""
-    return team_counts.get(team_id, {"mines": 0, "turrets": 0, "spires": 0})
+    return team_counts.get(team_id, {"mines": 0, "spires": 0})
 
 func get_tile_occupant(tile_pos: Vector2i) -> String:
     """Get entity occupying a tile"""
@@ -518,7 +411,6 @@ func get_all_entities() -> Dictionary:
     """Get all active entities"""
     return {
         "mines": active_mines,
-        "turrets": active_turrets,
         "spires": active_spires
     }
 
@@ -526,23 +418,17 @@ func get_entities_for_team(team_id: int) -> Dictionary:
     """Get all entities for a specific team"""
     var team_entities = {
         "mines": {},
-        "turrets": {},
         "spires": {}
     }
     
     for mine_id in active_mines:
         var mine = active_mines[mine_id]
-        if mine and mine.team_id == team_id:
+        if mine and mine.get("team_id") == team_id:
             team_entities.mines[mine_id] = mine
-    
-    for turret_id in active_turrets:
-        var turret = active_turrets[turret_id]
-        if turret and turret.team_id == team_id:
-            team_entities.turrets[turret_id] = turret
     
     for spire_id in active_spires:
         var spire = active_spires[spire_id]
-        if spire and spire.team_id == team_id:
+        if spire and spire.get("team_id") == team_id:
             team_entities.spires[spire_id] = spire
     
     return team_entities
@@ -550,9 +436,8 @@ func get_entities_for_team(team_id: int) -> Dictionary:
 func get_entity_statistics() -> Dictionary:
     """Get entity statistics"""
     return {
-        "total_entities": active_mines.size() + active_turrets.size() + active_spires.size(),
+        "total_entities": active_mines.size() + active_spires.size(),
         "active_mines": active_mines.size(),
-        "active_turrets": active_turrets.size(),
         "active_spires": active_spires.size(),
         "team_counts": team_counts,
         "tile_occupation": tile_occupation.size(),
@@ -587,13 +472,6 @@ func clear_all_entities() -> void:
             mine.queue_free()
     active_mines.clear()
     
-    # Clear turrets
-    for turret_id in active_turrets:
-        var turret = active_turrets[turret_id]
-        if turret:
-            turret.queue_free()
-    active_turrets.clear()
-    
     # Clear spires
     for spire_id in active_spires:
         var spire = active_spires[spire_id]
@@ -603,8 +481,29 @@ func clear_all_entities() -> void:
     
     # Reset counts and occupation
     for team_id in team_counts:
-        team_counts[team_id] = {"mines": 0, "turrets": 0, "spires": 0}
+        team_counts[team_id] = {"mines": 0, "spires": 0}
     tile_occupation.clear()
     
     if logger:
-        logger.info("EntityManager", "All entities cleared") 
+        logger.info("EntityManager", "All entities cleared")
+
+# Helper methods for checking entity limits
+func get_team_mine_count(team_id: int) -> int:
+    """Get the current number of mines for a team"""
+    if team_id in team_counts:
+        return team_counts[team_id].get("mines", 0)
+    return 0
+
+func get_mine_limit() -> int:
+    """Get the maximum number of mines allowed per team"""
+    return team_limits.get("mines", 10)
+
+func get_team_spire_count(team_id: int) -> int:
+    """Get the current number of spires for a team"""
+    if team_id in team_counts:
+        return team_counts[team_id].get("spires", 0)
+    return 0
+
+func get_spire_limit() -> int:
+    """Get the maximum number of spires allowed per team"""
+    return team_limits.get("spires", 3) 

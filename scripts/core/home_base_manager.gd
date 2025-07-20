@@ -87,10 +87,10 @@ func _create_home_base(team_id: int, base_position: Vector3) -> void:
 	add_child(home_base_node)
 	
 	# Create main command center building
-	var command_center = _create_building("command_center", Vector3.ZERO, team_id)
-	if command_center:
-		command_center.name = "CommandCenter_Team_%d" % team_id
-		home_base_node.add_child(command_center)
+	#var command_center = _create_building("command_center", Vector3.ZERO, team_id)
+	#if command_center:
+	#	command_center.name = "CommandCenter_Team_%d" % team_id
+	#	home_base_node.add_child(command_center)
 	
 	# Create healing area
 	var healing_area = Area3D.new()

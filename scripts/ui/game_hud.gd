@@ -30,7 +30,11 @@ var is_refreshing_units: bool = false  # Prevent concurrent refreshes
 
 # Auto-refresh for behavior matrix display
 var behavior_refresh_timer: float = 0.0
-const BEHAVIOR_REFRESH_INTERVAL: float = 0.2  # Reduced from 0.2 to 1.0 - Update once per second instead of 5 times per second
+const BEHAVIOR_REFRESH_INTERVAL: float = 1.0  # Reduced from 0.2 to 1.0 - Update once per second instead of 5 times per second
+
+# Command input health check timer
+var command_input_check_timer: float = 0.0
+const COMMAND_INPUT_CHECK_INTERVAL: float = 2.0
 
 # Cached validator to avoid expensive instantiation
 var cached_action_validator = null
@@ -110,17 +114,35 @@ func _grab_command_focus():
 
 func _on_command_input_focus_lost():
     """Automatically regrab focus when command input loses focus"""
-    # Small delay to avoid conflicts with other UI interactions
-    await get_tree().process_frame
-    if command_input and is_visible_in_tree():
-        command_input.grab_focus()
+    # Use call_deferred instead of await to avoid race conditions
+    # This prevents issues where the node might become invalid during await
+    call_deferred("_regrab_focus_safely")
 
-func _unhandled_input(event: InputEvent):
-    """Capture keyboard input and route it to command input"""
-    if not command_input or not is_visible_in_tree():
+func _regrab_focus_safely():
+    """Safely regrab focus for command input"""
+    if not command_input or not is_instance_valid(command_input):
+        print("GameHUD: Command input is invalid, cannot regrab focus")
         return
         
-    # Handle Enter key specifically for command submission
+    if not is_visible_in_tree():
+        print("GameHUD: GameHUD not visible in tree, cannot regrab focus")
+        return
+        
+    # Ensure command input is still editable and enabled
+    if not command_input.editable:
+        print("GameHUD: Command input not editable, re-enabling")
+        command_input.editable = true
+        
+    # Re-grab focus
+    command_input.grab_focus()
+    print("GameHUD: Command input focus regrabbed safely")
+
+func _unhandled_input(event: InputEvent):
+    """Capture keyboard input and route it to command input - don't interfere with mouse selection"""
+    if not command_input or not is_visible_in_tree():
+        return
+    
+    # Only handle keyboard events, let selection system handle mouse events
     if event is InputEventKey and event.pressed:
         if event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
             if not command_input.has_focus():
@@ -132,10 +154,10 @@ func _unhandled_input(event: InputEvent):
             # If it already has focus, the text_submitted signal will handle it
             return
         
-        # For any other key, ensure command input has focus
+        # For any other key, ensure command input has focus but don't handle the event
         if not command_input.has_focus():
             command_input.grab_focus()
-            # Let the input be processed by the LineEdit
+            # Don't call set_input_as_handled() to let the LineEdit process the key
 
 func _physics_process(delta):
     if hover_tooltip.visible:
@@ -146,6 +168,38 @@ func _physics_process(delta):
     if behavior_refresh_timer >= BEHAVIOR_REFRESH_INTERVAL:
         behavior_refresh_timer = 0.0
         _refresh_behavior_matrix_display()
+    
+    # Periodic check to ensure command input stays active (every 2 seconds)
+    # This prevents any external interference from disabling the command input
+    command_input_check_timer += delta
+    if command_input_check_timer >= COMMAND_INPUT_CHECK_INTERVAL:
+        command_input_check_timer = 0.0
+        _check_command_input_health()
+
+func _check_command_input_health():
+    """Periodically check and maintain command input health"""
+    if not command_input or not is_visible_in_tree():
+        return
+    
+    # Check if command input has lost its settings and restore them
+    if not command_input.editable:
+        print("GameHUD: Detected command input became non-editable, fixing...")
+        command_input.editable = true
+    
+    if command_input.focus_mode != Control.FOCUS_ALL:
+        print("GameHUD: Detected command input lost focus mode, fixing...")
+        command_input.focus_mode = Control.FOCUS_ALL
+    
+    if command_input.mouse_filter != Control.MOUSE_FILTER_PASS:
+        print("GameHUD: Detected command input lost mouse filter, fixing...")
+        command_input.mouse_filter = Control.MOUSE_FILTER_PASS
+    
+    # If command input doesn't have focus and there's no modal dialog, give it focus
+    if not command_input.has_focus() and not get_viewport().gui_is_dragging():
+        # Only regrab focus if no other UI element should have priority
+        var current_focus = get_viewport().gui_get_focus_owner()
+        if not current_focus or current_focus == command_input:
+            command_input.grab_focus()
 
 func _find_selection_system():
     # The selection system is added to a group, which is a robust way to find it
@@ -204,18 +258,18 @@ func _on_command_submitted(text: String):
     if text.begins_with("/test"):
         get_node("/root/UnifiedMain").rpc("submit_test_command_rpc", text)
         command_input.clear()
-        command_input.grab_focus()
+        _ensure_command_input_active()
         return
         
     if text.is_empty():
         print("GameHUD: Empty command entered")
-        command_input.grab_focus()  # Keep focus for next command
+        _ensure_command_input_active()  # Keep focus for next command
         return
         
     if not selection_system:
         print("GameHUD: No selection system available")
         command_input.clear()
-        command_input.grab_focus()
+        _ensure_command_input_active()
         return
     
     var selected_units = selection_system.get_selected_units()
@@ -237,7 +291,30 @@ func _on_command_submitted(text: String):
     get_node("/root/UnifiedMain").rpc("submit_command_rpc", text, unit_ids)
     
     command_input.clear()
-    command_input.grab_focus()  # Immediately ready for next command
+    _ensure_command_input_active()  # Immediately ready for next command
+
+func _ensure_command_input_active():
+    """Ensure the command input is active and ready for input"""
+    if not command_input:
+        print("GameHUD: Warning - command_input is null")
+        return
+    
+    # Ensure it's editable
+    if not command_input.editable:
+        print("GameHUD: Re-enabling command input editability")
+        command_input.editable = true
+    
+    # Ensure proper focus mode
+    if command_input.focus_mode != Control.FOCUS_ALL:
+        command_input.focus_mode = Control.FOCUS_ALL
+    
+    # Ensure proper mouse filter
+    if command_input.mouse_filter != Control.MOUSE_FILTER_PASS:
+        command_input.mouse_filter = Control.MOUSE_FILTER_PASS
+    
+    # Grab focus
+    command_input.grab_focus()
+    print("GameHUD: Command input ensured active and focused")
 
 func _update_energy_display(amount: int, rate: float):
     energy_label.text = "Energy: %d (+%.1f/s)" % [amount, rate]

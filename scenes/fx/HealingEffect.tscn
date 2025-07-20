@@ -1,0 +1,33 @@
+[gd_scene load_steps=4 format=3 uid="uid://clfgqh8axw3va"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_1"]
+albedo_color = Color(0.2, 1, 0.4, 1)
+emission_enabled = true
+emission = Color(0.2, 1, 0.4, 1)
+emission_energy_multiplier = 3.0
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_1"]
+particle_flag_disable_z = true
+emission_shape = 1
+emission_sphere_radius = 0.8
+spread = 45.0
+initial_velocity_min = 1.0
+initial_velocity_max = 3.0
+gravity = Vector3(0, -2, 0)
+scale_min = 0.08
+scale_max = 0.15
+color = Color(0.2, 1, 0.4, 0.8)
+
+[sub_resource type="SphereMesh" id="SphereMesh_1"]
+material = SubResource("StandardMaterial3D_1")
+radius = 0.05
+height = 0.1
+
+[node name="HealingEffect" type="GPUParticles3D"]
+emitting = false
+amount = 20
+lifetime = 2.0
+one_shot = false
+explosiveness = 0.2
+process_material = SubResource("ParticleProcessMaterial_1")
+draw_pass_1 = SubResource("SphereMesh_1") 

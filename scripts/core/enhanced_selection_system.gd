@@ -17,9 +17,13 @@ var box_end_position: Vector2 = Vector2.ZERO
 func _ready():
     print("EnhancedSelectionSystem: Initializing selection system...")
     
-    # Configure Control node to receive mouse events
-    mouse_filter = Control.MOUSE_FILTER_PASS  # Allow mouse events to pass through to children but also process them
+    # Configure Control node to receive mouse events properly
+    # Set mouse filter to STOP to ensure we receive events but don't pass them through
+    mouse_filter = Control.MOUSE_FILTER_STOP
     set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)  # Cover full screen
+    
+    # Ensure we can receive focus and input events
+    focus_mode = Control.FOCUS_ALL
     
     # Add to group for discovery
     add_to_group("selection_systems")
@@ -27,7 +31,7 @@ func _ready():
     # Defer camera finding until the scene is fully set up
     call_deferred("_find_camera")
     
-    print("EnhancedSelectionSystem: Setup complete, waiting for camera...")
+    print("EnhancedSelectionSystem: Setup complete, mouse_filter=%d, waiting for camera..." % mouse_filter)
 
 func _find_camera():
     # Wait a frame to ensure all nodes are ready
@@ -64,11 +68,6 @@ func _find_camera():
         # Don't disable input - keep trying to find camera each frame
         set_process(true)  # Enable _process to keep looking for camera
 
-func _process(_delta):
-    # Keep looking for camera if we don't have one
-    if not camera:
-        _find_camera_fallback()
-
 func _find_camera_fallback():
     # Quick camera search without disabling input
     var viewport_camera = get_viewport().get_camera_3d()
@@ -76,6 +75,11 @@ func _find_camera_fallback():
         camera = viewport_camera
         set_process(false)  # Stop searching once found
         print("EnhancedSelectionSystem: Camera found via fallback: %s" % camera.name)
+
+func _process(_delta):
+    # Keep looking for camera if we don't have one
+    if not camera:
+        _find_camera_fallback()
 
 func _physics_process(_delta):
     if not camera or is_box_selecting:
@@ -90,21 +94,46 @@ func _physics_process(_delta):
         unit_hovered.emit(hovered_unit)
 
 func _gui_input(event: InputEvent):
-    # Control nodes should use _gui_input instead of _unhandled_input
+    """Fallback input handling using _gui_input in case _unhandled_input doesn't work"""
+    print("EnhancedSelectionSystem: _gui_input fallback processing: %s" % event)
+    _process_input_event(event)
+
+func _unhandled_input(event: InputEvent):
+    """Primary input handling using _unhandled_input for better event priority"""
+    
+    # Only process if we're visible and have camera
+    if not visible:
+        print("EnhancedSelectionSystem: Skipping input - not visible")
+        return
+        
+    if not camera:
+        print("EnhancedSelectionSystem: Skipping input - no camera")
+        return
+    
+    print("EnhancedSelectionSystem: _unhandled_input processing: %s" % event)
+    _process_input_event(event)
+
+func _process_input_event(event: InputEvent):
+    """Common input processing logic used by both _gui_input and _unhandled_input"""
     
     if event is InputEventMouseButton:
+        print("EnhancedSelectionSystem: Mouse button %d, pressed=%s" % [event.button_index, event.pressed])
+        
         if event.button_index == MOUSE_BUTTON_LEFT:
             if event.pressed:
+                print("EnhancedSelectionSystem: Starting box selection at %s" % event.position)
                 is_box_selecting = true
                 box_start_position = event.position
                 box_end_position = event.position
                 queue_redraw()
+                get_viewport().set_input_as_handled()
             else:
                 if is_box_selecting:
+                    print("EnhancedSelectionSystem: Finishing selection at %s" % event.position)
                     is_box_selecting = false
-                    if camera:
-                        _finish_selection(event.position)
+                    _finish_selection(event.position)
                     queue_redraw()
+                    get_viewport().set_input_as_handled()
         elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
             print("EnhancedSelectionSystem: Right-click detected at %s" % event.position)
             if not camera:
@@ -114,10 +143,12 @@ func _gui_input(event: InputEvent):
             else:
                 print("EnhancedSelectionSystem: Processing right-click with %d selected units" % selected_units.size())
                 _handle_right_click(event.position)
+                get_viewport().set_input_as_handled()
     
-    if event is InputEventMouseMotion and is_box_selecting:
+    elif event is InputEventMouseMotion and is_box_selecting:
         box_end_position = event.position
         queue_redraw()
+        get_viewport().set_input_as_handled()
 
 func _draw():
     if is_box_selecting:

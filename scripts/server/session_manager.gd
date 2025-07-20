@@ -730,31 +730,34 @@ func _spawn_initial_units(session: Dictionary, map_node: Node) -> void:
         var base_position = team_spawns.get(team_id, Vector3.ZERO)
         _log_info("Spawning initial units for team %d with %d players" % [team_id, team_players.size()])
         
-        # Spawn a mixed squad for this team using safe spawn positions
+        # Spawn 2x each unit type for this team using safe spawn positions
         var archetypes = ["scout", "tank", "sniper", "medic", "engineer"]
         var home_base_manager = get_tree().get_first_node_in_group("home_base_managers")
         
-        for i in range(archetypes.size()):
-            var archetype = archetypes[i]
-            
-            # Arrange units in formation around the base center
-            var unit_position: Vector3
-            if home_base_manager:
-                var base_center = home_base_manager.get_team_spawn_position(team_id)
-                # Create formation offset in a grid pattern around base center
-                var formation_offset = _get_formation_offset(i, archetypes.size())
-                unit_position = base_center + formation_offset
-            else:
-                # Fallback with manual bounds checking
-                var raw_position = base_position + Vector3(i * 4, 1, 0)
-                unit_position = Vector3(
-                    clamp(raw_position.x, -40.0, 40.0),
-                    raw_position.y,
-                    clamp(raw_position.z, -40.0, 40.0)
-                )
-            
-            var unit_id = await game_state.spawn_unit(archetype, team_id, unit_position, representative_player)
-            _log_info("Spawned %s unit %s for team %d at %s" % [archetype, unit_id, team_id, unit_position])
+        var unit_index = 0  # Track overall unit position for formation
+        for archetype in archetypes:
+            # Spawn 2 of each archetype
+            for j in range(2):
+                # Arrange units in formation around the base center
+                var unit_position: Vector3
+                if home_base_manager:
+                    var base_center = home_base_manager.get_team_spawn_position(team_id)
+                    # Create formation offset in a grid pattern around base center
+                    # Total units per team is now 10 (2 of each of 5 archetypes)
+                    var formation_offset = _get_formation_offset(unit_index, 10)
+                    unit_position = base_center + formation_offset
+                else:
+                    # Fallback with manual bounds checking
+                    var raw_position = base_position + Vector3(unit_index * 4, 1, 0)
+                    unit_position = Vector3(
+                        clamp(raw_position.x, -40.0, 40.0),
+                        raw_position.y,
+                        clamp(raw_position.z, -40.0, 40.0)
+                    )
+                
+                var unit_id = await game_state.spawn_unit(archetype, team_id, unit_position, representative_player)
+                _log_info("Spawned %s unit %s for team %d at %s (unit %d/10)" % [archetype, unit_id, team_id, unit_position, unit_index + 1])
+                unit_index += 1
     
     _log_info("Initial units spawned")
 

@@ -146,32 +146,7 @@ func _execute_direct_command(command_data: Dictionary):
                 unit.execute_player_override(action_data)
                 logger.info("UnifiedMain", "Executed direct command on unit %s: %s with params: %s" % [unit_id, action_data.action, str(action_data.params)])
 
-func _world_to_team_relative_coords(world_pos: Vector3, team_id: int) -> Vector3:
-    """Convert world coordinates to team-relative coordinates"""
-    # Get the team transform (same logic as Unit._get_team_transform())
-    var home_base_manager = get_tree().get_first_node_in_group("home_base_managers")
-    if not home_base_manager:
-        logger.error("UnifiedMain", "HomeBaseManager not found for coordinate conversion!")
-        return world_pos
-    
-    var my_base_pos = home_base_manager.get_home_base_position(team_id)
-    var enemy_team_id = 2 if team_id == 1 else 1
-    var enemy_base_pos = home_base_manager.get_home_base_position(enemy_team_id)
-    
-    if my_base_pos == Vector3.ZERO or enemy_base_pos == Vector3.ZERO:
-        logger.error("UnifiedMain", "Home base positions not set up correctly for coordinate conversion.")
-        return world_pos
-    
-    # Create the same team transform as the unit does
-    var forward_vec = (enemy_base_pos - my_base_pos).normalized()
-    var right_vec = forward_vec.cross(Vector3.UP).normalized()
-    var up_vec = right_vec.cross(forward_vec).normalized()
-    var team_transform = Transform3D(right_vec, up_vec, forward_vec, my_base_pos)
-    
-    # Apply inverse transform to convert world coordinates to team-relative coordinates
-    var team_relative_pos = team_transform.inverse() * world_pos
-    
-    return team_relative_pos
+# Removed _world_to_team_relative_coords() function as team relative transformations are no longer needed
 
 @rpc("any_peer", "call_local")
 func submit_test_command_rpc(command_text: String):

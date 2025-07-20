@@ -448,7 +448,7 @@ func _on_ai_processing_finished() -> void:
 
 # This function is now ONLY for the host's local AI processing, not other clients
 # Other clients will get updates via update_ai_command_feedback RPC.
-func _on_ai_plan_processed(plans: Array, message: String) -> void:
+func _on_ai_plan_processed(plans: Array, message: String, originating_peer_id: int = -1) -> void:
     """Handle successful AI plan processing (local host feedback)"""
     # If not a pure client, this runs for the host
     if multiplayer.is_server() and DisplayServer.get_name() != "headless":
@@ -475,7 +475,7 @@ func _on_ai_plan_processed(plans: Array, message: String) -> void:
         command_summary_label.text = ""
 
 # This function can still be used for local host feedback on AI command failure
-func _on_ai_command_failed(error: String, unit_ids: Array) -> void:
+func _on_ai_command_failed(error: String, unit_ids: Array, originating_peer_id: int = -1) -> void:
     """Handle AI command failure (local host feedback)"""
     if multiplayer.is_server() and DisplayServer.get_name() != "headless":
         update_ai_command_feedback("[color=red]Error: %s[/color]" % error, "[color=red]✗ Command failed[/color]")

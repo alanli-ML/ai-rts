@@ -15,28 +15,23 @@ func heal_ally(params: Dictionary):
 	var target_id = params.get("target_id", "")
 	if target_id.is_empty():
 		print("Medic %s: No target specified for heal command." % unit_id)
-		action_complete = true
 		return
 
 	var game_state = get_node("/root/DependencyContainer").get_game_state()
 	if not game_state:
-		action_complete = true
 		return
 
 	var target = game_state.units.get(target_id)
 	
 	# Validate target
 	if not is_instance_valid(target) or target.is_dead:
-		print("Medic %s: Heal target %s is not valid." % [unit_id, target_id])
-		action_complete = true
+		# print("Medic %s: Heal target %s is not valid." % [unit_id, target_id])  # TEMPORARILY DISABLED
 		return
 	if target.team_id != self.team_id:
-		print("Medic %s: Cannot heal enemy target %s." % [unit_id, target_id])
-		action_complete = true
+		# print("Medic %s: Cannot heal enemy target %s." % [unit_id, target_id])  # TEMPORARILY DISABLED
 		return
 	if target.get_health_percentage() >= 1.0:
-		print("Medic %s: Target %s is already at full health." % [unit_id, target_id])
-		action_complete = true
+		# print("Medic %s: Target %s is already at full health." % [unit_id, target_id])  # TEMPORARILY DISABLED
 		return
 
 	# Set state to HEALING

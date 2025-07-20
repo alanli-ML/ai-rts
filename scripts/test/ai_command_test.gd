@@ -154,12 +154,12 @@ func test_command_processing():
 func _on_processing_started():
     print("✓ AI processing started")
 
-func _on_plan_processed(plans: Array, message: String):
+func _on_plan_processed(plans: Array, message: String, originating_peer_id: int = -1):
     print("✓ AI plan processed successfully!")
     print("  Plans: %d" % plans.size())
     print("  Message: %s" % message)
 
-func _on_command_failed(error: String, unit_ids: Array):
+func _on_command_failed(error: String, unit_ids: Array, originating_peer_id: int = -1):
     print("✗ AI command failed: %s" % error)
     print("\nTo fix this:")
     print("1. Check that API keys are properly configured")

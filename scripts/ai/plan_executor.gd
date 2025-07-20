@@ -2,6 +2,8 @@
 class_name PlanExecutor
 extends Node
 
+const GameConstants = preload("res://scripts/shared/constants/game_constants.gd")
+
 var game_state: Node
 var logger: Node
 
@@ -21,28 +23,60 @@ func _process(_delta: float):
     # The PlanExecutor is now just a goal-setter. It no longer needs to process anything per frame.
     pass
 
-func execute_plan(unit_id: String, plan_data: Dictionary) -> bool:
+func execute_plan(plan_data: Dictionary) -> bool:
+    var unit_id = plan_data.get("unit_id", "")
+    if unit_id.is_empty():
+        logger.warning("PlanExecutor", "Plan data has no unit_id.")
+        return false
+
+    var priority_list = plan_data.get("primary_state_priority_list", [])
+    var attack_sequence = plan_data.get("control_point_attack_sequence", [])
+    var goal = plan_data.get("goal", "Following strategic orders.")
+
     var unit = game_state.units.get(unit_id)
     if not is_instance_valid(unit):
         logger.warning("PlanExecutor", "Unit not found in game state: %s" % unit_id)
         return false
 
-    if not plan_data.has("behavior_matrix") or not plan_data.has("control_point_attack_sequence"):
-        logger.warning("PlanExecutor", "Plan for unit %s is missing 'behavior_matrix' or 'control_point_attack_sequence'." % unit_id)
-        return false
-
-    # The unit is now fully autonomous. We just give it its personality and strategic goals.
-    var behavior_matrix = plan_data.get("behavior_matrix", {})
-    var attack_sequence = plan_data.get("control_point_attack_sequence", [])
+    # 1. Get base matrix for the unit's archetype.
+    var base_matrix = GameConstants.get_default_behavior_matrix(unit.archetype).duplicate(true)
     
+    # 2. Generate the tuned matrix with adjusted biases.
+    var tuned_matrix = _generate_tuned_matrix(base_matrix, priority_list)
+
     if unit.has_method("set_behavior_plan"):
-        unit.set_behavior_plan(behavior_matrix, attack_sequence)
+        # 3. Set the tuned matrix on the unit.
+        unit.set_behavior_plan(tuned_matrix, attack_sequence)
+        unit.strategic_goal = goal
         plan_started.emit(unit_id, plan_data)
-        logger.info("PlanExecutor", "Sent behavior plan to unit %s" % unit_id)
-        return true
+        logger.info("PlanExecutor", "Sent tuned behavior plan to unit %s" % unit_id)
     else:
         logger.error("PlanExecutor", "Unit %s does not have set_behavior_plan method." % unit_id)
         return false
+    
+    return true
+
+func _generate_tuned_matrix(base_matrix: Dictionary, priority_list: Array) -> Dictionary:
+    """
+    Adjusts the biases of the primary states in a behavior matrix based on an ordered priority list.
+    """
+    if priority_list.is_empty() or base_matrix.is_empty():
+        return base_matrix # Return base if no priority is given.
+
+    var tuned_matrix = base_matrix.duplicate(true)
+    var validator = ActionValidator.new()
+
+    # Define bias values based on priority. Higher priority gets a higher bias.
+    const BIAS_VALUES = [0.3, 0.2, 0.1, 0.0]
+
+    for i in range(priority_list.size()):
+        var state = priority_list[i]
+        if i < BIAS_VALUES.size() and state in validator.MUTUALLY_EXCLUSIVE_REACTIVE_ACTIONS:
+            if tuned_matrix.has(state):
+                tuned_matrix[state]["bias"] = BIAS_VALUES[i]
+                logger.info("PlanExecutor", "Set bias for state '%s' to %.1f" % [state, BIAS_VALUES[i]])
+
+    return tuned_matrix
 
 func interrupt_plan(unit_id: String, reason: String, _from_trigger: bool = false) -> void:
     # This function is now mainly for logging and signaling.

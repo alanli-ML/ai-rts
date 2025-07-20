@@ -2,10 +2,10 @@
 class_name HomeBaseManager
 extends Node3D
 
-# Home base positions for teams (moved inward from edges for safety)
-const HOME_BASE_POSITIONS = {
-	1: Vector3(-47.02, 0.5, -35.0086),  # Team 1: Calculated from city_map Team1Base transform
-	2: Vector3(25.513, 0.5, 48.651)     # Team 2: Calculated from city_map Team2Base transform
+# Base node names in the scene (will read positions programmatically)
+const TEAM_BASE_NODE_NAMES = {
+	1: "Team1Base",
+	2: "Team2Base"
 }
 
 # Unit spawn areas around home bases (radius for spawning units)
@@ -59,18 +59,23 @@ func _physics_process(delta: float):
 
 func _setup_home_bases() -> void:
 	"""Setup home bases for all teams"""
-	# Create home bases for both teams
-	for team_id in HOME_BASE_POSITIONS:
-		_create_home_base(team_id)
+	# Create home bases for teams that have base nodes in the scene
+	for team_id in TEAM_BASE_NODE_NAMES:
+		var base_node_name = TEAM_BASE_NODE_NAMES[team_id]
+		var base_node = get_node_or_null(base_node_name)
+		
+		if base_node:
+			var base_position = base_node.global_transform.origin
+			_create_home_base(team_id, base_position)
+		else:
+			print("HomeBaseManager: Warning - Base node '%s' not found for team %d" % [base_node_name, team_id])
 	
 	print("HomeBaseManager: Home bases setup complete")
 
-func _create_home_base(team_id: int) -> void:
-	"""Create a home base for the specified team"""
-	var base_position = HOME_BASE_POSITIONS.get(team_id, Vector3.ZERO)
-	
+func _create_home_base(team_id: int, base_position: Vector3) -> void:
+	"""Create a home base for the specified team at the given position"""
 	if base_position == Vector3.ZERO:
-		print("HomeBaseManager: No position defined for team %d" % team_id)
+		print("HomeBaseManager: Invalid position for team %d" % team_id)
 		return
 	
 	print("HomeBaseManager: Creating home base for team %d at %s" % [team_id, base_position])
@@ -120,8 +125,8 @@ func _create_home_base(team_id: int) -> void:
 		"team_id": team_id
 	}
 	
-	# Set spawn point for this team (slightly offset from base)
-	spawn_points[team_id] = base_position + Vector3(0, 0, -12)  # Spawn in front of base
+	# Set spawn point for this team (at the center of the base)
+	spawn_points[team_id] = base_position  # Spawn at center of base
 	
 	# Add to buildings group for game systems
 	home_base_node.add_to_group("buildings")
@@ -241,19 +246,20 @@ func get_team_spawn_position(team_id: int) -> Vector3:
 
 func get_home_base_position(team_id: int) -> Vector3:
 	"""Get the home base position for a team"""
-	return HOME_BASE_POSITIONS.get(team_id, Vector3.ZERO)
+	var base_data = home_bases.get(team_id, {})
+	return base_data.get("position", Vector3.ZERO)
 
 func get_spawn_position_with_offset(team_id: int, offset: Vector3 = Vector3.ZERO) -> Vector3:
-	"""Get spawn position with random offset within spawn radius, clamped to map bounds"""
+	"""Get spawn position with specified offset from base center, clamped to map bounds"""
 	var base_spawn = get_team_spawn_position(team_id)
 	
 	if offset == Vector3.ZERO:
-		# Generate random offset within spawn radius
+		# Generate random offset within spawn radius (for backwards compatibility)
 		var angle = randf() * 2 * PI
 		var radius = randf() * SPAWN_RADIUS
 		offset = Vector3(
 			cos(angle) * radius,
-			SPAWN_HEIGHT,
+			0.0,  # Don't add height offset by default
 			sin(angle) * radius
 		)
 	
@@ -272,7 +278,11 @@ func is_near_home_base(position: Vector3, team_id: int, max_distance: float = 20
 
 func get_all_home_base_positions() -> Dictionary:
 	"""Get all home base positions"""
-	return HOME_BASE_POSITIONS.duplicate()
+	var positions = {}
+	for team_id in home_bases:
+		var base_data = home_bases[team_id]
+		positions[team_id] = base_data.get("position", Vector3.ZERO)
+	return positions
 
 func get_team_buildings(team_id: int) -> Array[Node3D]:
 	"""Get all buildings for a specific team"""
@@ -305,7 +315,11 @@ func destroy_home_base(team_id: int) -> void:
 # Static utility functions for other systems
 static func get_default_team_spawn_position(team_id: int) -> Vector3:
 	"""Static method to get team spawn positions when HomeBaseManager isn't available"""
-	return HOME_BASE_POSITIONS.get(team_id, Vector3.ZERO)
+	# Since positions are now dynamic, return hardcoded fallbacks for static access
+	match team_id:
+		1: return Vector3(-39.4706, 0.0, -38.32)
+		2: return Vector3(43.4246, 0.0, 57.2815)
+		_: return Vector3.ZERO
 
 func _on_unit_entered_healing_zone(body: Node3D, team_id: int):
 	if body is Unit and body.team_id == team_id:
@@ -324,5 +338,5 @@ func get_debug_info() -> Dictionary:
 	return {
 		"home_bases": home_bases.keys(),
 		"spawn_points": spawn_points,
-		"positions": HOME_BASE_POSITIONS
+		"positions": get_all_home_base_positions()
 	} 

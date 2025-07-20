@@ -8,50 +8,48 @@ extends RefCounted
 # Load the ActionValidator to get the list of allowed actions and state variables.
 const ActionValidator = preload("res://scripts/ai/action_validator.gd")
 
+const VALID_NODE_NAMES = [
+	"Northwest", "North", "Northeast",
+	"West", "Center", "East",
+	"Southwest", "South", "Southeast"
+]
+
 static func get_schema_for_command(_is_group_command: bool, _unit_archetypes: Array) -> Dictionary:
 	var validator = ActionValidator.new()
-	var all_actions = validator.get_all_reactive_actions()
-	var all_state_vars = validator.DEFINED_STATE_VARIABLES
 
-	# --- Compact Behavior Matrix Schema ---
-	# Use a simple structure that allows any string keys with number values
-	# This is much more compact than defining every field individually
-	var behavior_matrix_schema = {
-		"type": "object",
-		"description": "Behavior matrix: action names as keys, each containing state variable weights (-1.0 to 1.0)",
-		"additionalProperties": {
-			"type": "object",
-			"description": "State variable weights for an action",
-			"additionalProperties": {
-				"type": "number",
-				"minimum": -1.0,
-				"maximum": 1.0
-			}
-		}
-	}
-
-	# --- Plan Schema ---
+	# --- Plan Schema (for a single unit) ---
 	var plan_schema = {
 		"type": "object",
 		"properties": {
 			"unit_id": {
 				"type": "string",
-				"description": "Unique identifier for the unit."
+				"description": "The unique ID of the unit this plan is for."
 			},
 			"goal": {
 				"type": "string",
 				"description": "High-level tactical objective for this unit."
 			},
+			"primary_state_priority_list": {
+				"type": "array",
+				"description": "An ordered list of the four primary states: attack, defend, retreat, follow.",
+				"items": {
+					"type": "string",
+					"enum": validator.MUTUALLY_EXCLUSIVE_REACTIVE_ACTIONS
+				},
+				"minItems": 4,
+				"maxItems": 4,
+				"uniqueItems": true
+			},
 			"control_point_attack_sequence": {
 				"type": "array",
-				"description": "Ordered list of control point IDs to attack.",
+				"description": "Ordered list of control point IDs for this unit to capture.",
 				"items": {
-					"type": "string"
+					"type": "string",
+					"enum": VALID_NODE_NAMES
 				}
-			},
-			"behavior_matrix": behavior_matrix_schema
+			}
 		},
-		"required": ["unit_id", "goal", "control_point_attack_sequence", "behavior_matrix"],
+		"required": ["unit_id", "goal", "primary_state_priority_list", "control_point_attack_sequence"],
 		"additionalProperties": false
 	}
 
@@ -59,14 +57,14 @@ static func get_schema_for_command(_is_group_command: bool, _unit_archetypes: Ar
 	var response_schema = {
 		"type": "json_schema",
 		"json_schema": {
-			"name": "process_behavior_plan",
+			"name": "process_strategic_plan",
 			"strict": true,
 			"schema": {
 				"type": "object",
 				"properties": {
 					"plans": {
 						"type": "array",
-						"description": "An array of plans, one for each unit being commanded.",
+						"description": "An array of strategic plans, one for each group of units.",
 						"items": plan_schema
 					},
 					"message": {

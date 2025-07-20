@@ -273,6 +273,27 @@ func _update_unit(unit_data: Dictionary, delta: float) -> void:
 		if unit_instance.has_method("update_full_plan"):
 			unit_instance.update_full_plan(unit_data.full_plan)
 	
+	# Update control point attack sequence from server
+	if unit_data.has("control_point_attack_sequence"):
+		unit_instance.set("control_point_attack_sequence", unit_data.control_point_attack_sequence)
+	
+	# Update current attack sequence index from server
+	if unit_data.has("current_attack_sequence_index"):
+		unit_instance.set("current_attack_sequence_index", unit_data.current_attack_sequence_index)
+		# Refresh status bar to show updated progress
+		if unit_instance.has_method("refresh_status_bar"):
+			unit_instance.refresh_status_bar()
+	
+	# Update waiting for first command status from server
+	if unit_data.has("waiting_for_first_command"):
+		unit_instance.set("waiting_for_first_command", unit_data.waiting_for_first_command)
+	
+	if unit_data.has("has_received_first_command"):
+		unit_instance.set("has_received_first_command", unit_data.has_received_first_command)
+		# Refresh status bar when command state changes
+		if unit_instance.has_method("refresh_status_bar"):
+			unit_instance.refresh_status_bar()
+	
 	# NOTE: active_triggers and all_triggers are deprecated - replaced by behavior matrix system
 	# Skipping these assignments to avoid property errors on client units
 

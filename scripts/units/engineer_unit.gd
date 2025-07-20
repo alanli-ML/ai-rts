@@ -25,7 +25,6 @@ func construct(params: Dictionary):
 	var position_array = params.get("position")
 	if not position_array is Array or position_array.size() != 3:
 		print("Engineer %s: Invalid position for construct command." % unit_id)
-		action_complete = true
 		return
 
 	var position = Vector3(position_array[0], position_array[1], position_array[2])
@@ -33,7 +32,6 @@ func construct(params: Dictionary):
 	var entity_manager = get_node("/root/DependencyContainer").get_placeable_entity_manager()
 	if not entity_manager:
 		print("Engineer %s: PlaceableEntityManager not found." % unit_id)
-		action_complete = true
 		return
 		
 	var building = entity_manager.spawn_building(building_type, position, team_id)
@@ -43,19 +41,16 @@ func construct(params: Dictionary):
 		print("%s is moving to construct a %s." % [unit_id, building_type])
 	else:
 		print("%s failed to start construction." % unit_id)
-		action_complete = true
 
 func repair(params: Dictionary):
 	var target_id = params.get("target_id", "")
 	if target_id.is_empty():
 		print("Engineer %s: No target specified for repair command." % unit_id)
-		action_complete = true
 		return
 		
 	var entity_manager = get_node("/root/DependencyContainer").get_placeable_entity_manager()
 	if not entity_manager:
 		print("Engineer %s: PlaceableEntityManager not found." % unit_id)
-		action_complete = true
 		return
 	
 	var building = entity_manager.get_building(target_id)
@@ -65,7 +60,6 @@ func repair(params: Dictionary):
 		print("%s is moving to repair building %s." % [unit_id, target_id])
 	else:
 		print("%s could not find building %s to repair." % [unit_id, target_id])
-		action_complete = true
 
 func lay_mines(_params: Dictionary):
 	if mine_cooldown_timer > 0:
@@ -92,13 +86,11 @@ func lay_mines(_params: Dictionary):
 	if not is_inside_tree():
 		print("Engineer %s: No longer in scene tree, cannot lay mine." % unit_id)
 		current_state = GameEnums.UnitState.IDLE
-		action_complete = true
 		return
 		
 	entity_manager.spawn_mine(global_position, team_id)
 	
 	current_state = GameEnums.UnitState.IDLE
-	action_complete = true
 
 func construct_turret(_params: Dictionary):
 	if current_state == GameEnums.UnitState.CONSTRUCTING:
@@ -107,7 +99,6 @@ func construct_turret(_params: Dictionary):
 	print("%s is starting to construct a turret." % unit_id)
 	current_state = GameEnums.UnitState.CONSTRUCTING
 	can_move = false
-	action_complete = false
 	
 	# Get construction time from turret config
 	var turret_config = GameConstants.get_unit_config("turret")
@@ -125,7 +116,6 @@ func construct_turret(_params: Dictionary):
 		print("Engineer %s: GameState not found." % unit_id)
 		current_state = GameEnums.UnitState.IDLE
 		can_move = true
-		action_complete = true
 		return
 
 	# Spawn turret in front of the engineer
@@ -139,4 +129,3 @@ func construct_turret(_params: Dictionary):
 		
 	current_state = GameEnums.UnitState.IDLE
 	can_move = true
-	action_complete = true

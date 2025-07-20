@@ -15,7 +15,6 @@ func _physics_process(delta: float):
 		can_move = false
 		if not is_instance_valid(target_unit):
 			current_state = GameEnums.UnitState.IDLE
-			action_complete = true
 		else:
 			look_at(target_unit.global_position, Vector3.UP)
 			charge_timer -= delta
@@ -31,7 +30,6 @@ func _physics_process(delta: float):
 					weapon_attachment.fire()
 					weapon_attachment.damage = original_damage # Reset damage
 				current_state = GameEnums.UnitState.IDLE
-				action_complete = true
 	else:
 		can_move = true
 
@@ -50,12 +48,10 @@ func charge_shot(params: Dictionary):
 	var target_id = params.get("target_id")
 	if target_id == null:
 		print("Sniper %s: No target specified for charge_shot." % unit_id)
-		action_complete = true
 		return
 
 	var game_state = get_node("/root/DependencyContainer").get_game_state()
 	if not game_state:
-		action_complete = true
 		return
 
 	var target = game_state.units.get(target_id)
@@ -69,7 +65,6 @@ func charge_shot(params: Dictionary):
 		_play_charging_sound()
 	else:
 		print("Sniper %s: Invalid target for charge_shot: %s" % [unit_id, str(target_id)])
-		action_complete = true
 
 func _play_charging_sound():
 	"""Play sound effect when starting to charge a shot"""

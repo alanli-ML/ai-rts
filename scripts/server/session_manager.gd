@@ -737,12 +737,13 @@ func _spawn_initial_units(session: Dictionary, map_node: Node) -> void:
         for i in range(archetypes.size()):
             var archetype = archetypes[i]
             
-            # Use home base manager's safe spawn positioning
+            # Arrange units in formation around the base center
             var unit_position: Vector3
             if home_base_manager:
-                # Create safe offset for each unit in formation
-                var formation_offset = Vector3(i * 4, 1, 0) # Reduced spacing to 4 units
-                unit_position = home_base_manager.get_spawn_position_with_offset(team_id, formation_offset)
+                var base_center = home_base_manager.get_team_spawn_position(team_id)
+                # Create formation offset in a grid pattern around base center
+                var formation_offset = _get_formation_offset(i, archetypes.size())
+                unit_position = base_center + formation_offset
             else:
                 # Fallback with manual bounds checking
                 var raw_position = base_position + Vector3(i * 4, 1, 0)
@@ -756,6 +757,26 @@ func _spawn_initial_units(session: Dictionary, map_node: Node) -> void:
             _log_info("Spawned %s unit %s for team %d at %s" % [archetype, unit_id, team_id, unit_position])
     
     _log_info("Initial units spawned")
+
+func _get_formation_offset(unit_index: int, total_units: int) -> Vector3:
+    """Calculate formation offset for unit placement around base center"""
+    # Arrange units in a circular formation around the base
+    var spacing = 3.0  # Distance between units
+    var radius = 4.0   # Base radius for formation
+    
+    if total_units == 1:
+        return Vector3.ZERO  # Single unit at center
+    
+    # Calculate angle for this unit in the formation circle
+    var angle_per_unit = (2 * PI) / total_units
+    var angle = unit_index * angle_per_unit
+    
+    # Calculate position on circle with some radius variation for larger groups
+    var effective_radius = radius + (total_units - 2) * 0.5
+    var x_offset = cos(angle) * effective_radius
+    var z_offset = sin(angle) * effective_radius
+    
+    return Vector3(x_offset, 0.0, z_offset)
 
 func _broadcast_lobby_update(session_id: String) -> void:
     """Broadcast lobby update to all players in session"""

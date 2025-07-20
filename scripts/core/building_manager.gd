@@ -737,21 +737,11 @@ func _setup_building_collision(building_node: Node3D) -> void:
 
 func _setup_building_navigation_obstacle(building_node: Node3D) -> void:
 	"""Setup NavigationObstacle3D for pathfinding"""
-	if not generate_navigation_obstacles:
-		return
-	
-	var nav_obstacle = NavigationObstacle3D.new()
-	nav_obstacle.name = "NavigationObstacle"
-	
-	# Configure obstacle properties
-	nav_obstacle.radius = (3.0 + obstacle_margin) * building_scale
-	nav_obstacle.height = 8.0 * building_scale
-	nav_obstacle.avoidance_enabled = true
-	
-	building_node.add_child(nav_obstacle)
-	
-	if Engine.is_editor_hint():
-		nav_obstacle.set_owner(get_tree().edited_scene_root)
+	# NOTE: This has been intentionally disabled. Creating NavigationObstacle3D for static
+	# buildings causes units with RVO avoidance to treat them as dynamic obstacles,
+	# leading to conflicts with the pre-baked navigation mesh and causing units to get stuck.
+	# Static obstacles should be handled by baking them into the NavigationMesh itself.
+	pass
 
 # =============================================================================
 # CLEANUP METHODS

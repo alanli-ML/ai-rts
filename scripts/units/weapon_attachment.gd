@@ -126,7 +126,7 @@ func equip_weapon(unit: Node3D, weapon_variant: String, team_id: int = 1) -> boo
 		print("DEBUG: WeaponAttachment.equip_weapon() - unit has no get_skeleton method")
 	
 	# Load weapon model
-	print("DEBUG: WeaponAttachment.equip_weapon() - loading weapon model")
+	#print("DEBUG: WeaponAttachment.equip_weapon() - loading weapon model")
 	if not _load_weapon_model(weapon_variant):
 		_log_error("Failed to load weapon model: %s" % weapon_variant)
 		return false
@@ -603,7 +603,8 @@ func _spawn_projectile() -> void:
 		root_node.rpc("spawn_visual_projectile_rpc", muzzle_point.global_position, projectile.direction, projectile.shooter_team_id, projectile.speed, projectile.lifetime)
 
 	if logger:
-		logger.debug("WeaponAttachment", "Spawned logical projectile and sent RPC for visual projectile.")
+		# logger.debug("WeaponAttachment", "Spawned logical projectile and sent RPC for visual projectile.")  # TEMPORARILY DISABLED
+		pass
 
 func _auto_reload() -> void:
 	"""Auto-reload weapon when empty"""

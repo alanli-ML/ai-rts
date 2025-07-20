@@ -1,6 +1,6 @@
 # AnimatedUnit.gd - Enhanced unit with animated character models
 class_name AnimatedUnit
-extends Unit
+extends "res://scripts/core/unit.gd"
 
 const MODEL_PATHS = {
 	"scout": "res://assets/kenney/kenney_blocky-characters_20/Models/GLB format/character-a.glb",
@@ -66,11 +66,13 @@ func play_animation(animation_name: String):
 	
 	# Debug output for attack animations
 	if animation_name == "Attack":
-		print("DEBUG: AnimatedUnit %s attempting to play Attack animation" % unit_id)
+		# print("DEBUG: AnimatedUnit %s attempting to play Attack animation" % unit_id)  # TEMPORARILY DISABLED
+		pass
 	
 	# Add debug output for death animations specifically
 	if animation_name in ["Die", "Death", "die"]:
-		print("DEBUG: Unit %s attempting to play death animation: '%s'" % [unit_id, animation_name])
+		# print("DEBUG: Unit %s attempting to play death animation: '%s'" % [unit_id, animation_name])  # TEMPORARILY DISABLED
+		pass
 		
 	# First try exact match
 	if animation_player.has_animation(animation_name):
@@ -115,7 +117,8 @@ func play_animation(animation_name: String):
 		for fallback in animation_mappings[animation_name]:
 			if animation_player.has_animation(fallback):
 				if animation_name in ["Die", "Death", "die"]:
-					print("DEBUG: Playing mapped fallback death animation: '%s' (for requested '%s')" % [fallback, animation_name])
+					# print("DEBUG: Playing mapped fallback death animation: '%s' (for requested '%s')" % [fallback, animation_name])  # TEMPORARILY DISABLED
+					pass
 				animation_player.play(fallback)
 				return
 	
@@ -411,7 +414,7 @@ func _attach_weapon():
 
 func _on_weapon_fired(weapon_type: String, damage: float):
 	"""Handle weapon fired signal to trigger attack animation"""
-	print("DEBUG: Unit %s weapon fired signal received, playing attack animation" % unit_id)
+	# print("DEBUG: Unit %s weapon fired signal received, playing attack animation" % unit_id)  # TEMPORARILY DISABLED
 	
 	# Set attack animation timer to prevent movement overrides
 	is_playing_attack_animation = true
@@ -435,7 +438,7 @@ func trigger_death_sequence():
 	var collision_shape = get_node_or_null("CollisionShape3D")
 	if collision_shape:
 		collision_shape.disabled = true
-		print("DEBUG: Disabled CollisionShape3D for dead unit %s" % unit_id)
+		# print("DEBUG: Disabled CollisionShape3D for dead unit %s" % unit_id)  # TEMPORARILY DISABLED
 	
 	# Add immediate visual feedback that the unit is dead
 	_apply_immediate_death_effects()
@@ -451,11 +454,11 @@ func trigger_death_sequence():
 	# Play death animation - Kenney models have a "die" animation!
 	if animation_player:
 		var available_anims = animation_player.get_animation_list()
-		print("DEBUG: Available animations for death: %s" % available_anims)
+		# print("DEBUG: Available animations for death: %s" % available_anims)  # TEMPORARILY DISABLED
 		
 		# The Kenney models have a "die" animation, so let's use it
 		if animation_player.has_animation("die"):
-			print("DEBUG: Playing Kenney 'die' animation (0.33s)")
+			# print("DEBUG: Playing Kenney 'die' animation (0.33s)")  # TEMPORARILY DISABLED
 			animation_player.play("die")
 			death_animation_played = true
 		else:
@@ -473,16 +476,16 @@ func _on_death_animation_finished(animation_name: String):
 	"""Handle completion of death animation"""
 	# Check if this was the death animation (Kenney models use "die")
 	if animation_name == "die":
-		print("DEBUG: Kenney death animation 'die' completed for unit %s" % unit_id)
+		# print("DEBUG: Kenney death animation 'die' completed for unit %s" % unit_id)  # TEMPORARILY DISABLED
 		_start_death_visual_effects()
 	# Handle other potential death-related animations as fallback
 	elif animation_name.to_lower() in ["death", "fall", "hurt"]:
-		print("DEBUG: Fallback death animation '%s' completed for unit %s" % [animation_name, unit_id])
+		# print("DEBUG: Fallback death animation '%s' completed for unit %s" % [animation_name, unit_id])  # TEMPORARILY DISABLED
 		_start_death_visual_effects()
 
 func _start_death_visual_effects():
 	"""Start the visual death effects sequence"""
-	print("DEBUG: Starting death visual effects for unit %s" % unit_id)
+	# print("DEBUG: Starting death visual effects for unit %s" % unit_id)  # TEMPORARILY DISABLED
 	
 	# Note: Keep physics processing enabled for respawn timer countdown
 	
@@ -529,7 +532,8 @@ func _apply_death_effects():
 	if has_method("set_modulate") or "modulate" in self:
 		death_tween.tween_property(self, "modulate", Color(0.5, 0.5, 0.5, 1.0), 0.8)
 	else:
-		print("DEBUG: Skipping modulate tween for unit %s (property not available)" % unit_id)
+		# print("DEBUG: Skipping modulate tween for unit %s (property not available)" % unit_id)  # TEMPORARILY DISABLED
+		pass
 
 func _fade_out_unit():
 	"""Gradually fade out the unit after death animation"""
@@ -549,7 +553,7 @@ func _fade_out_unit():
 		await get_tree().create_timer(2.0).timeout
 	
 	visible = false
-	print("DEBUG: Unit %s fully faded out" % unit_id)
+	# print("DEBUG: Unit %s fully faded out" % unit_id)  # TEMPORARILY DISABLED
 
 func _play_death_sound():
 	var audio_manager = get_node_or_null("/root/DependencyContainer/AudioManager")

@@ -46,13 +46,11 @@ func activate_shield(_params: Dictionary):
 	shield_health = max_shield_health
 	shield_cooldown_timer = shield_cooldown
 	print("%s activated its shield." % unit_id)
-	action_complete = true
 
 func taunt_enemies(_params: Dictionary):
 	# Check if ability is on cooldown
 	if taunt_cooldown_timer > 0:
 		#print("%s taunt is on cooldown (%.1f seconds remaining)" % [unit_id, taunt_cooldown_timer])
-		action_complete = true  # Complete action immediately if on cooldown
 		return
 	
 	print("%s is taunting nearby enemies!" % unit_id)
@@ -71,7 +69,6 @@ func taunt_enemies(_params: Dictionary):
 	var taunted_count = _taunt_enemies_in_range()
 	
 	print("%s taunted %d enemies" % [unit_id, taunted_count])
-	action_complete = true
 
 func _trigger_taunt_speech():
 	"""Display a speech bubble with taunting message"""

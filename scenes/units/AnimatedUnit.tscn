@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://scripts/units/animated_unit.gd" id="1_animated_unit"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_1"]
-radius = 1.0
+radius = 0.3
 height = 4.0
 
 [node name="AnimatedUnit" type="CharacterBody3D"]

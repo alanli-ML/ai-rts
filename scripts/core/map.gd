@@ -51,6 +51,16 @@ const STRUCTURE_TYPES = {
 func _ready() -> void:
 	print("Map: Loading map: %s" % map_name)
 	
+	# Enable debug visualizations in debug builds
+	if OS.is_debug_build():
+		print("Map: Debug build detected - enabling navigation and collision debug visualizations")
+		# Enable navigation mesh debug rendering
+		NavigationServer3D.set_debug_enabled(true)
+		# Enable collision debug shapes
+		get_tree().debug_collisions_hint = true
+		get_tree().debug_navigation_hint = true
+		print("Map: Debug visualizations enabled")
+	
 	# Add to maps group for navigation system integration
 	add_to_group("maps")
 	
@@ -90,10 +100,17 @@ func load_exported_scene_data() -> void:
 	
 	# Check if this is a pre-configured scene (like city_map.tscn)
 	if _is_scene_pre_configured(loaded_map_scene):
-		print("Map: Detected pre-configured scene with NavigationManager - using existing setup")
+		print("Map: Detected pre-configured scene - using existing setup")
+		
+		# NOTE: Transform removed - city_map.tscn should be pre-positioned correctly
+		# If alignment issues occur, the scene file itself should be adjusted instead
+		print("Map: Using pre-configured city_map positioning (no additional transform)")
 		
 		# Simply add the scene as-is - it's already properly configured
 		map_structures_container.add_child(loaded_map_scene)
+		
+		# Generate the physical floor for units to walk on.
+		_generate_walkable_collision(loaded_map_scene)
 		
 		# CRITICAL: Register the city map's NavigationRegion3D with the navigation system
 		var city_nav_region = loaded_map_scene.get_node_or_null("NavigationRegion3D")
@@ -103,6 +120,15 @@ func load_exported_scene_data() -> void:
 			# Add with priority flag to ensure it's found first
 			city_nav_region.add_to_group("navigation_regions")
 			city_nav_region.add_to_group("city_map_navigation")
+			
+			# Enable debug visualization in debug builds
+			if OS.is_debug_build():
+				print("Map: Enabling navigation mesh debug visualization")
+				city_nav_region.set_navigation_layer_value(1, true)
+				# Enable navigation mesh visibility
+				if city_nav_region.navigation_mesh:
+					# The actual visibility is controlled by the debug settings
+					pass
 			
 			# Note: test_map.tscn no longer has a default NavigationRegion3D
 			# The city_map provides all navigation
@@ -117,7 +143,7 @@ func load_exported_scene_data() -> void:
 		setup_capture_nodes_for_loaded_map()
 		return
 	
-	print("Map: Loading legacy scene format - applying manual setup")
+	print("Map: Loading legacy scene format - applying manual setup with collision generation")
 	
 	# Legacy scene handling - needs manual model loading and navigation setup
 	var nav_region = get_node("../Environment/NavigationRegion3D")
@@ -129,11 +155,13 @@ func load_exported_scene_data() -> void:
 		map_structures_container.add_child(loaded_map_scene)
 		print("Map: Warning - NavigationRegion3D not found, buildings may not be detected as obstacles")
 	
+	# NOTE: Scaling has been removed to fix navigation issues. The map will appear smaller
+	# and needs to be scaled up in the editor, and the navmesh rebaked.
 	# Scale up the entire map by 7x
-	loaded_map_scene.scale = Vector3(7.0, 7.0, 7.0)
+	#loaded_map_scene.scale = Vector3(7.0, 7.0, 7.0)
 	
 	# Adjust position: raise up slightly (Y+) and move to the left (X-)
-	loaded_map_scene.position = Vector3(-20.0, 0.5, 0.0)
+	#loaded_map_scene.position = Vector3(-20.0, 0.5, 0.0)
 	
 	print("Map: Successfully loaded exported city map scene with %d structure nodes (scaled 7x, repositioned)" % loaded_map_scene.get_child_count())
 	
@@ -148,9 +176,6 @@ func load_exported_scene_data() -> void:
 
 func _is_scene_pre_configured(scene: Node3D) -> bool:
 	"""Check if a scene is already pre-configured with models, navigation, etc."""
-	# Check for NavigationManager - key indicator of pre-configured scene
-	var has_navigation_manager = scene.has_node("NavigationManager")
-	
 	# Check for NavigationRegion3D with pre-baked mesh
 	var has_nav_region_with_mesh = false
 	var nav_region = scene.get_node_or_null("NavigationRegion3D")
@@ -159,25 +184,28 @@ func _is_scene_pre_configured(scene: Node3D) -> bool:
 		# Check if navigation mesh has pre-baked data
 		has_nav_region_with_mesh = (nav_mesh.get_vertices().size() > 0)
 	
-	# Check if structure nodes already have Model children
+	# Check if structure nodes already have Model children. This is a strong indicator
+	# that the scene is pre-built and doesn't need legacy model loading.
 	var has_pre_loaded_models = false
-	for child in scene.get_children():
+	# Check both direct children and children of the nav region for models
+	var nodes_to_check = scene.get_children()
+	if nav_region:
+		nodes_to_check.append_array(nav_region.get_children())
+		
+	for child in nodes_to_check:
 		if child.name.begins_with("Structure_"):
 			var model_child = child.get_node_or_null("Model")
 			if model_child:
 				has_pre_loaded_models = true
 				break
 	
-	# Check if scene has proper transform (indicating it's pre-scaled/positioned)
-	var has_proper_transform = (scene.scale.x == 7.0 and scene.position.x == -20.0)
-	
-	var is_pre_configured = has_navigation_manager and has_nav_region_with_mesh and has_pre_loaded_models
+	# A scene is pre-configured if it has a baked navmesh and its models are already instanced.
+	# The old checks for NavigationManager and a specific transform were brittle and have been removed.
+	var is_pre_configured = has_nav_region_with_mesh and has_pre_loaded_models
 	
 	print("Map: Scene pre-configuration check:")
-	print("  - NavigationManager: %s" % has_navigation_manager)
 	print("  - Pre-baked NavigationMesh: %s" % has_nav_region_with_mesh)
 	print("  - Pre-loaded Models: %s" % has_pre_loaded_models)
-	print("  - Proper Transform: %s" % has_proper_transform)
 	print("  - Is Pre-configured: %s" % is_pre_configured)
 	
 	return is_pre_configured
@@ -369,10 +397,14 @@ func setup_terrain_collision(structure: Node3D, structure_id: int) -> void:
 
 func setup_structure_collision(structure: Node3D, structure_id: int) -> void:
 	"""Add collision to structures to make them non-traversable"""
+	# NOTE: This legacy function is disabled. The pre-baked navmesh handles building
+	# avoidance, and _generate_walkable_collision handles the physical floor.
+	return
+
 	# Only add collision to buildings, not roads/pavement/landscaping
 	if structure_id in STRUCTURE_TYPES["roads"] or \
-	   structure_id in STRUCTURE_TYPES["pavement"] or \
-	   structure_id in STRUCTURE_TYPES["landscaping"]:
+		structure_id in STRUCTURE_TYPES["pavement"] or \
+		structure_id in STRUCTURE_TYPES["landscaping"]:
 		print("Map: Skipping collision for non-building structure ID %d" % structure_id)
 		return
 
@@ -526,10 +558,15 @@ func get_node_aabb(node: Node3D) -> AABB:
 
 func setup_structure_navigation_obstacle(structure: Node3D, structure_id: int) -> void:
 	"""Add navigation obstacle to structures to prevent pathfinding through them"""
+	# NOTE: This legacy function is disabled. The pre-baked navmesh in city_map.tscn
+	# already accounts for building obstacles. Creating these NavigationObstacle3D nodes
+	# was causing units' RVO avoidance to steer around them as "invisible obstacles".
+	return
+
 	# Only add navigation obstacles to buildings, not roads/pavement/landscaping
 	if structure_id in STRUCTURE_TYPES["roads"] or \
-	   structure_id in STRUCTURE_TYPES["pavement"] or \
-	   structure_id in STRUCTURE_TYPES["landscaping"]:
+		structure_id in STRUCTURE_TYPES["pavement"] or \
+		structure_id in STRUCTURE_TYPES["landscaping"]:
 		print("Map: Skipping navigation obstacle for non-building structure ID %d" % structure_id)
 		return
 
@@ -605,22 +642,27 @@ func setup_capture_nodes_for_loaded_map() -> void:
 	# For loaded maps, create fewer strategic capture points
 	# Position them at key intersections or open areas
 	var strategic_positions = [
-		Vector3(-20, 0.5, -20),  # Corner positions
-		Vector3(20, 0.5, -20),
-		Vector3(-20, 0.5, 20),
-		Vector3(20, 0.5, 20),
+		Vector3(-20, 0.5, -20),  # Top-left -> Northwest
+		Vector3(20, 0.5, -20),   # Top-right -> Northeast
+		Vector3(-20, 0.5, 20),   # Bottom-left -> Southwest
+		Vector3(20, 0.5, 20),    # Bottom-right -> Southeast
 		Vector3(0, 0.5, 0),      # Center
-		Vector3(-20, 0.5, 0),    # Sides
-		Vector3(20, 0.5, 0),
-		Vector3(0, 0.5, -20),
-		Vector3(0, 0.5, 20)
+		Vector3(-20, 0.5, 0),    # Mid-left -> West
+		Vector3(20, 0.5, 0),     # Mid-right -> East
+		Vector3(0, 0.5, -20),    # Top-mid -> North
+		Vector3(0, 0.5, 20)      # Bottom-mid -> South
+	]
+	
+	var node_names = [
+		"Northwest", "Northeast", "Southwest", "Southeast", "Center",
+		"West", "East", "North", "South"
 	]
 	
 	for i in range(min(strategic_positions.size(), node_count)):
 		var pos = strategic_positions[i]
 		node_positions.append(pos)
 		
-		var node_name = "Node%d" % (i + 1)
+		var node_name = node_names[i]
 		
 		# Position existing nodes or create new ones
 		if i < capture_nodes.get_child_count():
@@ -637,18 +679,23 @@ func setup_capture_nodes() -> void:
 	# Create a 3x3 grid of capture nodes
 	var spacing = map_size.x / 4  # Divide map into quarters
 	var center = Vector3.ZERO # Center the nodes on the ground plane at origin
+	var node_names_grid = [
+		["Northwest", "North", "Northeast"],
+		["West", "Center", "East"],
+		["Southwest", "South", "Southeast"]
+	]
 	
-	for i in range(3):
-		for j in range(3):
+	for i in range(3): # Corresponds to rows (Z-axis: NW -> SW)
+		for j in range(3): # Corresponds to columns (X-axis: NW -> NE)
 			var node_index = i * 3 + j
-			var x_offset = (i - 1) * spacing
-			var z_offset = (j - 1) * spacing
+			var x_offset = (j - 1) * spacing
+			var z_offset = (i - 1) * spacing
 			# Raise control points to sit on top of the ground plane (at y=0.5)
 			var pos = Vector3(center.x + x_offset, 0.5, center.z + z_offset)
 			
 			node_positions.append(pos)
 			
-			var node_name = "Node%d" % (node_index + 1)
+			var node_name = node_names_grid[i][j]
 			
 			# Position existing nodes or create new ones
 			if node_index < capture_nodes.get_child_count():
@@ -853,3 +900,205 @@ func _count_navigation_obstacles(node: Node, count: int) -> int:
 		count = _count_navigation_obstacles(child, count)
 	
 	return count 
+
+# --- Walkable Collision Generation ---
+
+func _generate_walkable_collision(map_scene_node: Node3D) -> void:
+	print("Map: Generating a single, flat walkable ground plane to prevent navigation conflicts.")
+	
+	# The old method of creating trimesh collision for each walkable surface can create
+	# micro-edges that conflict with the pre-baked navigation mesh, causing units to get stuck.
+	# A single, large, flat ground plane is a much more robust solution.
+	
+	_create_fallback_ground_plane(map_scene_node)
+
+func _create_collision_for_structure(structure_node: Node3D) -> bool:
+	# Check if collision already exists to avoid duplication
+	for child in structure_node.get_children():
+		if child is StaticBody3D:
+			return false # Already has collision
+
+	var type_name = _extract_structure_type_from_name(structure_node.name)
+	
+	# Determine if this structure type should be walkable
+	var is_walkable = false
+	
+	# Trees and fountains are obstacles, not walkable surfaces
+	if "trees" in type_name or "fountain" in type_name:
+		print("Map: Skipping collision for obstacle structure %s (type: %s)" % [structure_node.name, type_name])
+		return false
+	
+	# Only these types are truly walkable
+	var walkable_types = ["road", "pavement", "grass"]
+	for wt in walkable_types:
+		if type_name == wt or type_name.begins_with(wt + "-"):
+			is_walkable = true
+			break
+	
+	if not is_walkable:
+		print("Map: Skipping collision for non-walkable structure %s (type: %s)" % [structure_node.name, type_name])
+		return false
+
+	var model_node = structure_node.get_node_or_null("Model")
+	if not model_node:
+		print("Map: No Model node found for structure %s" % structure_node.name)
+		return false
+
+	var mesh_instances = []
+	_find_all_mesh_instances_recursive(model_node, mesh_instances)
+
+	if mesh_instances.is_empty():
+		print("Map: No mesh instances found for structure %s" % structure_node.name)
+		return false
+
+	var static_body = StaticBody3D.new()
+	static_body.name = "WalkableCollision"
+	
+	# Configure collision layers: terrain on layer 3, collides with units on layer 1
+	static_body.set_collision_layer_value(1, false)
+	static_body.set_collision_layer_value(2, false)
+	static_body.set_collision_layer_value(3, true)
+	static_body.set_collision_mask_value(1, true) # Collide with units
+
+	var shapes_added = 0
+	for mesh_instance in mesh_instances:
+		if mesh_instance.mesh:
+			var shape = mesh_instance.mesh.create_trimesh_shape()
+			if shape:
+				var collision_shape = CollisionShape3D.new()
+				collision_shape.shape = shape
+				# Use the mesh instance's transform relative to the structure node
+				collision_shape.transform = model_node.transform * mesh_instance.transform
+				
+				# Enable debug visualization in debug builds
+				if OS.is_debug_build():
+					collision_shape.disabled = false
+					# Make collision shapes visible for debugging
+					var debug_material = StandardMaterial3D.new()
+					debug_material.flags_transparent = true
+					debug_material.albedo_color = Color.GREEN
+					debug_material.albedo_color.a = 0.3
+					debug_material.flags_unshaded = true
+					debug_material.no_depth_test = true
+					
+					# Create a debug mesh instance to visualize the collision
+					var debug_mesh = MeshInstance3D.new()
+					debug_mesh.name = "DebugCollisionMesh"
+					debug_mesh.mesh = mesh_instance.mesh
+					debug_mesh.material_override = debug_material
+					debug_mesh.transform = collision_shape.transform
+					debug_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+					static_body.add_child(debug_mesh)
+				
+				static_body.add_child(collision_shape)
+				shapes_added += 1
+
+	if shapes_added > 0:
+		structure_node.add_child(static_body)
+		print("Map:  for %s with %d shapes" % [structure_node.name, shapes_added])
+		return true
+	else:
+		print("Map: Failed to create collision shapes for %s" % structure_node.name)
+		static_body.queue_free()
+		return false
+
+func _extract_structure_type_from_name(node_name: String) -> String:
+	var parts = node_name.split("_")
+	if parts.size() >= 4:
+		# e.g., Structure_0_0_road-straight -> road-straight
+		var type_parts = parts.slice(3)
+		return "_".join(type_parts)
+	return ""
+
+func _find_all_mesh_instances_recursive(node: Node, mesh_instances: Array) -> void:
+	if node is MeshInstance3D:
+		mesh_instances.append(node)
+	
+	for child in node.get_children():
+		_find_all_mesh_instances_recursive(child, mesh_instances)
+
+func _create_fallback_ground_plane(map_scene_node: Node3D) -> void:
+	"""Create a basic ground plane collision as fallback when structure collision fails"""
+	var static_body = StaticBody3D.new()
+	static_body.name = "FallbackGroundPlane"
+	
+	# Configure collision layers: terrain on layer 3
+	static_body.set_collision_layer_value(1, false)
+	static_body.set_collision_layer_value(2, false)
+	static_body.set_collision_layer_value(3, true)
+	static_body.set_collision_mask_value(1, true) # Collide with units
+	
+	# Create a large box shape for the ground
+	var collision_shape = CollisionShape3D.new()
+	var box_shape = BoxShape3D.new()
+	box_shape.size = Vector3(200, 1, 200)  # Large ground plane to cover entire map
+	collision_shape.shape = box_shape
+	collision_shape.position = Vector3(0, -0.5, 0)  # Slightly below ground level
+	
+	static_body.add_child(collision_shape)
+	map_scene_node.add_child(static_body)
+	
+	print("Map: Created fallback ground plane collision")
+
+# Debug visualization control
+var debug_visualizations_enabled = false
+
+func _input(event: InputEvent) -> void:
+	"""Handle debug key inputs"""
+	if not OS.is_debug_build():
+		return
+		
+	if event is InputEventKey and event.pressed:
+		if event.keycode == KEY_F1:
+			toggle_debug_visualizations()
+		elif event.keycode == KEY_F2:
+			toggle_navigation_debug()
+		elif event.keycode == KEY_F3:
+			toggle_collision_debug()
+
+func toggle_debug_visualizations() -> void:
+	"""Toggle all debug visualizations"""
+	debug_visualizations_enabled = !debug_visualizations_enabled
+	print("Map: Debug visualizations %s" % ("enabled" if debug_visualizations_enabled else "disabled"))
+	
+	# Toggle navigation and collision debug
+	get_tree().debug_collisions_hint = debug_visualizations_enabled
+	get_tree().debug_navigation_hint = debug_visualizations_enabled
+	NavigationServer3D.set_debug_enabled(debug_visualizations_enabled)
+	
+	# Toggle our custom debug meshes
+	_toggle_custom_debug_meshes(debug_visualizations_enabled)
+
+func toggle_navigation_debug() -> void:
+	"""Toggle navigation mesh debug visualization"""
+	var current_state = NavigationServer3D.get_debug_enabled()
+	NavigationServer3D.set_debug_enabled(!current_state)
+	get_tree().debug_navigation_hint = !current_state
+	print("Map: Navigation debug %s" % ("enabled" if !current_state else "disabled"))
+
+func toggle_collision_debug() -> void:
+	"""Toggle collision shape debug visualization"""
+	get_tree().debug_collisions_hint = !get_tree().debug_collisions_hint
+	print("Map: Collision debug %s" % ("enabled" if get_tree().debug_collisions_hint else "disabled"))
+
+func _toggle_custom_debug_meshes(enabled: bool) -> void:
+	"""Toggle visibility of our custom debug collision meshes"""
+	if not map_structures_container:
+		return
+		
+	var debug_meshes = []
+	_find_debug_meshes_recursive(map_structures_container, debug_meshes)
+	
+	for debug_mesh in debug_meshes:
+		debug_mesh.visible = enabled
+	
+	var action = "Showed" if enabled else "Hid"
+	print("Map: %s %d custom debug collision meshes" % [action, debug_meshes.size()])
+
+func _find_debug_meshes_recursive(node: Node, debug_meshes: Array) -> void:
+	"""Recursively find all debug collision mesh instances"""
+	if node.name == "DebugCollisionMesh":
+		debug_meshes.append(node)
+	
+	for child in node.get_children():
+		_find_debug_meshes_recursive(child, debug_meshes)

@@ -205,13 +205,16 @@ func update_status(new_status: String) -> void:
 	if is_ai_processing:
 		processing_text = "[color=yellow][font_size=52]🤖 Processing...[/font_size][/color]\n"
 	
+	# Add control point attack sequence display
+	var control_points_text = _get_control_points_display()
+	
 	# Add active triggers display
 	var active_triggers_text = _get_active_triggers_display()
 	
 	# Format the status with color coding
 	var formatted_status = _format_status(new_status)
 	# Use larger font sizes for better readability in expanded box
-	status_label.text = "[center]%s%s%s[font_size=56]%s[/font_size][/center]" % [goal_text, processing_text, active_triggers_text, formatted_status]
+	status_label.text = "[center]%s%s%s%s[font_size=56]%s[/font_size][/center]" % [goal_text, processing_text, control_points_text, active_triggers_text, formatted_status]
 
 func update_full_plan(plan_data: Array) -> void:
 	"""Update the status bar with full action plan"""
@@ -232,6 +235,9 @@ func update_full_plan(plan_data: Array) -> void:
 	var processing_text = ""
 	if is_ai_processing:
 		processing_text = "[color=yellow][font_size=52]🤖 Processing...[/font_size][/color]\n"
+	
+	# Add control point attack sequence display
+	var control_points_text = _get_control_points_display()
 	
 	# Add active triggers display
 	var active_triggers_text = _get_active_triggers_display()
@@ -275,7 +281,7 @@ func update_full_plan(plan_data: Array) -> void:
 			plan_text += "\n"
 	
 	# Use larger font sizes for better readability in expanded box
-	status_label.text = "[center]%s%s%s[font_size=52]%s[/font_size][/center]" % [goal_text, processing_text, active_triggers_text, plan_text]
+	status_label.text = "[center]%s%s%s%s[font_size=52]%s[/font_size][/center]" % [goal_text, processing_text, control_points_text, active_triggers_text, plan_text]
 
 func _format_status(status: String) -> String:
 	"""Format status text with appropriate colors"""
@@ -626,4 +632,48 @@ func _format_trigger_name(trigger_name: String) -> String:
 
 func _get_trigger_color(trigger_name: String) -> String:
 	"""Get color for action type highlighting (updated for behavior matrix actions)"""
-	return _get_action_color(trigger_name) 
+	return _get_action_color(trigger_name)
+
+func _get_control_points_display() -> String:
+	"""Get formatted display text for control point attack sequence"""
+	if not parent_unit:
+		return ""
+	
+	# Get control point attack sequence from the unit
+	var attack_sequence = []
+	if "control_point_attack_sequence" in parent_unit and parent_unit.control_point_attack_sequence is Array:
+		attack_sequence = parent_unit.control_point_attack_sequence
+	
+	if attack_sequence.is_empty():
+		return ""
+	
+	# Get current index to highlight next target
+	var current_index = 0
+	if "current_attack_sequence_index" in parent_unit:
+		current_index = parent_unit.current_attack_sequence_index
+	
+	var display_lines = []
+	display_lines.append("[color=cyan][b]Target Nodes:[/b][/color]")
+	
+	for i in range(attack_sequence.size()):
+		var node_name = attack_sequence[i]
+		var is_current = (i == current_index)
+		var is_completed = (i < current_index)
+		
+		var icon = ""
+		var color = "white"
+		
+		if is_completed:
+			icon = "✓"
+			color = "green"
+		elif is_current:
+			icon = "►"
+			color = "yellow"
+		else:
+			icon = "○"
+			color = "lightgray"
+		
+		var line = "[color=%s]%s %s[/color]" % [color, icon, node_name]
+		display_lines.append(line)
+	
+	return "[font_size=46]%s[/font_size]\n" % "\n".join(display_lines) 

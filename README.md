@@ -75,62 +75,40 @@ The system now uses OpenAI's structured outputs with strict JSON schemas instead
 var schema = AIResponseSchemas.get_schema_for_command(is_group, ["scout", "engineer"])
 ```
 
-4.3 LLM Response Schema (Behavior Matrix)
+4.3 LLM Response Schema (Strategic Plan)
 ```json
 {
-  "plans": [{
-    "unit_id": "tank_t1_01",
-    "goal": "Lead the assault on the central control point.",
-    "control_point_attack_sequence": ["Node5", "Node8", "Node9"],
-    "behavior_matrix": {
-      "attack": {
-        "enemies_in_range": 0.7,
-        "current_health": 0.2,
-        "under_attack": 0.4,
-        "allies_in_range": 0.5,
-        "ally_low_health": 0.1,
-        "enemy_nodes_controlled": 0.6,
-        "ally_nodes_controlled": -0.3,
-        "bias": 0.1
-      },
-      "retreat": {
-        "enemies_in_range": 0.3,
-        "current_health": -0.9,
-        "under_attack": 0.8,
-        "allies_in_range": -0.4,
-        "ally_low_health": -0.5,
-        "enemy_nodes_controlled": 0.1,
-        "ally_nodes_controlled": 0.2,
-        "bias": -0.5
-      },
-      "defend": {
-        "enemies_in_range": -0.5,
-        "current_health": 0.5,
-        "under_attack": -0.6,
-        "allies_in_range": 0.6,
-        "ally_low_health": 0.4,
-        "enemy_nodes_controlled": -0.2,
-        "ally_nodes_controlled": 0.8,
-        "bias": 0.2
-      },
-      "activate_shield": {
-        "enemies_in_range": 0.6,
-        "current_health": -0.5,
-        "under_attack": 0.9,
-        "allies_in_range": 0.2,
-        "ally_low_health": 0.0,
-        "enemy_nodes_controlled": 0.1,
-        "ally_nodes_controlled": 0.0,
-        "bias": 0.0
-      }
+  "plans": [
+    {
+      "unit_id": "tank_t1_01",
+      "goal": "Lead an aggressive assault on the central control points.",
+      "control_point_attack_sequence": ["Center", "East", "Southeast"],
+      "primary_state_priority_list": ["attack", "defend", "follow", "retreat"]
+    },
+    {
+      "unit_id": "medic_t1_01",
+      "goal": "Support the tank in the main assault.",
+      "control_point_attack_sequence": ["Center", "East", "Southeast"],
+      "primary_state_priority_list": ["follow", "defend", "retreat", "attack"]
+    },
+    {
+      "unit_id": "scout_t1_01",
+      "goal": "Flank west to capture weakly defended points.",
+      "control_point_attack_sequence": ["West", "Southwest"],
+      "primary_state_priority_list": ["attack", "follow", "defend", "retreat"]
     }
-  }],
-  "message": "Tank unit configured for aggressive frontline assault.",
-  "summary": "Aggressive tank with defensive shield use."
+  ],
+  "message": "Assaulting the center with the main force while the scout flanks west.",
+  "summary": "Main assault and east flank."
 }
 ```
 
-**Behavior Matrix:** Instead of triggers, the LLM now defines a unit's personality by assigning weights to a matrix. Each key is a possible action, and its value is a dictionary of weights corresponding to the unit's real-time state variables. The game engine uses this matrix every frame to calculate an "activation level" for each action, then executes the action with the highest score.
+**Strategic Plan:** The LLM's role has been elevated to that of a high-level strategist. Instead of defining a detailed `behavior_matrix`, it now provides a plan for each individual unit with:
+- **`unit_id`**: The unique ID of the unit this plan is for.
+- **`control_point_attack_sequence`**: An ordered list of objectives.
+- **`primary_state_priority_list`**: An ordered list of the four primary combat states (`attack`, `defend`, `retreat`, `follow`).
+
+The game engine's **Behavior Tuning System** uses this priority list to perform a one-time algorithmic adjustment of the unit's behavior matrix. The `PlanExecutor` receives the plan, fetches a base behavior matrix for the unit's archetype, and modifies the `bias` values for the four primary states to match the specified priority. This tuned matrix is then sent to the unit, giving it a fixed strategic personality that allows it to react dynamically to battlefield conditions until a new command is issued.
 
 **Action Enums by Archetype:**
 - **General**: `move_to`, `attack`, `retreat`, `patrol`, `stance`, `follow`
@@ -157,12 +135,13 @@ sequenceDiagram
 
     Player->>Server: "Tanks, be aggressive and capture the center"
     Server->>AICommandProcessor: Build prompt with game context
-    AICommandProcessor->>OpenAI: /chat/completions (requesting behavior_matrix)
-    OpenAI-->>AICommandProcessor: Behavior Plan JSON
+    AICommandProcessor->>OpenAI: /chat/completions (requesting strategic plan)
+    OpenAI-->>AICommandProcessor: Strategic Plan JSON (with priority list)
     AICommandProcessor->>ActionValidator: Validate plan
     ActionValidator-->>AICommandProcessor: Approved plan
-    AICommandProcessor->>PlanExecutor: Push behavior plan to units
-    PlanExecutor->>Unit: set_behavior_plan(matrix, sequence)
+    AICommandProcessor->>PlanExecutor: Execute group plans
+    PlanExecutor->>PlanExecutor: For each unit: _generate_tuned_matrix(priority_list)
+    PlanExecutor->>Unit: set_behavior_plan(tuned_matrix, sequence)
 
     loop Every Physics Frame (60 Hz)
         Unit->>Unit: _gather_state_variables()
@@ -170,12 +149,12 @@ sequenceDiagram
         Unit->>Unit: _decide_and_execute_actions()
         Unit->>PathPlanner: navigation_agent.target_position
     end
-Note over Unit: The Unit is now autonomous.<br/>It makes its own decisions based on the<br/>LLM-provided behavior matrix.
+Note over Unit: The Unit executes its tuned behavior matrix,<br/>reacting dynamically to the environment<br/>with a fixed strategic personality.
 
 Module	Role
-ActionValidator.gd	Validates the `behavior_matrix` and `control_point_attack_sequence` from the LLM. Ensures all required actions and state variables have weights between -1.0 and 1.0.
-PlanExecutor.gd	A simple "goal setter". It receives the validated plan from the AI processor and passes the behavior matrix and attack sequence to the target unit(s). It no longer manages steps or triggers.
-Unit.gd	The new core of the AI. Contains the real-time decision loop. Every physics frame, it gathers its state, calculates activation scores for all actions using its behavior matrix, and executes the highest-scoring state (`attack`, `retreat`, `defend`, `follow`).
+ActionValidator.gd	Validates the `primary_state_priority_list` and `control_point_attack_sequence` from the LLM. Ensures the priority list contains the four valid, unique primary states.
+PlanExecutor.gd	A "behavior tuner". It receives validated group plans, generates a tuned `behavior_matrix` for each unit by algorithmically adjusting biases based on the `primary_state_priority_list`, and sends the final plan to the units.
+Unit.gd	The core of the unit's reactive AI. It receives a tuned `behavior_matrix` from the `PlanExecutor`. Every physics frame, it evaluates its environment, calculates action activation scores using the matrix, and executes the best action, allowing it to react dynamically with a fixed strategic personality.
 PathPlanner.gd	(Now integrated into `Unit.gd` via `NavigationAgent3D`) Handles 60 Hz pathfinding and local avoidance.
 SpeechBubble.tscn	Billboard UI; fades after 2 s.
 

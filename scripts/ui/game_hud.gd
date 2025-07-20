@@ -10,7 +10,7 @@ const GameConstants = preload("res://scripts/shared/constants/game_constants.gd"
 @onready var node_label = $TopBar/HBoxContainer/NodeLabel
 @onready var action_queue_list = $UnitActionQueuePanel/MarginContainer/ScrollContainer/ActionQueueList
 @onready var command_input = $BottomBar/HBoxContainer/CommandInput
-@onready var unit_status_panel = $BottomBar/HBoxContainer/UnitStatusPanel/MarginContainer/VBoxContainer/ScrollContainer/UnitList
+@onready var unit_status_panel = $RightSidePanel/MarginContainer/VBoxContainer/ScrollContainer/UnitList
 @onready var hover_tooltip = $HoverTooltip
 @onready var command_status_label = $CommandStatusPanel/MarginContainer/VBoxContainer/StatusLabel
 @onready var command_summary_label = $CommandStatusPanel/MarginContainer/VBoxContainer/SummaryLabel
@@ -305,11 +305,16 @@ func _on_command_submitted(text: String):
             unit_ids.append(unit.unit_id)
         print("GameHUD: Submitting command '%s' to %d selected units" % [text, unit_ids.size()])
     
+    # Hide start message immediately on client side for instant feedback
+    var unified_main = get_node("/root/UnifiedMain")
+    if unified_main and unified_main.has_method("_hide_start_message_rpc"):
+        unified_main._hide_start_message_rpc()
+    
     if audio_manager:
         audio_manager.play_sound_2d("res://assets/audio/ui/command_submit_01.wav")
     
     # Send command to server via RPC
-    get_node("/root/UnifiedMain").rpc("submit_command_rpc", text, unit_ids)
+    unified_main.rpc("submit_command_rpc", text, unit_ids)
     
     command_input.clear()
     _ensure_command_input_active()  # Immediately ready for next command
@@ -771,50 +776,85 @@ func _refresh_unit_status_display() -> void:
     is_refreshing_units = false
 
 func _create_unit_bar(unit_id: String, unit_data: Dictionary) -> void:
-    """Create a health/respawn bar for a unit"""
-    var bar_container = HBoxContainer.new()
-    unit_status_panel.add_child(bar_container)
+    """Create a health/respawn bar for a unit with goal display"""
+    # Main container for this unit - use VBoxContainer for vertical stacking
+    var unit_container = VBoxContainer.new()
+    unit_container.custom_minimum_size.y = 60  # Minimum height to accommodate goal text
+    unit_status_panel.add_child(unit_container)
     
-    # Unit ID label
-    var id_label = Label.new()
-    id_label.text = unit_id
-    id_label.custom_minimum_size.x = 80
-    id_label.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-    bar_container.add_child(id_label)
+    # Top row: Unit ID and archetype
+    var header_container = HBoxContainer.new()
+    unit_container.add_child(header_container)
     
-    # Health/Respawn bar
-    var progress_bar = ProgressBar.new()
-    progress_bar.custom_minimum_size = Vector2(100, 20)
-    progress_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    progress_bar.show_percentage = false
-    bar_container.add_child(progress_bar)
+    # Unit info label (ID + archetype)
+    var info_label = Label.new()
+    var archetype = unit_data.get("archetype", "unknown").capitalize()
+    var short_id = unit_id.right(4) if unit_id.length() >= 4 else unit_id
+    info_label.text = "%s (%s)" % [archetype, short_id]
+    info_label.custom_minimum_size.x = 120
+    info_label.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+    info_label.add_theme_font_size_override("font_size", 12)
+    header_container.add_child(info_label)
     
-    # Status label (health/respawn time)
+    # Status label (health/respawn time) - moved to top right
     var status_label = Label.new()
     status_label.custom_minimum_size.x = 60
     status_label.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-    bar_container.add_child(status_label)
+    status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+    status_label.add_theme_font_size_override("font_size", 10)
+    header_container.add_child(status_label)
+    
+    # Middle row: Health/Respawn progress bar
+    var progress_bar = ProgressBar.new()
+    progress_bar.custom_minimum_size = Vector2(180, 16)
+    progress_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    progress_bar.show_percentage = false
+    unit_container.add_child(progress_bar)
+    
+    # Bottom row: Strategic goal
+    var goal_label = RichTextLabel.new()
+    goal_label.custom_minimum_size = Vector2(180, 20)
+    goal_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    goal_label.bbcode_enabled = true
+    goal_label.fit_content = true
+    goal_label.scroll_active = false
+    goal_label.add_theme_font_size_override("normal_font_size", 9)
+    unit_container.add_child(goal_label)
+    
+    # Add a separator line between units
+    var separator = HSeparator.new()
+    separator.modulate = Color(0.5, 0.5, 0.5, 0.8)  # Semi-transparent gray
+    unit_container.add_child(separator)
     
     # Store references
     unit_bars[unit_id] = {
-        "container": bar_container,
+        "container": unit_container,
         "progress_bar": progress_bar,
         "status_label": status_label,
-        "id_label": id_label
+        "info_label": info_label,
+        "goal_label": goal_label
     }
     
     # Update the bar with current data
     _update_unit_bar(unit_id, unit_data)
 
 func _update_unit_bar(unit_id: String, unit_data: Dictionary) -> void:
-    """Update a specific unit's health/respawn bar"""
+    """Update a specific unit's health/respawn bar and goal display"""
     if not unit_bars.has(unit_id):
         return
     
     var bar_elements = unit_bars[unit_id]
     var progress_bar = bar_elements.progress_bar
     var status_label = bar_elements.status_label
+    var info_label = bar_elements.info_label
+    var goal_label = bar_elements.goal_label
     
+    # Update unit info (archetype and ID)
+    var archetype = unit_data.get("archetype", "unknown").capitalize()
+    var short_id = unit_id.right(4) if unit_id.length() >= 4 else unit_id
+    info_label.text = "%s (%s)" % [archetype, short_id]
+    
+    # Update health/respawn status
     var is_dead = unit_data.get("is_dead", false)
     var is_respawning = unit_data.get("is_respawning", false)
     var respawn_timer = unit_data.get("respawn_timer", 0.0)
@@ -848,6 +888,30 @@ func _update_unit_bar(unit_id: String, unit_data: Dictionary) -> void:
             progress_bar.modulate = Color.RED
             
         status_label.text = "%d/%d" % [int(current_health), int(max_health)]
+    
+    # Update strategic goal display
+    var strategic_goal = unit_data.get("strategic_goal", "")
+    if strategic_goal.is_empty() or strategic_goal == "Act autonomously based on my unit type.":
+        goal_label.text = "[i][color=gray]No current objective[/color][/i]"
+    else:
+        # Truncate goal if too long and add color based on unit state
+        var goal_text = strategic_goal
+        if goal_text.length() > 50:
+            goal_text = goal_text.substr(0, 47) + "..."
+        
+        var goal_color = "lightblue"
+        if is_dead:
+            goal_color = "gray"
+        elif unit_data.get("current_state", "") == "ATTACKING":
+            goal_color = "orange"
+        elif "defend" in goal_text.to_lower() or "hold" in goal_text.to_lower():
+            goal_color = "lightgreen"
+        elif "attack" in goal_text.to_lower() or "assault" in goal_text.to_lower():
+            goal_color = "red"
+        elif "retreat" in goal_text.to_lower() or "fallback" in goal_text.to_lower():
+            goal_color = "yellow"
+        
+        goal_label.text = "[color=%s]%s[/color]" % [goal_color, goal_text]
 
 func update_unit_data(unit_id: String, unit_data: Dictionary) -> void:
     """Update data for a specific unit and refresh its bar"""

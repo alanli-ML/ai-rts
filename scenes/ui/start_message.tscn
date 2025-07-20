@@ -1,0 +1,195 @@
+[gd_scene load_steps=3 format=3 uid="uid://cv8fxm4n5q3u"]
+
+[ext_resource type="Script" path="res://scripts/ui/start_message.gd" id="1"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_1"]
+bg_color = Color(0.1, 0.1, 0.15, 0.95)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.4, 0.7, 1.0, 0.8)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[node name="StartMessage" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.6)
+
+[node name="CenterContainer" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="MessagePanel" type="Panel" parent="CenterContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(700, 500)
+theme_override_styles/panel = SubResource("StyleBoxFlat_1")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer/MessagePanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 25
+offset_top = 20
+offset_right = -25
+offset_bottom = -20
+
+[node name="Title" type="Label" parent="CenterContainer/MessagePanel/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.4, 0.7, 1, 1)
+theme_override_font_sizes/font_size = 36
+text = "Welcome to AI-RTS!"
+horizontal_alignment = 1
+
+[node name="Spacer1" type="Control" parent="CenterContainer/MessagePanel/VBoxContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 15)
+
+[node name="Subtitle" type="Label" parent="CenterContainer/MessagePanel/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.9, 0.9, 1)
+theme_override_font_sizes/font_size = 18
+text = "Enter a strategic command for your units to begin the match"
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="Spacer2" type="Control" parent="CenterContainer/MessagePanel/VBoxContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 10)
+
+[node name="ExamplesLabel" type="Label" parent="CenterContainer/MessagePanel/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.8, 0.4, 1)
+theme_override_font_sizes/font_size = 20
+text = "Command Examples:"
+horizontal_alignment = 1
+
+[node name="ExamplesContainer" type="VBoxContainer" parent="CenterContainer/MessagePanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="Example1" type="Label" parent="CenterContainer/MessagePanel/VBoxContainer/ExamplesContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.9, 1, 1)
+theme_override_font_sizes/font_size = 16
+text = "• \"Split up into 4 groups, keeping tanks with medics, and attack the western nodes\""
+autowrap_mode = 2
+
+[node name="Example2" type="Label" parent="CenterContainer/MessagePanel/VBoxContainer/ExamplesContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.9, 1, 1)
+theme_override_font_sizes/font_size = 16
+text = "• \"Engineers build turrets near center node while scouts stealth to eastern nodes\""
+autowrap_mode = 2
+
+[node name="Spacer3" type="Control" parent="CenterContainer/MessagePanel/VBoxContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 15)
+
+[node name="ControlsLabel" type="Label" parent="CenterContainer/MessagePanel/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.8, 0.4, 1)
+theme_override_font_sizes/font_size = 20
+text = "Camera Controls:"
+horizontal_alignment = 1
+
+[node name="ControlsContainer" type="VBoxContainer" parent="CenterContainer/MessagePanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="WASD" type="Label" parent="CenterContainer/MessagePanel/VBoxContainer/ControlsContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.9, 1, 1)
+theme_override_font_sizes/font_size = 16
+text = "• WASD or Arrow Keys - Move camera around the battlefield"
+horizontal_alignment = 1
+
+[node name="Mouse" type="Label" parent="CenterContainer/MessagePanel/VBoxContainer/ControlsContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.9, 1, 1)
+theme_override_font_sizes/font_size = 16
+text = "• Mouse Wheel - Zoom in/out for better tactical view"
+horizontal_alignment = 1
+
+[node name="Selection" type="Label" parent="CenterContainer/MessagePanel/VBoxContainer/ControlsContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.9, 1, 1)
+theme_override_font_sizes/font_size = 16
+text = "• Left Click - Select units • Drag - Select multiple units"
+horizontal_alignment = 1
+
+[node name="Spacer4" type="Control" parent="CenterContainer/MessagePanel/VBoxContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 15)
+
+[node name="GameplayLabel" type="Label" parent="CenterContainer/MessagePanel/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.8, 0.4, 1)
+theme_override_font_sizes/font_size = 20
+text = "Gameplay Tips:"
+horizontal_alignment = 1
+
+[node name="GameplayContainer" type="VBoxContainer" parent="CenterContainer/MessagePanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="Objective" type="Label" parent="CenterContainer/MessagePanel/VBoxContainer/GameplayContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.9, 1, 1)
+theme_override_font_sizes/font_size = 16
+text = "• Capture all 9 control nodes to win the match"
+horizontal_alignment = 1
+
+[node name="Teamwork" type="Label" parent="CenterContainer/MessagePanel/VBoxContainer/GameplayContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.9, 1, 1)
+theme_override_font_sizes/font_size = 16
+text = "• Use combined tactics: Tanks tank, Medics heal, Engineers build, Scouts stealth"
+horizontal_alignment = 1
+
+[node name="Communication" type="Label" parent="CenterContainer/MessagePanel/VBoxContainer/GameplayContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.9, 1, 1)
+theme_override_font_sizes/font_size = 16
+text = "• Your AI units will execute complex strategies based on your commands"
+horizontal_alignment = 1
+
+[node name="Spacer5" type="Control" parent="CenterContainer/MessagePanel/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="InstructionLabel" type="Label" parent="CenterContainer/MessagePanel/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.2, 1, 0.2, 1)
+theme_override_font_sizes/font_size = 18
+text = "Select your units and enter your first command to begin!"
+horizontal_alignment = 1
+
+[node name="ButtonContainer" type="HBoxContainer" parent="CenterContainer/MessagePanel/VBoxContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="GotItButton" type="Button" parent="CenterContainer/MessagePanel/VBoxContainer/ButtonContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(120, 40)
+theme_override_font_sizes/font_size = 16
+text = "Got It!"
+
+[node name="CloseLabel" type="Label" parent="CenterContainer/MessagePanel/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+theme_override_font_sizes/font_size = 14
+text = "(This message will disappear when you submit your first command)"
+horizontal_alignment = 1 

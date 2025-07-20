@@ -5,6 +5,7 @@ extends Node
 const LOBBY_SCENE = "res://scenes/ui/lobby.tscn"
 const GAME_HUD_SCENE = "res://scenes/ui/game_hud.tscn"
 const VICTORY_SCREEN_SCENE = "res://scenes/ui/victory_screen.tscn"
+const START_MESSAGE_SCENE = "res://scenes/ui/start_message.tscn"
 const TEST_MAP_SCENE = "res://scenes/maps/test_map.tscn"
 
 # Node references
@@ -13,6 +14,7 @@ var logger
 var lobby_instance: Control
 var hud_instance: Control
 var victory_screen_instance: Control
+var start_message_instance: Control
 var map_instance: Node
 var client_display_manager: Node
 var combat_test_suite: Node
@@ -71,6 +73,15 @@ func _start_client_mode() -> void:
     victory_screen_instance.play_again_requested.connect(_on_play_again_requested)
     victory_screen_instance.main_menu_requested.connect(_on_main_menu_requested)
     
+    # Create start message instance
+    var start_message_scene = load(START_MESSAGE_SCENE)
+    start_message_instance = start_message_scene.instantiate()
+    start_message_instance.name = "StartMessage"
+    add_child(start_message_instance)
+    
+    # Connect start message signals
+    start_message_instance.start_message_dismissed.connect(_on_start_message_dismissed)
+    
     # Show the lobby scene
     var lobby_scene = load(LOBBY_SCENE)
     lobby_instance = lobby_scene.instantiate()
@@ -110,6 +121,11 @@ func submit_command_rpc(command_text: String, unit_ids: Array):
     
     var peer_id = multiplayer.get_remote_sender_id()
     logger.info("UnifiedMain", "Received command '%s' for units %s from peer %d" % [command_text, unit_ids, peer_id])
+    
+    # Hide start message when first command is received (server-side)
+    if start_message_instance and start_message_instance.is_currently_visible():
+        # Notify all clients to hide their start message
+        _hide_start_message_on_all_clients()
     
     var ai_processor = dependency_container.get_ai_command_processor()
     if ai_processor:
@@ -231,34 +247,12 @@ func _on_game_started(data: Dictionary) -> void:
     """Handle the game started signal from the server."""
     logger.info("UnifiedMain", "Game start signal received from server.")
     client_team_id = data.get("player_team", -1)
+    _on_match_start_requested()
     
-    # Hide lobby UI if it exists
-    if is_instance_valid(lobby_instance):
-        lobby_instance.queue_free()
-        lobby_instance = null
-
-    # Instance and add the game map, but only if it doesn't exist yet.
-    # This prevents duplicate map loading.
-    map_instance = get_tree().get_root().find_child("TestMap", true, false)
-    if not is_instance_valid(map_instance):
-        var map_scene = load(TEST_MAP_SCENE)
-        map_instance = map_scene.instantiate()
-        add_child(map_instance)
-
-    # Pass map reference to client display manager so it can find the 'Units' node
-    if client_display_manager:
-        client_display_manager.setup_map_references(map_instance)
-
-    # Instance and add the game HUD, but only if it doesn't exist
-    if not get_tree().get_root().find_child("GameHUD", false):
-        var hud_scene = load(GAME_HUD_SCENE)
-        hud_instance = hud_scene.instantiate()
-        add_child(hud_instance)
-
-    # CRITICAL: Position camera based on player's team after map is loaded
-    # Wait a frame to ensure all map components are fully initialized
-    await get_tree().process_frame
-    _position_camera_for_team(client_team_id)
+    # Show start message after a short delay to let the game load
+    if start_message_instance:
+        await get_tree().create_timer(1.0).timeout
+        start_message_instance.show_start_message()
 
 func _position_camera_for_team(team_id: int) -> void:
     """Position the camera to focus on the team's home base for optimal tactical view"""
@@ -413,6 +407,10 @@ func _on_main_menu_requested() -> void:
     # Return to lobby/main menu
     _return_to_lobby()
 
+func _on_start_message_dismissed() -> void:
+    """Handle start message being dismissed"""
+    logger.info("UnifiedMain", "Start message was dismissed")
+
 func _return_to_lobby() -> void:
     """Return to lobby screen and clean up game state"""
     # Hide and cleanup game elements
@@ -423,6 +421,10 @@ func _return_to_lobby() -> void:
     if map_instance and is_instance_valid(map_instance):
         map_instance.queue_free()
         map_instance = null
+    
+    # Reset start message for potential new game
+    if start_message_instance:
+        start_message_instance.reset_for_new_game()
     
     # Reset client team
     client_team_id = -1
@@ -440,6 +442,28 @@ func _return_to_lobby() -> void:
 
 func get_client_team_id() -> int:
     return client_team_id
+
+@rpc("any_peer", "call_local", "reliable")
+func _hide_start_message_rpc() -> void:
+    """Hide start message on client when first command is submitted"""
+    if start_message_instance:
+        start_message_instance.on_first_command_submitted()
+
+func _hide_start_message_on_all_clients() -> void:
+    """Hide start message on all clients when first command is received"""
+    # Get all clients to send hide message to
+    var session_manager = dependency_container.get_node_or_null("SessionManager")
+    if not session_manager or session_manager.get_session_count() == 0:
+        return
+
+    var session_id = session_manager.sessions.keys()[0]
+    var peer_ids = session_manager.get_all_peer_ids_in_session(session_id)
+    
+    # Send hide message RPC to all clients
+    for peer_id in peer_ids:
+        rpc_id(peer_id, "_hide_start_message_rpc")
+    
+    logger.info("UnifiedMain", "Sent hide start message to all clients")
 
 func _exit_tree() -> void:
     if dependency_container:

@@ -49,8 +49,14 @@ signal unit_spawned(unit_id: String)
 signal unit_destroyed(unit_id: String)
 signal match_ended(result: int)
 
+# Team AI command coordination
+var teams_awaiting_first_command: Dictionary = {}  # team_id -> bool (true if team still needs first command)
+var match_started_but_waiting_for_commands: bool = false  # Flag to track if match started but waiting for AI
+
 var tick_counter: int = 0
 const NETWORK_TICK_RATE = 2 # ~30 times per second if physics is 60fps
+var ui_tick_counter: int = 0
+const UI_NETWORK_TICK_RATE = 6 # ~10 times per second if physics is 60fps
 
 # Safe logging functions that handle null logger
 func _log_info(component: String, message: String):
@@ -155,6 +161,11 @@ func _physics_process(_delta: float) -> void:
         tick_counter = 0
         _broadcast_game_state()
 
+    ui_tick_counter += 1
+    if ui_tick_counter >= UI_NETWORK_TICK_RATE:
+        ui_tick_counter = 0
+        _broadcast_ui_data()
+
 func _gather_filtered_game_state_for_team(team_id: int) -> Dictionary:
     var state = {
         "units": [],
@@ -173,11 +184,10 @@ func _gather_filtered_game_state_for_team(team_id: int) -> Dictionary:
             
             if is_visible:
                 var plan_summary = "Idle"
-                var full_plan_data = []
-
                 if "current_reactive_state" in unit:
                     plan_summary = unit.current_reactive_state.capitalize()
 
+                var basis = unit.transform.basis
                 var unit_data = {
                     "id": unit.unit_id,
                     "archetype": unit.archetype,
@@ -185,44 +195,29 @@ func _gather_filtered_game_state_for_team(team_id: int) -> Dictionary:
                     "position": { "x": unit.global_position.x, "y": unit.global_position.y, "z": unit.global_position.z },
                     "velocity": { "x": unit.velocity.x, "y": unit.velocity.y, "z": unit.velocity.z },
                     "basis": {
-                        "x": [unit.transform.basis.x.x, unit.transform.basis.x.y, unit.transform.basis.x.z],
-                        "y": [unit.transform.basis.y.x, unit.transform.basis.y.y, unit.transform.basis.y.z],
-                        "z": [unit.transform.basis.z.x, unit.transform.basis.z.y, unit.transform.basis.z.z]
+                        "x": {"x": basis.x.x, "y": basis.x.y, "z": basis.x.z},
+                        "y": {"x": basis.y.x, "y": basis.y.y, "z": basis.y.z},
+                        "z": {"x": basis.z.x, "y": basis.z.y, "z": basis.z.z}
                     },
                     "current_state": unit.current_state,
                     "health": unit.current_health,
                     "current_health": unit.current_health,
                     "max_health": unit.max_health,
-                    "is_dead": unit.is_dead,
-                    "is_respawning": unit.is_respawning,
-                    "respawn_timer": unit.respawn_timer if "respawn_timer" in unit else 0.0,
-                    "is_stealthed": unit.is_stealthed if "is_stealthed" in unit else false,
-                    "shield_active": false,
-                    "shield_pct": 0.0,
-                    "plan_summary": plan_summary,
-                    "full_plan": full_plan_data,
-                    "strategic_goal": unit.strategic_goal,
-                    "control_point_attack_sequence": unit.control_point_attack_sequence if "control_point_attack_sequence" in unit else [],
-                    "current_attack_sequence_index": unit.current_attack_sequence_index if "current_attack_sequence_index" in unit else 0,
-                    "waiting_for_first_command": unit.waiting_for_first_command if "waiting_for_first_command" in unit else true,
+"is_dead": unit.is_dead,
+"is_respawning": unit.is_respawning,
+"respawn_timer": unit.respawn_timer if "respawn_timer" in unit else 0.0,
+"plan_summary": plan_summary,
+"waiting_for_first_command": unit.waiting_for_first_command if "waiting_for_first_command" in unit else true,
                     "has_received_first_command": unit.has_received_first_command if "has_received_first_command" in unit else false,
                     "waiting_for_ai": false, # This is now deprecated
                     "active_triggers": [],  # Deprecated
-                    "all_triggers": {},     # Deprecated
-                    "behavior_matrix": unit.behavior_matrix if "behavior_matrix" in unit else {},
-                    "last_action_scores": unit.last_action_scores if "last_action_scores" in unit else {},
-                    "last_state_variables": unit.last_state_variables if "last_state_variables" in unit else {},
-                    "current_reactive_state": unit.current_reactive_state if "current_reactive_state" in unit else "defend"
+                    "all_triggers": {}     # Deprecated
                 }
                 
                 if unit.archetype == "sniper" and unit.current_state == GameEnums.UnitState.CHARGING_SHOT:
                     if "charge_timer" in unit and "charge_time" in unit:
                         unit_data["charge_timer"] = unit.charge_timer
                         unit_data["charge_time"] = unit.charge_time
-                if unit.has_method("get") and "shield_active" in unit:
-                    unit_data["shield_active"] = unit.shield_active
-                    if unit.max_shield_health > 0:
-                        unit_data["shield_pct"] = (unit.shield_health / unit.max_shield_health) * 100.0
                 state.units.append(unit_data)
 
     # Filter mines based on visibility
@@ -256,6 +251,21 @@ func _gather_filtered_game_state_for_team(team_id: int) -> Dictionary:
         "cell_size": visibility_manager.cell_size,
     }
     
+    # Add team AI coordination status to state
+    if match_started_but_waiting_for_commands:
+        state.ai_coordination = {
+            "waiting_for_synchronized_start": true,
+            "teams_awaiting_commands": []
+        }
+        for tracked_team_id in teams_awaiting_first_command:
+            if teams_awaiting_first_command[tracked_team_id]:
+                state.ai_coordination.teams_awaiting_commands.append(tracked_team_id)
+    else:
+        state.ai_coordination = {
+            "waiting_for_synchronized_start": false,
+            "teams_awaiting_commands": []
+        }
+
     return state
 
 func get_units_in_radius(p_position: Vector3, p_radius: float, p_team_to_exclude: int = -1, p_team_to_find: int = -1) -> Array[Unit]:
@@ -327,6 +337,31 @@ func _broadcast_game_state() -> void:
         var peer_ids = teams_to_process[team_id]
         for peer_id in peer_ids:
             root_node.rpc_id(peer_id, "_on_game_state_update", state)
+
+func _broadcast_ui_data() -> void:
+    var session_manager = get_node("/root/DependencyContainer").get_node("SessionManager")
+    if not session_manager or session_manager.get_session_count() == 0:
+        return
+
+    var root_node = get_tree().get_root().get_node("UnifiedMain")
+    if not root_node:
+        return
+        
+    # Gather UI data for all units
+    var all_units_ui_data = {}
+    for unit_id in units:
+        var unit = units[unit_id]
+        if is_instance_valid(unit):
+            all_units_ui_data[unit_id] = {
+                "last_action_scores": unit.last_action_scores if "last_action_scores" in unit else {},
+                "last_state_variables": unit.last_state_variables if "last_state_variables" in unit else {},
+                "current_reactive_state": unit.current_reactive_state if "current_reactive_state" in unit else "defend"
+            }
+    
+    # This sends all UI data to all clients. It could be optimized to send only to clients that can see the units.
+    # For now, this is fine as a first step.
+    # DISABLED: Function doesn't exist and causes RPC errors
+    # root_node.rpc("update_units_ui_data_rpc", all_units_ui_data)
 
 func setup(logger_ref: Node, game_constants_ref, network_messages_ref) -> void:
     """Setup the server game state with dependencies"""
@@ -401,6 +436,20 @@ func _on_ai_plan_processed(plans: Array, message: String, originating_peer_id: i
     """Handle successful AI plan processing"""
     _log_info("ServerGameState", "AI plan processed successfully: %s" % message)
     
+    # Determine which team received these commands
+    var team_id = -1
+    if not plans.is_empty():
+        var first_plan = plans[0]
+        var unit_id = first_plan.get("unit_id", "")
+        if not unit_id.is_empty() and units.has(unit_id):
+            var unit = units[unit_id]
+            if is_instance_valid(unit):
+                team_id = unit.team_id
+    
+    # Check team AI readiness for synchronized start
+    if team_id != -1:
+        _check_team_ai_readiness(team_id)
+    
     # CRITICAL: Immediately broadcast game state to sync goal updates to clients
     # Don't wait for the next scheduled broadcast - goals need to be visible immediately
     _log_info("ServerGameState", "Broadcasting immediate state update after AI plan processing")
@@ -418,7 +467,22 @@ func _on_ai_plan_processed(plans: Array, message: String, originating_peer_id: i
     # Send AI command feedback only to the originating peer (not broadcast to all)
     var root_node = get_tree().get_root().get_node_or_null("UnifiedMain")
     if root_node and originating_peer_id != -1:
-        root_node.rpc_id(originating_peer_id, "_on_ai_command_feedback_rpc", message, "[color=green]✓ Command completed[/color]")
+        # Include coordination status in feedback message
+        var coordination_status = ""
+        if match_started_but_waiting_for_commands:
+            var readiness_status = get_team_ai_readiness_status()
+            var waiting_teams = []
+            for tracked_team_id in readiness_status:
+                if readiness_status[tracked_team_id]["waiting_for_first_command"]:
+                    waiting_teams.append("Team %d" % tracked_team_id)
+            
+            if not waiting_teams.is_empty():
+                coordination_status = "\n[color=orange]Waiting for %s to receive commands...[/color]" % " and ".join(waiting_teams)
+            else:
+                coordination_status = "\n[color=green]All teams ready - match starting![/color]"
+        
+        root_node.rpc_id(originating_peer_id, "_on_ai_command_feedback_rpc", 
+            message + coordination_status, "[color=green]✓ Command completed[/color]")
     elif root_node and originating_peer_id == -1:
         # Fallback for backward compatibility - send to all clients if peer_id not specified
         var session_manager = get_node("/root/DependencyContainer").get_node("SessionManager")
@@ -501,17 +565,64 @@ func _on_control_point_contested(control_point_id: int, attacking_team: int, def
     # Broadcast to clients
     _broadcast_control_point_update(control_point_id)
 
-func _on_victory_achieved(team_id: int, victory_type: String) -> void:
+func _on_victory_achieved(team_id: int) -> void:
     """Handle victory conditions"""
-    _log_info("ServerGameState", "Victory achieved: Team %d via %s" % [team_id, victory_type])
+    _log_info("ServerGameState", "Victory achieved: Team %d via node control" % team_id)
     
     # Set match state
     match_state = "ended"
     
+    # Collect match statistics
+    var match_data = _collect_match_statistics(team_id)
+    
     # Broadcast victory to all clients
-    _broadcast_match_ended(team_id, victory_type)
+    _broadcast_match_ended(team_id, match_data)
     
     emit_signal("match_ended", team_id)
+
+func _collect_match_statistics(winning_team: int) -> Dictionary:
+    """Collect match statistics for victory screen"""
+    var stats = {}
+    
+    # Match duration
+    stats["duration"] = game_time
+    
+    # Team control counts from node capture system
+    if node_capture_system:
+        stats["team_control_counts"] = node_capture_system.get_team_control_counts()
+    else:
+        stats["team_control_counts"] = {1: 0, 2: 0, 0: 9}
+    
+    # Victory type
+    stats["victory_type"] = "node_control"
+    
+    # Winning team
+    stats["winning_team"] = winning_team
+    
+    return stats
+
+func _broadcast_match_ended(winning_team: int, match_data: Dictionary) -> void:
+    """Broadcast match ended to all clients"""
+    _log_info("ServerGameState", "Broadcasting match end: Team %d wins" % winning_team)
+    
+    # Get all clients to send victory screen to
+    var session_manager = get_node("/root/DependencyContainer").get_node_or_null("SessionManager")
+    if not session_manager or session_manager.get_session_count() == 0:
+        _log_warning("ServerGameState", "No session manager or sessions available for match end broadcast")
+        return
+
+    var session_id = session_manager.sessions.keys()[0]
+    var peer_ids = session_manager.get_all_peer_ids_in_session(session_id)
+    
+    var root_node = get_tree().get_root().get_node_or_null("UnifiedMain")
+    if not root_node:
+        _log_error("ServerGameState", "Cannot find UnifiedMain for victory screen RPC")
+        return
+    
+    # Send victory screen RPC to all clients
+    for peer_id in peer_ids:
+        root_node.rpc_id(peer_id, "_on_match_ended_rpc", winning_team, match_data)
+        _log_info("ServerGameState", "Sent victory screen to peer %d" % peer_id)
 
 func _on_unit_became_idle(_unit_id: String):
     # This is a hook for potential future autonomous behavior, currently disabled.
@@ -561,18 +672,7 @@ func _broadcast_notification(team_id: int, type: String, message: String) -> voi
     if event_bus:
         event_bus.emit_signal("notification_received", team_id, notification_data)
 
-func _broadcast_match_ended(winning_team: int, victory_type: String) -> void:
-    """Broadcast match ended to all clients"""
-    var match_data = {
-        "winning_team": winning_team,
-        "victory_type": victory_type,
-        "timestamp": Time.get_ticks_msec()
-    }
-    
-    # Send to all clients via EventBus
-    var event_bus = _get_event_bus()
-    if event_bus:
-        event_bus.emit_signal("match_ended", match_data)
+
 
 func _on_speech_triggered(unit_id: String, speech_text: String) -> void:
     var unit = units.get(unit_id)
@@ -732,6 +832,13 @@ func get_group_context_for_ai(p_units: Array) -> Dictionary:
 
     var requesting_team = p_units[0].team_id if not p_units.is_empty() else 1
 
+    _log_info("ServerGameState", "get_group_context_for_ai called with %d units for team %d" % [p_units.size(), requesting_team])
+    
+    # Debug: Log all input units
+    for unit in p_units:
+        if is_instance_valid(unit):
+            _log_info("ServerGameState", "  Input unit: %s (%s)" % [unit.unit_id, unit.archetype])
+
     # 1. Global State (get once)
     var controlled_nodes = {
         "ours": [],
@@ -762,12 +869,21 @@ func get_group_context_for_ai(p_units: Array) -> Dictionary:
 
     # 2. Allied Units' States (using direct world positions)
     var group_allies = []
+    var turrets_filtered = 0
     for unit in p_units:
         if is_instance_valid(unit):
+            # Skip turrets - they operate autonomously and shouldn't be included in AI strategic planning
+            if unit.archetype == "turret":
+                turrets_filtered += 1
+                _log_info("ServerGameState", "  Filtered out turret: %s" % unit.unit_id)
+                continue
             var unit_info = unit.get_unit_info()
             # Convert team_id to "ours"/"enemy"
             unit_info = _convert_team_ids_to_readable(unit_info, requesting_team)
             group_allies.append(unit_info)
+            _log_info("ServerGameState", "  Added mobile unit to context: %s (%s)" % [unit.unit_id, unit.archetype])
+    
+    _log_info("ServerGameState", "Final AI context: %d mobile units, %d turrets filtered out" % [group_allies.size(), turrets_filtered])
 
     # 3. Consolidated Sensor Data
     var group_enemies = {} # Use dict to avoid duplicates by ID
@@ -851,9 +967,97 @@ func _get_plan_info_for_unit(unit_id: String) -> Dictionary:
 
     return plan_context
 
-func set_match_state(new_state: String):
+func set_match_state(new_state: String) -> void:
+    """Set the match state"""
     match_state = new_state
+    if new_state == "active":
+        # When match becomes active, initialize team AI coordination
+        _initialize_team_ai_coordination()
     _log_info("ServerGameState", "Match state changed to: %s" % new_state)
+
+func _initialize_team_ai_coordination() -> void:
+    """Initialize team-level AI command coordination for synchronized start"""
+    teams_awaiting_first_command.clear()
+    
+    # Identify which teams have players and mobile units (excluding turrets)
+    var active_teams = {}
+    for unit_id in units:
+        var unit = units[unit_id]
+        if is_instance_valid(unit) and unit.archetype != "turret":
+            active_teams[unit.team_id] = true
+    
+    # Mark all teams as awaiting first command
+    for team_id in active_teams:
+        teams_awaiting_first_command[team_id] = true
+    
+    match_started_but_waiting_for_commands = true
+    
+    _log_info("ServerGameState", "Initialized AI coordination for teams: %s" % str(active_teams.keys()))
+    _log_info("ServerGameState", "All mobile units will wait until both teams receive their first AI commands (turrets excluded)")
+
+func _check_team_ai_readiness(team_id: int) -> void:
+    """Check if a team has received their first AI commands and handle synchronized release"""
+    if not teams_awaiting_first_command.has(team_id):
+        return  # Team not tracked or already processed
+    
+    # Mark this team as having received their first command
+    teams_awaiting_first_command[team_id] = false
+    _log_info("ServerGameState", "Team %d has received their first AI commands" % team_id)
+    
+    # Check if all teams have received their first commands
+    var all_teams_ready = true
+    for tracked_team_id in teams_awaiting_first_command:
+        if teams_awaiting_first_command[tracked_team_id]:
+            all_teams_ready = false
+            break
+    
+    if all_teams_ready and match_started_but_waiting_for_commands:
+        _log_info("ServerGameState", "ALL TEAMS READY - Releasing units to begin coordinated match!")
+        _release_all_units_for_synchronized_start()
+
+func _release_all_units_for_synchronized_start() -> void:
+    """Release all mobile units from waiting state for synchronized match start"""
+    match_started_but_waiting_for_commands = false
+    var units_released = 0
+    
+    # Release all mobile units that are waiting for first command (exclude turrets)
+    for unit_id in units:
+        var unit = units[unit_id]
+        if is_instance_valid(unit) and unit.archetype != "turret":
+            if "waiting_for_first_command" in unit and unit.waiting_for_first_command:
+                # Force enable AI behavior for synchronized start
+                unit.waiting_for_first_command = false
+                unit.has_received_first_command = true
+                units_released += 1
+    
+    _log_info("ServerGameState", "Released %d mobile units for synchronized match start (turrets remain autonomous)" % units_released)
+    
+    # Broadcast immediate state update to show the coordination
+    _broadcast_game_state()
+    
+    # Notify all players about the synchronized start
+    var root_node = get_tree().get_root().get_node_or_null("UnifiedMain")
+    if root_node:
+        # Get all peer IDs from session manager
+        var session_manager = get_node("/root/DependencyContainer").get_node_or_null("SessionManager")
+        if session_manager and session_manager.get_session_count() > 0:
+            var session_id = session_manager.sessions.keys()[0]
+            var peer_ids = session_manager.get_all_peer_ids_in_session(session_id)
+            for peer_id in peer_ids:
+                root_node.rpc_id(peer_id, "_on_ai_command_feedback_rpc", 
+                    "Synchronized start activated - both teams are ready!", 
+                    "[color=yellow]⚡ Match begins now![/color]")
+
+func get_team_ai_readiness_status() -> Dictionary:
+    """Get current AI readiness status for all teams"""
+    var status = {}
+    for team_id in teams_awaiting_first_command:
+        var is_waiting = teams_awaiting_first_command[team_id]
+        status[team_id] = {
+            "waiting_for_first_command": is_waiting,
+            "status": "Ready" if not is_waiting else "Awaiting AI commands"
+        }
+    return status
 
 func _generate_fallback_unit_id(archetype: String, team_id: int) -> String:
     """Generate a fallback unit ID when unit doesn't have one"""

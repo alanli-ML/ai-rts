@@ -4,6 +4,7 @@ extends Node
 # Scene paths
 const LOBBY_SCENE = "res://scenes/ui/lobby.tscn"
 const GAME_HUD_SCENE = "res://scenes/ui/game_hud.tscn"
+const VICTORY_SCREEN_SCENE = "res://scenes/ui/victory_screen.tscn"
 const TEST_MAP_SCENE = "res://scenes/maps/test_map.tscn"
 
 # Node references
@@ -11,6 +12,7 @@ var dependency_container
 var logger
 var lobby_instance: Control
 var hud_instance: Control
+var victory_screen_instance: Control
 var map_instance: Node
 var client_display_manager: Node
 var combat_test_suite: Node
@@ -58,6 +60,16 @@ func _start_client_mode() -> void:
     client_display_manager = ClientDisplayManagerClass.new()
     client_display_manager.name = "ClientDisplayManager"
     add_child(client_display_manager)
+    
+    # Create victory screen instance
+    var victory_scene = load(VICTORY_SCREEN_SCENE)
+    victory_screen_instance = victory_scene.instantiate()
+    victory_screen_instance.name = "VictoryScreen"
+    add_child(victory_screen_instance)
+    
+    # Connect victory screen signals
+    victory_screen_instance.play_again_requested.connect(_on_play_again_requested)
+    victory_screen_instance.main_menu_requested.connect(_on_main_menu_requested)
     
     # Show the lobby scene
     var lobby_scene = load(LOBBY_SCENE)
@@ -219,7 +231,60 @@ func _on_game_started(data: Dictionary) -> void:
     """Handle the game started signal from the server."""
     logger.info("UnifiedMain", "Game start signal received from server.")
     client_team_id = data.get("player_team", -1)
-    _on_match_start_requested()
+    
+    # Hide lobby UI if it exists
+    if is_instance_valid(lobby_instance):
+        lobby_instance.queue_free()
+        lobby_instance = null
+
+    # Instance and add the game map, but only if it doesn't exist yet.
+    # This prevents duplicate map loading.
+    map_instance = get_tree().get_root().find_child("TestMap", true, false)
+    if not is_instance_valid(map_instance):
+        var map_scene = load(TEST_MAP_SCENE)
+        map_instance = map_scene.instantiate()
+        add_child(map_instance)
+
+    # Pass map reference to client display manager so it can find the 'Units' node
+    if client_display_manager:
+        client_display_manager.setup_map_references(map_instance)
+
+    # Instance and add the game HUD, but only if it doesn't exist
+    if not get_tree().get_root().find_child("GameHUD", false):
+        var hud_scene = load(GAME_HUD_SCENE)
+        hud_instance = hud_scene.instantiate()
+        add_child(hud_instance)
+
+    # CRITICAL: Position camera based on player's team after map is loaded
+    # Wait a frame to ensure all map components are fully initialized
+    await get_tree().process_frame
+    _position_camera_for_team(client_team_id)
+
+func _position_camera_for_team(team_id: int) -> void:
+    """Position the camera to focus on the team's home base for optimal tactical view"""
+    if team_id <= 0:
+        logger.warning("UnifiedMain", "Invalid team ID %d for camera positioning, using default view" % team_id)
+        return
+    
+    logger.info("UnifiedMain", "Positioning camera for team %d" % team_id)
+    
+    # Find the RTS camera in the map
+    var rts_camera: RTSCamera = null
+    if map_instance:
+        rts_camera = map_instance.get_node_or_null("RTSCamera")
+    
+    # If not found in map, search globally
+    if not rts_camera:
+        var rts_cameras = get_tree().get_nodes_in_group("rts_cameras")
+        if rts_cameras.size() > 0:
+            rts_camera = rts_cameras[0]
+    
+    if rts_camera:
+        # Use the team-based camera positioning
+        rts_camera.position_for_team_base(team_id, true)
+        logger.info("UnifiedMain", "Successfully positioned camera for team %d" % team_id)
+    else:
+        logger.warning("UnifiedMain", "Could not find RTS camera for team-based positioning")
 
 @rpc("any_peer", "call_local") # Use unreliable for high-frequency state updates
 func _on_game_state_update(state: Dictionary) -> void:
@@ -313,6 +378,63 @@ func display_damage_indicator_rpc(unit_id: String, damage_amount: float):
         var unit_instance = client_display_manager.displayed_units[unit_id]
         if is_instance_valid(unit_instance) and unit_instance.has_method("show_damage_indicator"):
             unit_instance.show_damage_indicator(damage_amount)
+
+@rpc("any_peer", "call_local", "reliable")
+func _on_match_ended_rpc(winning_team: int, match_data: Dictionary) -> void:
+    """Handle match ended signal from server - show victory screen"""
+    logger.info("UnifiedMain", "Match ended: Team %d wins" % winning_team)
+    
+    if victory_screen_instance:
+        # Show victory screen with client team context
+        victory_screen_instance.show_victory_screen(winning_team, client_team_id, match_data)
+    else:
+        logger.warning("UnifiedMain", "Victory screen not available to display match end")
+
+func _on_play_again_requested() -> void:
+    """Handle play again request from victory screen"""
+    logger.info("UnifiedMain", "Play again requested")
+    
+    # Hide victory screen
+    if victory_screen_instance:
+        victory_screen_instance.hide_victory_screen()
+    
+    # TODO: Implement restart match logic
+    # For now, just return to lobby
+    _return_to_lobby()
+
+func _on_main_menu_requested() -> void:
+    """Handle main menu request from victory screen"""
+    logger.info("UnifiedMain", "Main menu requested")
+    
+    # Hide victory screen
+    if victory_screen_instance:
+        victory_screen_instance.hide_victory_screen()
+    
+    # Return to lobby/main menu
+    _return_to_lobby()
+
+func _return_to_lobby() -> void:
+    """Return to lobby screen and clean up game state"""
+    # Hide and cleanup game elements
+    if hud_instance and is_instance_valid(hud_instance):
+        hud_instance.queue_free()
+        hud_instance = null
+    
+    if map_instance and is_instance_valid(map_instance):
+        map_instance.queue_free()
+        map_instance = null
+    
+    # Reset client team
+    client_team_id = -1
+    
+    # Show lobby again if not already visible
+    if not lobby_instance or not is_instance_valid(lobby_instance):
+        var lobby_scene = load(LOBBY_SCENE)
+        lobby_instance = lobby_scene.instantiate()
+        add_child(lobby_instance)
+        lobby_instance.start_match_requested.connect(_on_match_start_requested)
+    else:
+        lobby_instance.visible = true
 
 # =============================================================================
 

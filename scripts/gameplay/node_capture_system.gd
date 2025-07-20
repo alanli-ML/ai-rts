@@ -2,7 +2,7 @@
 class_name NodeCaptureSystem
 extends Node
 
-const NODES_TO_WIN = 6
+const NODES_TO_WIN = 9
 
 var control_points: Array[Node] = []
 var team_control_counts: Dictionary = {0: 0, 1: 0, 2: 0}

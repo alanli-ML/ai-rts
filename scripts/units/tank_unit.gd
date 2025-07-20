@@ -46,6 +46,9 @@ func activate_shield(_params: Dictionary):
 	shield_health = max_shield_health
 	shield_cooldown_timer = shield_cooldown
 	print("%s activated its shield." % unit_id)
+	
+	if multiplayer.is_server():
+		get_tree().get_root().get_node("UnifiedMain").rpc("ability_visuals_rpc", unit_id, "shield_on")
 
 func taunt_enemies(_params: Dictionary):
 	# Check if ability is on cooldown
@@ -141,6 +144,8 @@ func take_damage(damage: float) -> void:
 		if shield_health <= 0:
 			shield_active = false
 			print("%s's shield was broken." % unit_id)
+			if multiplayer.is_server():
+				get_tree().get_root().get_node("UnifiedMain").rpc("ability_visuals_rpc", unit_id, "shield_off")
 			
 	if damage > 0:
 		super.take_damage(damage) # Call the original method in Unit.gd

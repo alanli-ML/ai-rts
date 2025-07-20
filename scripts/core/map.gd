@@ -639,41 +639,81 @@ func setup_capture_nodes_for_loaded_map() -> void:
 	"""Setup capture nodes positioned strategically around loaded map structures"""
 	print("Map: Setting up capture nodes for loaded map")
 	
-	# For loaded maps, create fewer strategic capture points
-	# Position them at key intersections or open areas
-	var strategic_positions = [
-		Vector3(-20, 0.5, -20),  # Top-left -> Northwest
-		Vector3(20, 0.5, -20),   # Top-right -> Northeast
-		Vector3(-20, 0.5, 20),   # Bottom-left -> Southwest
-		Vector3(20, 0.5, 20),    # Bottom-right -> Southeast
-		Vector3(0, 0.5, 0),      # Center
-		Vector3(-20, 0.5, 0),    # Mid-left -> West
-		Vector3(20, 0.5, 0),     # Mid-right -> East
-		Vector3(0, 0.5, -20),    # Top-mid -> North
-		Vector3(0, 0.5, 20)      # Bottom-mid -> South
-	]
+	# Look for ControlPointMarkers in the loaded scene
+	var control_point_markers = null
+	if loaded_map_scene:
+		control_point_markers = loaded_map_scene.get_node_or_null("ControlPointMarkers")
 	
-	var node_names = [
-		"Northwest", "Northeast", "Southwest", "Southeast", "Center",
-		"West", "East", "North", "South"
-	]
-	
-	for i in range(min(strategic_positions.size(), node_count)):
-		var pos = strategic_positions[i]
-		node_positions.append(pos)
+	if control_point_markers:
+		print("Map: Found ControlPointMarkers node, using scene-based positioning")
 		
-		var node_name = node_names[i]
+		# Get all Marker3D children and use their positions
+		var markers = []
+		for child in control_point_markers.get_children():
+			if child is Marker3D:
+				markers.append(child)
 		
-		# Position existing nodes or create new ones
-		if i < capture_nodes.get_child_count():
-			var node = capture_nodes.get_child(i) as ControlPoint
-			if node:
-				node.position = pos
-				node.name = node_name
-				node.control_point_id = node_name
-				node.control_point_name = node_name
-		else:
-			create_capture_node(pos, node_name)
+		# Sort markers by name to ensure consistent order
+		markers.sort_custom(func(a, b): return a.name < b.name)
+		
+		for i in range(min(markers.size(), node_count)):
+			var marker = markers[i]
+			var pos = loaded_map_scene.to_global(marker.position)
+			node_positions.append(pos)
+			
+			var node_name = marker.name
+			
+			# Position existing nodes or create new ones
+			if i < capture_nodes.get_child_count():
+				var node = capture_nodes.get_child(i) as ControlPoint
+				if node:
+					node.position = pos
+					node.name = node_name
+					node.control_point_id = node_name
+					node.control_point_name = node_name
+					print("Map: Positioned control point '%s' at %s (from scene marker)" % [node_name, pos])
+			else:
+				create_capture_node(pos, node_name)
+				print("Map: Created control point '%s' at %s (from scene marker)" % [node_name, pos])
+		
+		print("Map: Successfully positioned %d control points from scene markers" % min(markers.size(), node_count))
+	else:
+		print("Map: No ControlPointMarkers found in scene, falling back to hardcoded positions")
+		
+		# Fallback to hardcoded positions if no markers found
+		var strategic_positions = [
+			Vector3(-20, 0.5, -20),  # Top-left -> Northwest
+			Vector3(20, 0.5, -20),   # Top-right -> Northeast
+			Vector3(-20, 0.5, 35),   # Bottom-left -> Southwest
+			Vector3(20, 0.5, 35),    # Bottom-right -> Southeast
+			Vector3(0, 0.5, 7.5),      # Center
+			Vector3(-20, 0.5, 7.5),    # Mid-left -> West
+			Vector3(20, 0.5, 7.5),     # Mid-right -> East
+			Vector3(0, 0.5, -20),    # Top-mid -> North
+			Vector3(0, 0.5, 35)      # Bottom-mid -> South
+		]
+		
+		var node_names = [
+			"Northwest", "Northeast", "Southwest", "Southeast", "Center",
+			"West", "East", "North", "South"
+		]
+		
+		for i in range(min(strategic_positions.size(), node_count)):
+			var pos = strategic_positions[i]
+			node_positions.append(pos)
+			
+			var node_name = node_names[i]
+			
+			# Position existing nodes or create new ones
+			if i < capture_nodes.get_child_count():
+				var node = capture_nodes.get_child(i) as ControlPoint
+				if node:
+					node.position = pos
+					node.name = node_name
+					node.control_point_id = node_name
+					node.control_point_name = node_name
+			else:
+				create_capture_node(pos, node_name)
 
 func setup_capture_nodes() -> void:
 	# Create a 3x3 grid of capture nodes

@@ -76,6 +76,37 @@ This overhaul refactors the AI's role to that of a high-level strategist. The LL
     *   **[DONE]** Remove the obsolete `_get_archetype_specific_actions_info` function.
     *   **[DONE]** Remove the obsolete `_build_group_prompt` and `_build_individual_prompt` functions.
 
+### Phase 7: Network Communication Refactor (IN PROGRESS)
+
+*   **Goal**: Address client-side lag and missed events by optimizing data synchronization between the server and clients.
+*   **`scripts/ai/plan_executor.gd`**:
+    *   **[DONE]** Add reliable RPC call to `execute_plan` to broadcast static plan data (`behavior_matrix`, `control_point_attack_sequence`, `strategic_goal`) to clients once per plan.
+*   **`scripts/unified_main.gd`**:
+    *   **[DONE]** Implement `update_unit_behavior_plan_rpc` (reliable) to receive static plan data on clients and force immediate UI updates.
+    *   **[DONE]** Implement `update_units_ui_data_rpc` (unreliable) to receive high-frequency UI data at a lower rate.
+    *   **[DONE]** Implement `unit_died_rpc` and `unit_respawned_rpc` to reliably trigger client-side visual effects.
+    *   **[DONE]** Implement generic `ability_visuals_rpc` for effects like shields and stealth.
+*   **`scripts/server/server_game_state.gd`**:
+    *   **[DONE]** Remove static plan data from `_gather_filtered_game_state_for_team` to reduce high-frequency packet size.
+    *   **[DONE]** Remove high-frequency UI data (`last_action_scores`, etc.) from `_gather_filtered_game_state_for_team`.
+    *   **[DONE]** Add a lower-frequency broadcast for UI data in `_physics_process`.
+    *   **[REVERTED]** ~~Remove transform data (`position`, `velocity`, `basis`) from high-frequency packet.~~ (Re-added for manual interpolation).
+    *   **[DONE]** Remove `is_stealthed` and `shield_active` from the high-frequency packet.
+*   **`scripts/client/client_display_manager.gd`**:
+    *   **[DONE]** Remove logic for updating static plan data from `_update_unit` as it's now handled by RPC.
+    *   **[DONE]** Remove logic for updating high-frequency UI data from `_update_unit`.
+    *   **[REVERTED]** ~~Remove manual transform interpolation, now handled by `MultiplayerSynchronizer`.~~ (Re-added manual interpolation).
+    *   **[DONE]** Remove state-based visual effect logic for shields and stealth.
+*   **`scripts/core/unit.gd`**:
+    *   **[DONE]** Add RPC calls for death and respawn events in `die()` and `_handle_respawn()`.
+*   **`scripts/units/*.gd` (Subclasses)**:
+    *   **[DONE]** Add RPC calls for ability activations (shield, stealth).
+*   **`scripts/units/animated_unit.gd`**:
+    *   **[DONE]** Add `play_ability_effect()` method to handle visual effects from RPCs.
+    *   **[REVERTED]** ~~Add client-side velocity calculation to drive animations from `MultiplayerSynchronizer` data.~~ (Now uses server-provided velocity).
+*   **`scenes/units/AnimatedUnit.tscn`**:
+    *   **[REVERTED]** ~~Add `MultiplayerSynchronizer` for efficient transform synchronization.~~ (Removed due to incompatibility with current network model).
+
 ### Phase 6: Final Code Cleanup (TO DO)
 
 *   **Goal**: Remove obsolete code and functions that have been superseded by the new implementation.

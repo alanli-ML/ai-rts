@@ -2,21 +2,50 @@
 class_name Turret
 extends AnimatedUnit # Inherit from AnimatedUnit to get model/weapon attachment
 
-func _ready():
+func _enter_tree() -> void:
+	# Set turret properties immediately when entering the tree, before _ready() calls
 	archetype = "turret"
-	super._ready()
+	can_move = false
+	waiting_for_first_command = false
+	has_received_first_command = true
+	print("DEBUG: Turret %s _enter_tree() - set autonomous flags early" % get("unit_id"))
+
+func _ready() -> void:
+	archetype = "turret"
 	can_move = false # Turrets cannot move
 	
+	print("DEBUG: Turret _ready() called - setting autonomous behavior flags")
+	
+	# Turrets operate autonomously and don't need AI commands
+	waiting_for_first_command = false
+	has_received_first_command = true
+	
+	print("DEBUG: Turret %s autonomous flags set: waiting_for_first_command=%s, has_received_first_command=%s" % [get("unit_id"), waiting_for_first_command, has_received_first_command])
+	
 	# Customize collision shape for turret
-	var collision_shape_node = get_node_or_null("CollisionShape3D")
-	if collision_shape_node:
-		var cylinder_shape = CylinderShape3D.new()
-		cylinder_shape.height = 2.0
-		cylinder_shape.radius = 1.5
-		collision_shape_node.shape = cylinder_shape
-		collision_shape_node.position.y = 1.0 # Center the shape vertically
-
-func _attach_weapon():
+	var collision = get_node_or_null("CollisionShape3D")
+	if collision and collision.shape:
+		if collision.shape is BoxShape3D:
+			collision.shape.size = Vector3(2.0, 2.5, 2.0)  # For box shapes
+			print("DEBUG: Customized turret box collision to size: %s" % collision.shape.size)
+		elif collision.shape is CapsuleShape3D:
+			collision.shape.radius = 1.0  # Radius for capsule
+			collision.shape.height = 2.5  # Height for capsule
+			print("DEBUG: Customized turret capsule collision to radius: %s, height: %s" % [collision.shape.radius, collision.shape.height])
+		elif collision.shape is SphereShape3D:
+			collision.shape.radius = 1.2  # Radius for sphere
+			print("DEBUG: Customized turret sphere collision to radius: %s" % collision.shape.radius)
+		else:
+			print("DEBUG: Turret collision shape type not recognized: %s" % collision.shape.get_class())
+	
+	super._ready()  # Call parent's _ready()
+	
+	# CRITICAL: Re-assert autonomous flags after parent initialization
+	waiting_for_first_command = false
+	has_received_first_command = true
+	
+	print("DEBUG: Turret %s _ready() completed - final flags: waiting_for_first_command=%s, has_received_first_command=%s" % [unit_id, waiting_for_first_command, has_received_first_command])
+	
 	# Custom weapon attachment for turrets - mount blaster-e on top of tank
 	print("DEBUG: Turret creating top-mounted weapon attachment")
 	

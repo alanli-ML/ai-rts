@@ -100,27 +100,27 @@ func _create_radial_button(command_data: Dictionary) -> Button:
 	return button
 
 func _unhandled_input(event: InputEvent) -> void:
-    # Only handle input when command input is visible and we don't interfere with selection
-    if not command_input_field.visible:
-        return
-    
-    # Toggle command input with Enter key
-    if event.is_action_pressed("ui_text_submit") and not command_input_field.visible:
-        show_command_input()
-        get_viewport().set_input_as_handled()
-    elif event.is_action_pressed("ui_cancel") and command_input_field.visible:
-        hide_command_input()
-        get_viewport().set_input_as_handled()
-    
-    # Radial menu with Q key (or customizable key)
-    if event.is_action_pressed("quick_command"):
-        if not radial_menu_active:
-            show_radial_menu(get_global_mouse_position())
-            get_viewport().set_input_as_handled()
-    elif event.is_action_released("quick_command"):
-        if radial_menu_active:
-            hide_radial_menu()
-            get_viewport().set_input_as_handled()
+	# Only handle input when command input is visible and we don't interfere with selection
+	if not command_input_field.visible:
+		return
+	
+	# Toggle command input with Enter key
+	if event.is_action_pressed("ui_text_submit") and not command_input_field.visible:
+		show_command_input()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("ui_cancel") and command_input_field.visible:
+		hide_command_input()
+		get_viewport().set_input_as_handled()
+	
+	# Radial menu with Q key (or customizable key)
+	if event.is_action_pressed("quick_command"):
+		if not radial_menu_active:
+			show_radial_menu(get_global_mouse_position())
+			get_viewport().set_input_as_handled()
+	elif event.is_action_released("quick_command"):
+		if radial_menu_active:
+			hide_radial_menu()
+			get_viewport().set_input_as_handled()
 
 func _on_input_field_gui_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed:

@@ -572,6 +572,10 @@ func die() -> void:
 	
 	# print("DEBUG: Unit %s die() called - is_dead set to true" % unit_id)  # TEMPORARILY DISABLED
 	
+	# On server, broadcast a reliable RPC that this unit has died
+	if multiplayer.is_server():
+		get_tree().get_root().get_node("UnifiedMain").rpc("unit_died_rpc", unit_id)
+	
 	# Trigger death animation sequence if this is an animated unit
 	if has_method("trigger_death_sequence"):
 		# print("DEBUG: Unit %s calling trigger_death_sequence()" % unit_id)  # TEMPORARILY DISABLED
@@ -882,18 +886,21 @@ func update_full_plan(full_plan_data: Array) -> void:
 		# Fallback to summary if full plan method doesn't exist
 		status_bar.update_status(plan_summary)
 
+func set_strategic_goal(new_goal: String) -> void:
+	"""Update the strategic goal and refresh the status bar display"""
+	strategic_goal = new_goal
+	refresh_status_bar()
+
 func refresh_status_bar() -> void:
 	"""Refresh the status bar display (useful when goal or other info changes)"""
 	if not status_bar:
 		return
 	
-	# Refresh with current plan summary if no full plan available
-	if full_plan.is_empty():
-		if status_bar.has_method("update_status"):
-			status_bar.update_status(plan_summary)
-	else:
-		if status_bar.has_method("update_full_plan"):
-			status_bar.update_full_plan(full_plan)
+	# The status bar will pull the latest data from this unit (its parent).
+	# We just need to trigger the update method. The 'plan_summary' argument is
+	# mostly a placeholder now; the important data is pulled directly inside update_status.
+	if status_bar.has_method("update_status"):
+		status_bar.update_status(plan_summary)
 
 func set_status_bar_visibility(visible: bool) -> void:
 	"""Set the visibility of the status bar"""
@@ -979,6 +986,12 @@ func get_attack_capability_debug() -> String:
 
 func set_behavior_plan(matrix: Dictionary, sequence: Array):
 	"""Called by the PlanExecutor to set the unit's behavior matrix and goals."""
+	
+	# CRITICAL: Turrets should never receive behavior plans - they operate autonomously
+	if archetype == "turret":
+		print("WARNING: Turret %s received behavior plan but turrets operate autonomously - ignoring" % unit_id)
+		return
+	
 	if not matrix.is_empty():
 		self.behavior_matrix = matrix
 	else:
@@ -990,9 +1003,21 @@ func set_behavior_plan(matrix: Dictionary, sequence: Array):
 	
 	# Mark that this unit has received its first AI command
 	has_received_first_command = true
-	waiting_for_first_command = false
 	
-	print("Unit %s received new behavior guidance and is now authorized to act." % unit_id)
+	# Check if the game is using synchronized start coordination
+	var game_state = get_node_or_null("/root/DependencyContainer/GameState")
+	if game_state and "match_started_but_waiting_for_commands" in game_state:
+		if game_state.match_started_but_waiting_for_commands:
+			# Still in synchronized start mode, enable movement when ready
+			waiting_for_first_command = false
+	else:
+		# Normal mode, enable movement immediately
+		waiting_for_first_command = false
+	
+	# IMPORTANT: Refresh the status bar to show new goals and control point targets
+	refresh_status_bar()
+	
+	GameConstants.debug_print("Unit %s behavior plan set with %d actions, %d sequence targets" % [unit_id, behavior_matrix.size(), sequence.size()], "UNITS")
 
 func _evaluate_reactive_behavior() -> void:
 	"""The main 'brain' function for the unit, called every physics frame."""
@@ -1405,6 +1430,8 @@ func _fallback_to_next_best_state():
 	# Get current activation levels
 	if last_action_scores.is_empty():
 		current_reactive_state = "defend"  # Safe fallback
+		# Immediately execute defend state to prevent frame delay
+		_execute_defend_state()
 		return
 	
 	# Find the next best state (excluding follow)
@@ -1424,6 +1451,20 @@ func _fallback_to_next_best_state():
 	
 	current_reactive_state = best_action
 	print("Unit %s: Follow fallback to %s (score: %.2f)" % [unit_id, best_action, max_score])
+	
+	# CRITICAL FIX: Immediately execute the new state to prevent frame delay
+	# This ensures the unit transitions to the new behavior within the same frame
+	match best_action:
+		"attack":
+			_execute_attack_state()
+		"retreat":
+			_execute_retreat_state()
+		"defend":
+			_execute_defend_state()
+		_:
+			# Unknown action, fall back to defend
+			current_reactive_state = "defend"
+			_execute_defend_state()
 
 func _execute_healing_state(delta: float) -> void:
 	"""Execute healing behavior: move to target ally and heal them over time"""
@@ -1589,11 +1630,25 @@ func _resolve_mutual_following(target_ally: Unit) -> Unit:
 	if not is_instance_valid(target_ally):
 		return target_ally
 	
-	# Check if target ally is in follow state and targeting this unit
+	# Check if target ally is in follow state and targeting this unit (or trying to)
 	var ally_following_this = false
+	
+	# Method 1: Check if ally already has follow_target set to this unit
 	if "current_reactive_state" in target_ally and target_ally.current_reactive_state == "follow":
 		if "follow_target" in target_ally and target_ally.follow_target == self:
 			ally_following_this = true
+	
+	# Method 2: Check if ally is currently trying to follow this unit in their follow execution
+	# This catches cases where follow_target hasn't been set yet but ally is executing follow state
+	if not ally_following_this and "current_reactive_state" in target_ally and target_ally.current_reactive_state == "follow":
+		# Get the ally's nearest ally calculation to see if they would choose this unit
+		var game_state = get_node("/root/DependencyContainer").get_game_state()
+		if game_state:
+			var ally_vision_range = target_ally.vision_range if "vision_range" in target_ally else 30.0
+			var allies_from_ally_perspective = game_state.get_units_in_radius(target_ally.global_position, ally_vision_range, -1, target_ally.team_id)
+			var ally_nearest = target_ally._get_nearest_ally(allies_from_ally_perspective) if target_ally.has_method("_get_nearest_ally") else null
+			if ally_nearest == self:
+				ally_following_this = true
 	
 	if not ally_following_this:
 		# No mutual following, safe to follow
@@ -1606,13 +1661,22 @@ func _resolve_mutual_following(target_ally: Unit) -> Unit:
 	if "last_action_scores" in target_ally and target_ally.last_action_scores.has("follow"):
 		ally_follow_score = target_ally.last_action_scores.follow
 	
-	if my_follow_score > ally_follow_score:
+	# Additional tie-breaker: if scores are equal, use unit_id lexicographic order for consistency
+	if abs(my_follow_score - ally_follow_score) < 0.001:  # Scores are essentially equal
+		var my_priority = unit_id < target_ally.unit_id  # Lexicographic comparison
+		if my_priority:
+			print("Unit %s: Mutual follow resolved - tie-breaker gives this unit priority over %s (%.3f ≈ %.3f)" % [unit_id, target_ally.unit_id, my_follow_score, ally_follow_score])
+			return target_ally
+		else:
+			print("Unit %s: Mutual follow resolved - tie-breaker gives %s priority (%.3f ≈ %.3f)" % [unit_id, target_ally.unit_id, my_follow_score, ally_follow_score])
+			return null
+	elif my_follow_score > ally_follow_score:
 		# This unit has higher follow activation, it gets to follow
 		print("Unit %s: Mutual follow resolved - this unit follows %s (%.2f > %.2f)" % [unit_id, target_ally.unit_id, my_follow_score, ally_follow_score])
 		return target_ally
 	else:
-		# Target ally has higher (or equal) follow activation, this unit should not follow
-		print("Unit %s: Mutual follow resolved - %s gets priority (%.2f >= %.2f)" % [unit_id, target_ally.unit_id, ally_follow_score, my_follow_score])
+		# Target ally has higher follow activation, this unit should not follow
+		print("Unit %s: Mutual follow resolved - %s gets priority (%.2f > %.2f)" % [unit_id, target_ally.unit_id, ally_follow_score, my_follow_score])
 		return null
 
 func _get_closest_valid_enemy(enemies: Array) -> Unit:
@@ -1840,6 +1904,10 @@ func _handle_respawn() -> void:
 	
 	# Move to spawn position
 	global_position = spawn_position
+	
+	# Broadcast respawn event to clients
+	if multiplayer.is_server():
+		get_tree().get_root().get_node("UnifiedMain").rpc("unit_respawned_rpc", unit_id, global_position)
 	
 	# CRITICAL FIX: Reset facing direction to face toward enemy base
 	# This prevents units from walking in the wrong direction after respawn

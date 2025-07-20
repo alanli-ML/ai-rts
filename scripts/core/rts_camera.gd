@@ -12,7 +12,7 @@ extends Node3D
 # Zoom settings
 @export_group("Zoom")
 @export var zoom_speed: float = 5.0
-@export var min_zoom: float = 10.0
+@export var min_zoom: float = 5.0  # Reduced from 10.0 to allow much closer zoom
 @export var max_zoom: float = 60.0
 @export var zoom_smoothing: float = 10.0
 
@@ -29,10 +29,13 @@ extends Node3D
 @export var mouse_drag_sensitivity: float = 0.5
 @export var invert_drag: bool = false
 
+@export_group("Rotation")
+@export var rotation_speed: float = 90.0 # degrees per second
+
 # Internal variables
 var camera_3d: Camera3D
-var current_zoom: float = 30.0
-var target_zoom: float = 30.0
+var current_zoom: float = 20.0  # Closer default zoom (was 30.0)
+var target_zoom: float = 20.0   # Closer default zoom (was 30.0)
 var is_dragging: bool = false
 var last_mouse_position: Vector2
 var velocity: Vector3 = Vector3.ZERO
@@ -121,6 +124,16 @@ func _process(delta: float) -> void:
     if Input.is_action_pressed("camera_backward"):  # S key should move backward
         input_vector.z -= 1
     
+    # Rotation input with Q and E keys
+    var rotation_input: float = 0.0
+    if Input.is_key_pressed(KEY_E):
+        rotation_input += 1.0
+    if Input.is_key_pressed(KEY_Q):
+        rotation_input -= 1.0
+    
+    if rotation_input != 0.0:
+        rotate_y(deg_to_rad(rotation_input * rotation_speed * delta))
+    
     # Edge scrolling
     if use_edge_scroll and get_viewport().gui_get_focus_owner() == null:
         var mouse_pos = get_viewport().get_mouse_position()
@@ -175,8 +188,8 @@ func _process(delta: float) -> void:
 
 func _update_camera_position() -> void:
     if camera_3d:
-        # Update camera position based on zoom level
-        var angle = deg_to_rad(-60)  # Camera angle
+        # Update camera position based on zoom level with improved angle calculation
+        var angle = deg_to_rad(-55)  # Slightly steeper angle for better close-up views
         camera_3d.position = Vector3(
             0,
             current_zoom * sin(-angle),
@@ -206,8 +219,78 @@ func focus_on_position(target_pos: Vector3, instant: bool = false) -> void:
         # TODO: Implement smooth camera movement
         position = Vector3(target_pos.x, position.y, target_pos.z)
 
-func position_for_map_data(map_data: Dictionary) -> void:
-    """Position and configure camera based on procedural map data"""
+func position_for_team_base(team_id: int, instant: bool = true) -> void:
+    """Position and rotate the camera to focus on the team's home base for optimal tactical view"""
+    # Get home base manager to find team base positions
+    var home_base_manager = get_tree().get_first_node_in_group("home_base_managers")
+    if not home_base_manager:
+        print("RTSCamera: No home base manager found for team-based positioning")
+        return
+    
+    var team_base_pos = home_base_manager.get_home_base_position(team_id)
+    if team_base_pos == Vector3.ZERO:
+        print("RTSCamera: No home base position found for team %d" % team_id)
+        return
+    
+    # Set closer zoom level for team-based positioning
+    var team_zoom_level = 15.0  # Closer than default 30.0, but not too close
+    current_zoom = team_zoom_level
+    target_zoom = team_zoom_level
+    
+    # Calculate optimal camera position for close tactical overview
+    # Position camera at a closer angle that shows the home base and immediate area
+    var camera_offset = Vector3()
+    var look_target = Vector3()
+    
+    # Team-specific positioning for close tactical view
+    match team_id:
+        1:
+            # Team 1 (Northwest base): Position camera southwest of base, looking northeast
+            camera_offset = Vector3(-12, 20, -12)  # Closer and lower than before
+            look_target = team_base_pos + Vector3(8, 0, 8)  # Look toward nearby battlefield
+        2:
+            # Team 2 (Southeast base): Position camera northeast of base, looking southwest
+            camera_offset = Vector3(12, 20, 12)   # Closer and lower than before
+            look_target = team_base_pos + Vector3(-8, 0, -8)  # Look toward nearby battlefield
+        _:
+            # Fallback: Position camera south of base, looking north
+            camera_offset = Vector3(0, 20, 15)
+            look_target = team_base_pos + Vector3(0, 0, -10)
+    
+    var camera_position = team_base_pos + camera_offset
+    
+    # Apply camera bounds
+    if use_bounds:
+        camera_position.x = clamp(camera_position.x, min_x, max_x)
+        camera_position.z = clamp(camera_position.z, min_z, max_z)
+    
+    # Position the camera
+    if instant:
+        position = camera_position
+    else:
+        # Smooth camera movement (implement tween here if needed)
+        position = camera_position
+    
+    # Update camera angle for closer view with steeper angle
+    if camera_3d:
+        camera_3d.position = Vector3(0, current_zoom * 0.7, current_zoom * 0.3)  # Steeper angle for closer view
+        camera_3d.look_at(look_target - position, Vector3.UP)
+    
+    # Log the positioning
+    if has_node("/root/Logger"):
+        var logger = get_node("/root/Logger")
+        logger.info("RTSCamera", "Positioned camera for team %d at %s (zoom: %.1f), looking toward %s" % [team_id, camera_position, current_zoom, look_target])
+    else:
+        print("RTSCamera: Positioned camera for team %d at %s (zoom: %.1f), looking toward %s" % [team_id, camera_position, current_zoom, look_target])
+
+func position_for_map_data(map_data: Dictionary, team_id: int = -1) -> void:
+    """Position and configure camera based on procedural map data, optionally team-aware"""
+    # If team ID is provided, use team-based positioning
+    if team_id > 0:
+        position_for_team_base(team_id, true)
+        return
+    
+    # Original map-centered positioning (fallback)
     # Get map dimensions
     var tile_size = map_data.get("tile_size", 3.0)
     var grid_size = map_data.get("size", Vector2i(20, 20))
@@ -225,11 +308,11 @@ func position_for_map_data(map_data: Dictionary) -> void:
     # Position camera to view the map center
     position = Vector3(map_center.x, position.y, map_center.z)
     
-    # Adjust zoom range based on map size
+    # Adjust zoom range based on map size with closer default for better gameplay
     var map_scale = max(world_width, world_height) / 60.0  # Normalized to default 60x60 map
-    min_zoom = 10.0 * map_scale
+    min_zoom = 5.0 * map_scale  # Allow closer zoom-in
     max_zoom = 80.0 * map_scale
-    current_zoom = 30.0 * map_scale
+    current_zoom = 20.0 * map_scale  # Closer default zoom than before (was 30.0)
     target_zoom = current_zoom
     
     # Update camera position based on new zoom
@@ -237,9 +320,9 @@ func position_for_map_data(map_data: Dictionary) -> void:
     
     if has_node("/root/Logger"):
         var logger = get_node("/root/Logger")
-        logger.info("RTSCamera", "Positioned for map: %sx%s units, zoom range: %s-%s" % [world_width, world_height, min_zoom, max_zoom])
+        logger.info("RTSCamera", "Positioned for map: %sx%s units, zoom range: %s-%s, default zoom: %.1f" % [world_width, world_height, min_zoom, max_zoom, current_zoom])
     else:
-        print("RTSCamera: Positioned for map: %sx%s units, zoom range: %s-%s" % [world_width, world_height, min_zoom, max_zoom])
+        print("RTSCamera: Positioned for map: %sx%s units, zoom range: %s-%s, default zoom: %.1f" % [world_width, world_height, min_zoom, max_zoom, current_zoom])
 
 func shake(_intensity: float = 1.0, _duration: float = 0.5) -> void:
     """Add camera shake effect"""

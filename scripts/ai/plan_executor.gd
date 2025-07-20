@@ -45,11 +45,19 @@ func execute_plan(plan_data: Dictionary) -> bool:
     var tuned_matrix = _generate_tuned_matrix(base_matrix, priority_list)
 
     if unit.has_method("set_behavior_plan"):
-        # 3. Set the tuned matrix on the unit.
-        unit.set_behavior_plan(tuned_matrix, attack_sequence)
+        # Update unit's strategic goal first
         unit.strategic_goal = goal
+        
+        # Set the tuned matrix on the unit (this will also refresh the status bar)
+        unit.set_behavior_plan(tuned_matrix, attack_sequence)
+        
+        # 4. Broadcast the static plan data to all clients via a reliable RPC.
+        var unified_main = get_node_or_null("/root/UnifiedMain")
+        if unified_main:
+            unified_main.rpc("update_unit_behavior_plan_rpc", unit_id, tuned_matrix, attack_sequence, goal)
+        
         plan_started.emit(unit_id, plan_data)
-        logger.info("PlanExecutor", "Sent tuned behavior plan to unit %s" % unit_id)
+        logger.info("PlanExecutor", "Sent tuned behavior plan to unit %s and broadcast to clients." % unit_id)
     else:
         logger.error("PlanExecutor", "Unit %s does not have set_behavior_plan method." % unit_id)
         return false

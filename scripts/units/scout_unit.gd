@@ -44,12 +44,18 @@ func activate_stealth(_params: Dictionary):
 	stealth_timer = stealth_duration
 	stealth_cooldown_timer = stealth_cooldown
 	print("%s is activating stealth." % unit_id)
+	
+	if multiplayer.is_server():
+		get_tree().get_root().get_node("UnifiedMain").rpc("ability_visuals_rpc", unit_id, "stealth_on")
 
 func deactivate_stealth():
 	if not is_stealthed: return
 	is_stealthed = false
 	stealth_timer = 0
 	print("%s is no longer stealthed." % unit_id)
+	
+	if multiplayer.is_server():
+		get_tree().get_root().get_node("UnifiedMain").rpc("ability_visuals_rpc", unit_id, "stealth_off")
 
 func sabotage(_params: Dictionary):
 	print("%s is sabotaging a target." % unit_id)
@@ -62,62 +68,3 @@ func attack_target(target: Unit):
 	super.attack_target(target)
 
 # --- Visual Effect Helpers (for host) ---
-
-func _set_model_transparency(container: Node3D, alpha_value: float) -> void:
-	"""Set transparency for all MeshInstance3D nodes in the model container"""
-	if not is_instance_valid(container):
-		return
-	
-	# Find all MeshInstance3D nodes recursively
-	var mesh_instances = _find_all_mesh_instances(container)
-	
-	for mesh_instance in mesh_instances:
-		if not is_instance_valid(mesh_instance):
-			continue
-		
-		# Skip if no mesh or surfaces
-		if not mesh_instance.mesh or mesh_instance.get_surface_override_material_count() == 0:
-			continue
-			
-		# Get existing material or create from mesh surface material
-		var material = mesh_instance.get_surface_override_material(0)
-		
-		# If no override material, try to get the mesh's built-in material
-		if not material and mesh_instance.mesh.surface_get_material(0):
-			material = mesh_instance.mesh.surface_get_material(0)
-			
-		# If still no material, create a basic one with proper initialization
-		if not material:
-			material = StandardMaterial3D.new()
-			# Set basic material properties to avoid null parameter errors
-			material.albedo_color = Color.WHITE
-			material.metallic = 0.0
-			material.roughness = 0.7
-			material.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
-		
-		# Always duplicate the material to avoid affecting other instances
-		if material:
-			material = material.duplicate()
-			mesh_instance.set_surface_override_material(0, material)
-			
-			# Apply transparency settings
-			if material is StandardMaterial3D:
-				var std_material = material as StandardMaterial3D
-				if alpha_value < 1.0:
-					std_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-					std_material.albedo_color.a = alpha_value
-				else:
-					std_material.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
-					std_material.albedo_color.a = 1.0
-
-func _find_all_mesh_instances(node: Node) -> Array[MeshInstance3D]:
-	"""Recursively find all MeshInstance3D nodes"""
-	var mesh_instances: Array[MeshInstance3D] = []
-	
-	if node is MeshInstance3D:
-		mesh_instances.append(node as MeshInstance3D)
-	
-	for child in node.get_children():
-		mesh_instances.append_array(_find_all_mesh_instances(child))
-	
-	return mesh_instances

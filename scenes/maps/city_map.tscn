@@ -1226,6 +1226,35 @@ size = Vector3(3, 0.2, 3)
 material = SubResource("StandardMaterial3D_team1")
 
 [node name="Team2Base" type="CSGBox3D" parent="HomeBases"]
-transform = Transform3D(8, 0, 0, 0, 8, 0, 0, 0, 8, 22.9524, 0, 57.2815)
+transform = Transform3D(8, 0, 0, 0, 8, 0, 0, 0, 8, 35.9524, 0, 57.2815)
 size = Vector3(3, 0.2, 3)
 material = SubResource("StandardMaterial3D_team2")
+
+[node name="ControlPointMarkers" type="Node3D" parent="."]
+
+[node name="Northwest" type="Marker3D" parent="ControlPointMarkers"]
+transform = Transform3D(8, 0, 0, 0, 8, 0, 0, 0, 8, -42.82, 0.5, -21.32)
+
+[node name="Northeast" type="Marker3D" parent="ControlPointMarkers"]
+transform = Transform3D(8, 0, 0, 0, 8, 0, 0, 0, 8, 20.1682, 0.5, -21.6752)
+
+[node name="Southwest" type="Marker3D" parent="ControlPointMarkers"]
+transform = Transform3D(8, 0, 0, 0, 8, 0, 0, 0, 8, -42.82, 0.5, 41.68)
+
+[node name="Southeast" type="Marker3D" parent="ControlPointMarkers"]
+transform = Transform3D(8, 0, 0, 0, 8, 0, 0, 0, 8, 19.18, 0.5, 42.68)
+
+[node name="Center" type="Marker3D" parent="ControlPointMarkers"]
+transform = Transform3D(8, 0, 0, 0, 8, 0, 0, 0, 8, -4.82, 0.5, 8.68)
+
+[node name="West" type="Marker3D" parent="ControlPointMarkers"]
+transform = Transform3D(8, 0, 0, 0, 8, 0, 0, 0, 8, -42.8169, 0.5, 8.68)
+
+[node name="East" type="Marker3D" parent="ControlPointMarkers"]
+transform = Transform3D(8, 0, 0, 0, 8, 0, 0, 0, 8, 19.18, 0.5, 9.68)
+
+[node name="North" type="Marker3D" parent="ControlPointMarkers"]
+transform = Transform3D(8, 0, 0, 0, 8, 0, 0, 0, 8, -7.82, 0.5, -22.32)
+
+[node name="South" type="Marker3D" parent="ControlPointMarkers"]
+transform = Transform3D(8, 0, 0, 0, 8, 0, 0, 0, 8, -8.82, 0.5, 41.68)

@@ -16,6 +16,7 @@ var model_container: Node3D
 const WeaponDatabase = preload("res://scripts/units/weapon_database.gd")
 var weapon_db = WeaponDatabase.new()
 
+
 # Charge shot visual effects
 var charge_effect_node: Node3D = null
 var charge_intensity: float = 0.0
@@ -138,7 +139,7 @@ func play_animation(animation_name: String):
 	else:
 		print("WARN: No animations available for '%s'" % animation_name)
 
-func update_client_visuals(server_velocity: Vector3, _delta: float) -> void:
+func update_client_visuals(current_velocity: Vector3, _delta: float) -> void:
 	# Don't update visuals if unit is dead - death animation should not be interrupted
 	if is_dead:
 		return
@@ -147,9 +148,9 @@ func update_client_visuals(server_velocity: Vector3, _delta: float) -> void:
 	if is_playing_attack_animation:
 		return
 	
-	# The parent (AnimatedUnit) is now rotated by ClientDisplayManager.
-	# We just need to play the correct animation based on velocity and state.
-	if server_velocity.length_squared() > 0.01:
+	# The parent (AnimatedUnit) transform is now synced by MultiplayerSynchronizer.
+	# We just need to play the correct animation based on calculated velocity and state.
+	if current_velocity.length_squared() > 0.01:
 		# Check if we should play attack-while-moving animation
 		if current_state == GameEnums.UnitState.ATTACKING:
 			_play_attack_while_moving_animation()
@@ -161,6 +162,19 @@ func update_client_visuals(server_velocity: Vector3, _delta: float) -> void:
 		elif current_state == GameEnums.UnitState.ATTACKING:
 			# Don't continuously play attack animation - it will be triggered by weapon_fired signal
 			play_animation("Idle")
+		elif current_state == GameEnums.UnitState.CONSTRUCTING:
+			# Keep playing construction animation for building construction
+			play_animation("Construct")
+		elif current_state == GameEnums.UnitState.REPAIRING:
+			# Keep playing construction animation for repair work
+			play_animation("Construct")
+		elif current_state == GameEnums.UnitState.LAYING_MINES:
+			# Keep playing construction animation for mine laying
+			play_animation("Construct")
+		elif "is_constructing_turret" in self and get("is_constructing_turret"):
+			# Keep playing construction animation for turret construction
+			# print("DEBUG: Playing Construct animation for turret construction on %s" % get("unit_id"))  # Commented to reduce spam
+			play_animation("Construct")
 		else:
 			play_animation("Idle")
 
@@ -184,8 +198,9 @@ func _physics_process(delta: float):
 		if attack_animation_timer <= 0.0:
 			is_playing_attack_animation = false
 
-	# If we are the server but not headless, we are the host. Animate ourselves.
-	# Pure clients will have their visuals updated by ClientDisplayManager.
+	# Client-side animation is now driven by `update_client_visuals` which is called
+	# by the ClientDisplayManager with server-authoritative velocity.
+	# The host-side animation logic remains.
 	if multiplayer.is_server() and DisplayServer.get_name() != "headless":
 		# The parent Unit node is now rotated by the new logic in unit.gd.
 		# The model_container is rotated 180 degrees at load time to face forward.
@@ -201,6 +216,18 @@ func _physics_process(delta: float):
 		elif current_state == GameEnums.UnitState.ATTACKING:
 			# Don't continuously play attack animation - it will be triggered by weapon_fired signal
 			play_animation("Idle")
+		elif current_state == GameEnums.UnitState.CONSTRUCTING:
+			# Keep playing construction animation for building construction
+			play_animation("Construct")
+		elif current_state == GameEnums.UnitState.REPAIRING:
+			# Keep playing construction animation for repair work
+			play_animation("Construct")
+		elif current_state == GameEnums.UnitState.LAYING_MINES:
+			# Keep playing construction animation for mine laying
+			play_animation("Construct")
+		elif "is_constructing_turret" in self and get("is_constructing_turret"):
+			# Keep playing construction animation for turret construction
+			play_animation("Construct")
 		elif velocity.length_squared() > 0.01:
 			play_animation("Run")
 		else:
@@ -428,6 +455,87 @@ func _on_weapon_fired(weapon_type: String, damage: float):
 	attack_animation_timer = attack_animation_duration
 	
 	play_animation("Attack")
+
+func play_ability_effect(effect_name: String):
+	match effect_name:
+		"shield_on":
+			# Check if shield_node property exists to avoid errors on non-tanks
+			if "shield_node" in self and not is_instance_valid(get("shield_node")):
+				var shield_scene = preload("res://scenes/fx/ShieldEffect.tscn")
+				var shield_effect = shield_scene.instantiate()
+				add_child(shield_effect)
+				set("shield_node", shield_effect)
+		"shield_off":
+			if "shield_node" in self and is_instance_valid(get("shield_node")):
+				get("shield_node").queue_free()
+				set("shield_node", null)
+		"stealth_on":
+			var model_container = get_node_or_null("ModelContainer")
+			if model_container:
+				_set_model_transparency(model_container, 0.3)
+		"stealth_off":
+			var model_container = get_node_or_null("ModelContainer")
+			if model_container:
+				_set_model_transparency(model_container, 1.0)
+
+func _set_model_transparency(model_container: Node3D, alpha_value: float) -> void:
+	"""Set transparency for all MeshInstance3D nodes in the model container"""
+	if not is_instance_valid(model_container):
+		return
+	
+	# Find all MeshInstance3D nodes recursively
+	var mesh_instances = _find_all_mesh_instances(model_container)
+	
+	for mesh_instance in mesh_instances:
+		if not is_instance_valid(mesh_instance):
+			continue
+		
+		# Skip if no mesh or surfaces
+		if not mesh_instance.mesh or mesh_instance.get_surface_override_material_count() == 0:
+			continue
+			
+		# Get existing material or create from mesh surface material
+		var material = mesh_instance.get_surface_override_material(0)
+		
+		# If no override material, try to get the mesh's built-in material
+		if not material and mesh_instance.mesh.surface_get_material(0):
+			material = mesh_instance.mesh.surface_get_material(0)
+			
+		# If still no material, create a basic one with proper initialization
+		if not material:
+			material = StandardMaterial3D.new()
+			# Set basic material properties to avoid null parameter errors
+			material.albedo_color = Color.WHITE
+			material.metallic = 0.0
+			material.roughness = 0.7
+			material.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+		
+		# Always duplicate the material to avoid affecting other instances
+		if material:
+			material = material.duplicate()
+			mesh_instance.set_surface_override_material(0, material)
+			
+			# Apply transparency settings
+			if material is StandardMaterial3D:
+				var std_material = material as StandardMaterial3D
+				if alpha_value < 1.0:
+					std_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+					std_material.albedo_color.a = alpha_value
+				else:
+					std_material.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+					std_material.albedo_color.a = 1.0
+
+func _find_all_mesh_instances(node: Node) -> Array[MeshInstance3D]:
+	"""Recursively find all MeshInstance3D nodes"""
+	var mesh_instances: Array[MeshInstance3D] = []
+	
+	if node is MeshInstance3D:
+		mesh_instances.append(node as MeshInstance3D)
+	
+	for child in node.get_children():
+		mesh_instances.append_array(_find_all_mesh_instances(child))
+	
+	return mesh_instances
 
 func trigger_death_sequence():
 	# Allow death sequence to run even if already marked as dead

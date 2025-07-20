@@ -26,9 +26,9 @@ func setup(logger_instance, world_asset_manager_instance, scene_3d_instance, cam
     
     logger.info("ProceduralWorldRenderer", "Procedural world renderer setup complete")
 
-func initialize_procedural_world(dependency_container) -> void:
-    """Initialize the game world using procedural generation"""
-    logger.info("ProceduralWorldRenderer", "Initializing procedural game world")
+func initialize_procedural_world(dependency_container, team_id: int = -1) -> void:
+    """Initialize the game world using procedural generation, optionally team-aware"""
+    logger.info("ProceduralWorldRenderer", "Initializing procedural game world (team_id: %d)" % team_id)
     
     var map_generator = dependency_container.get_map_generator()
     logger.info("ProceduralWorldRenderer", "Map generator retrieved: %s" % (map_generator != null))
@@ -63,8 +63,8 @@ func initialize_procedural_world(dependency_container) -> void:
     # Apply the generated map to the 3D world
     apply_procedural_map(map_data)
     
-    # Position RTS camera to view the procedural map with mouse controls
-    position_rts_camera_for_procedural_map(map_data)
+    # Position RTS camera to view the procedural map with team-based positioning if available
+    position_rts_camera_for_procedural_map(map_data, team_id)
     
     procedural_world_rendered.emit()
     logger.info("ProceduralWorldRenderer", "Procedural world initialization complete")
@@ -409,9 +409,9 @@ func _extract_road_positions_from_scene() -> Dictionary:
     logger.info("ProceduralWorldRenderer", "Extracted %d road positions for building avoidance" % road_positions.size())
     return road_positions
 
-func position_rts_camera_for_procedural_map(map_data: Dictionary) -> void:
-    """Position the RTS camera to view the procedural map using dynamic map data"""
-    logger.info("ProceduralWorldRenderer", "Positioning RTS camera for procedural map")
+func position_rts_camera_for_procedural_map(map_data: Dictionary, team_id: int = -1) -> void:
+    """Position the RTS camera to view the procedural map using dynamic map data, optionally team-aware"""
+    logger.info("ProceduralWorldRenderer", "Positioning RTS camera for procedural map (team_id: %d)" % team_id)
     
     # Find the RTS camera in the scene
     var rts_cameras = scene_3d.get_children().filter(func(node): return node is RTSCamera)
@@ -419,10 +419,13 @@ func position_rts_camera_for_procedural_map(map_data: Dictionary) -> void:
     if rts_cameras.size() > 0:
         var rts_camera = rts_cameras[0] as RTSCamera
         
-        # Use the RTSCamera's built-in positioning method for map data
-        rts_camera.position_for_map_data(map_data)
+        # Use the RTSCamera's built-in positioning method for map data with team support
+        rts_camera.position_for_map_data(map_data, team_id)
         
-        logger.info("ProceduralWorldRenderer", "RTS camera positioned with mouse controls enabled")
+        if team_id > 0:
+            logger.info("ProceduralWorldRenderer", "RTS camera positioned for team %d with tactical focus on home base" % team_id)
+        else:
+            logger.info("ProceduralWorldRenderer", "RTS camera positioned with map-centered view")
     else:
         logger.warning("ProceduralWorldRenderer", "No RTS camera found for positioning")
         # Fallback to old method if RTS camera not found

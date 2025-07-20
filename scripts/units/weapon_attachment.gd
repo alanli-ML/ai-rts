@@ -184,7 +184,7 @@ func _attach_to_arm_right_submesh() -> bool:
 	arm_right_mesh.add_child(self)
 	
 	# Set weapon position relative to arm-right mesh
-	position = Vector3(0, -1.5, -0.5)  # Slight forward offset from arm
+	position = Vector3(0, -1.5, 0.5)  # Slight forward offset from arm
 	rotation_degrees = Vector3(-90, 180, 0)  # Natural forward orientation
 	
 	print("DEBUG: Successfully attached weapon to arm-right sub-mesh")

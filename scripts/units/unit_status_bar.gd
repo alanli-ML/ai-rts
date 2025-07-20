@@ -113,13 +113,13 @@ func _setup_team_border() -> void:
 	var style_box = StyleBoxFlat.new()
 	
 	# Set background color (keep original semi-transparent black)
-	style_box.bg_color = Color(0, 0, 0, 0.7)
+	style_box.bg_color = border_color.darkened(0.5)
 	
 	# Set border properties
-	style_box.border_width_left = 6
-	style_box.border_width_right = 6  
-	style_box.border_width_top = 6
-	style_box.border_width_bottom = 6
+	style_box.border_width_left = 12
+	style_box.border_width_right = 12  
+	style_box.border_width_top = 12
+	style_box.border_width_bottom = 12
 	style_box.border_color = border_color
 	
 	# Set corner rounding for a polished look

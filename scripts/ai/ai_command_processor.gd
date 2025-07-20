@@ -43,6 +43,8 @@ Your task is to translate a player's natural language command into a high-level 
 The map has nine control points in a 3x3 grid: `Northwest`, `North`, `Northeast`, `West`, `Center`, `East`, `Southwest`, `South`, `Southeast`.
 Your base (Team %d) is located in the %s. The enemy base (Team %d) is in the %s.
 
+IMPORTANT: You only command mobile units (scout, tank, sniper, medic, engineer). Turrets are autonomous defensive structures that operate independently and do not receive strategic commands.
+
 Based on the player's command and the provided game context, you must create a plan for EACH unit listed in `allied_units`. For each unit, you must define:
 1.  **Goal**: A high-level `goal` describing the unit's objective (e.g., "Lead the main assault", "Support the tank").
 2.  **Objectives**: A `control_point_attack_sequence` using the available control point names. This is the ordered list of objectives for the unit.
@@ -204,9 +206,14 @@ func process_command(command_text: String, unit_ids: Array = [], peer_id: int = 
     if not unit_ids.is_empty():
         for unit_id in unit_ids:
             if server_game_state.units.has(unit_id):
-                selected_units.append(server_game_state.units[unit_id])
+                var unit = server_game_state.units[unit_id]
+                # Filter out turrets - they operate autonomously and don't need AI commands
+                if is_instance_valid(unit) and unit.archetype != "turret":
+                    selected_units.append(unit)
+                elif is_instance_valid(unit) and unit.archetype == "turret":
+                    logger.info("AICommandProcessor", "Filtered out turret %s from explicit selection" % unit.unit_id)
     elif peer_id != -1:
-        # No units selected, get all units for the player's team
+        # No units selected, get all controllable units for the player's team (excluding turrets)
         var session_manager = get_node("/root/DependencyContainer").get_node_or_null("SessionManager")
         if session_manager:
             var session_id = session_manager.get_player_session(peer_id)
@@ -219,14 +226,23 @@ func process_command(command_text: String, unit_ids: Array = [], peer_id: int = 
                         break
                 
                 if player_team_id != -1:
+                    var total_units = 0
+                    var filtered_turrets = 0
                     for unit_id in server_game_state.units:
                         var unit = server_game_state.units[unit_id]
                         if is_instance_valid(unit) and unit.team_id == player_team_id:
-                            selected_units.append(unit)
+                            total_units += 1
+                            # Filter out turrets - they are defensive structures with autonomous behavior
+                            if unit.archetype != "turret":
+                                selected_units.append(unit)
+                            else:
+                                filtered_turrets += 1
+                    
+                    logger.info("AICommandProcessor", "Team %d: Found %d total units, filtered out %d turrets, selected %d mobile units" % [player_team_id, total_units, filtered_turrets, selected_units.size()])
     
     if selected_units.is_empty():
-        logger.warning("AICommandProcessor", "No valid units found for command")
-        command_failed.emit("No valid units found for command.", [], peer_id)
+        logger.warning("AICommandProcessor", "No valid controllable units found for command (turrets excluded)")
+        command_failed.emit("No valid controllable units found for command.", [], peer_id)
         if active_requests.is_empty():
             processing_finished.emit()
         return
@@ -255,10 +271,26 @@ func _process_group_command(command_text: String, units: Array, server_game_stat
     if not units.is_empty() and is_instance_valid(units[0]):
         team_id = units[0].team_id
     
+    # CRITICAL SAFETY FILTER: Remove any turrets that somehow made it through previous filtering
+    var filtered_units = []
+    var turrets_removed = 0
+    for unit in units:
+        if is_instance_valid(unit):
+            if unit.archetype == "turret":
+                turrets_removed += 1
+                logger.info("AICommandProcessor", "SAFETY FILTER: Removed turret %s from AI command processing" % unit.unit_id)
+            else:
+                filtered_units.append(unit)
+    
+    if turrets_removed > 0:
+        logger.warning("AICommandProcessor", "SAFETY FILTER: Removed %d turrets that bypassed initial filtering" % turrets_removed)
+    
+    logger.info("AICommandProcessor", "Final unit list for AI: %d mobile units (turrets excluded)" % filtered_units.size())
+    
     # Generate team-specific system prompt
     var system_prompt = _get_base_system_prompt_template(team_id)
     
-    var game_context = server_game_state.get_group_context_for_ai(units)
+    var game_context = server_game_state.get_group_context_for_ai(filtered_units)
     
     # The user prompt is now concise, containing only the command and the context data.
     var user_prompt = """
@@ -280,7 +312,7 @@ Game Context:
         _on_openai_error(error_type, error_message, request_id)
         
     # Create source metadata for tracing
-    var source_info = _build_source_info(units)
+    var source_info = _build_source_info(filtered_units)
     var metadata = {"source": source_info}
     
     if langsmith_client:

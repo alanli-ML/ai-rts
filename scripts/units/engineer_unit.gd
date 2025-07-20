@@ -51,10 +51,8 @@ func construct(params: Dictionary):
 			self.target_building = spire
 			self.current_state = GameEnums.UnitState.CONSTRUCTING
 			
-			# Trigger construction animation
-			var anim_controller = get_node_or_null("AnimationController")
-			if anim_controller and anim_controller.has_method("start_constructing"):
-				anim_controller.start_constructing()
+			# Trigger construction animation using existing AnimatedUnit system
+			play_animation("Construct")
 			
 			print("%s is moving to construct a %s (%s)." % [unit_id, building_type, spire_id])
 		else:
@@ -78,10 +76,8 @@ func repair(params: Dictionary):
 		self.target_building = building
 		self.current_state = GameEnums.UnitState.REPAIRING # Assumes REPAIRING works like CONSTRUCTING
 		
-		# Trigger construction animation for repair work
-		var anim_controller = get_node_or_null("AnimationController")
-		if anim_controller and anim_controller.has_method("start_constructing"):
-			anim_controller.start_constructing()
+		# Trigger construction animation for repair work using existing AnimatedUnit system
+		play_animation("Construct")
 		
 		print("%s is moving to repair building %s." % [unit_id, target_id])
 	else:
@@ -110,10 +106,8 @@ func lay_mines(_params: Dictionary):
 	current_state = GameEnums.UnitState.LAYING_MINES
 	mine_cooldown_timer = mine_cooldown + mine_laying_time
 	
-	# Trigger construction animation for mine laying
-	var anim_controller = get_node_or_null("AnimationController")
-	if anim_controller and anim_controller.has_method("start_constructing"):
-		anim_controller.start_constructing()
+	# Trigger construction animation for mine laying using existing AnimatedUnit system
+	play_animation("Construct")
 	
 	await get_tree().create_timer(mine_laying_time).timeout
 	
@@ -141,10 +135,8 @@ func lay_mines(_params: Dictionary):
 	else:
 		print("Engineer %s: Successfully deployed mine %s." % [unit_id, mine_id])
 	
-	# Finish construction animation
-	var animation_controller = get_node_or_null("AnimationController")
-	if animation_controller and animation_controller.has_method("finish_constructing"):
-		animation_controller.finish_constructing()
+	# Finish construction animation and return to idle
+	play_animation("Idle")
 	
 	current_state = GameEnums.UnitState.IDLE
 
@@ -181,13 +173,11 @@ func construct_turret(_params: Dictionary):
 			
 			# Find the oldest turret (use unit_id as age indicator - earlier IDs are older)
 			var oldest_turret = null
-			var oldest_unit_id = ""
 			
 			for turret in existing_turrets:
 				if is_instance_valid(turret) and not turret.is_dead:
-					if oldest_turret == null or turret.unit_id < oldest_unit_id:
+					if oldest_turret == null or turret.unit_id < oldest_turret.unit_id:
 						oldest_turret = turret
-						oldest_unit_id = turret.unit_id
 			
 			if oldest_turret != null:
 				print("Engineer %s: Removing oldest turret %s to make room for new one" % [unit_id, oldest_turret.unit_id])
@@ -207,11 +197,14 @@ func construct_turret(_params: Dictionary):
 	# Update strategic goal for UI display
 	strategic_goal = "Constructing turret..."
 	
-	# Trigger construction animation
-	var anim_controller = get_node_or_null("AnimationController")
-	if anim_controller and anim_controller.has_method("start_constructing"):
-		anim_controller.start_constructing()
-		print("DEBUG: Engineer %s - Construction animation started" % unit_id)
+	# Refresh status bar to show new goal
+	if has_method("refresh_status_bar"):
+		refresh_status_bar()
+	
+	# Trigger construction animation using existing AnimatedUnit system
+	play_animation("Construct")
+	print("DEBUG: Engineer %s - Construction animation started" % unit_id)
+	print("DEBUG: Engineer %s - is_constructing_turret: %s, can_move: %s" % [unit_id, is_constructing_turret, can_move])
 	
 	# Get construction time from turret config
 	var turret_config = GameConstants.get_unit_config("turret")
@@ -252,10 +245,12 @@ func construct_turret(_params: Dictionary):
 		print("Engineer %s: FAILED to construct turret - spawn_unit returned empty string" % unit_id)
 		strategic_goal = "Turret construction failed"
 	
-	# Finish construction animation
-	var animation_controller = get_node_or_null("AnimationController")
-	if animation_controller and animation_controller.has_method("finish_constructing"):
-		animation_controller.finish_constructing()
+	# Refresh status bar to show completion status
+	if has_method("refresh_status_bar"):
+		refresh_status_bar()
+	
+	# Finish construction animation and return to idle
+	play_animation("Idle")
 		
 	# Reset construction state
 	is_constructing_turret = false

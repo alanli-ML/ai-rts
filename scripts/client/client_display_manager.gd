@@ -157,8 +157,9 @@ func _create_unit(unit_data: Dictionary) -> void:
 	units_node.add_child(unit_instance)
 	
 	# NOW set position after the unit is in the tree
-	var pos_arr = unit_data.position
-	unit_instance.global_position = Vector3(pos_arr.x, pos_arr.y, pos_arr.z)
+	var pos_data = unit_data.get("position")
+	if pos_data:
+		unit_instance.global_position = Vector3(pos_data.x, pos_data.y, pos_data.z)
 	
 	displayed_units[unit_id] = unit_instance
 	print("ClientDisplayManager: Created unit %s" % unit_id)
@@ -213,28 +214,31 @@ func _update_unit(unit_data: Dictionary, delta: float) -> void:
 			# Fallback for non-animated units
 			unit_instance.visible = true
 	
-	var target_pos = Vector3(unit_data.position.x, unit_data.position.y, unit_data.position.z)
-	
-	# Smoothly interpolate position to avoid jitter
-	unit_instance.global_position = unit_instance.global_position.lerp(target_pos, delta * 10.0)
+	# Interpolate position and rotation for smooth movement
+	if unit_data.has("position"):
+		var server_pos_data = unit_data.position
+		var server_pos = Vector3(server_pos_data.x, server_pos_data.y, server_pos_data.z)
+		unit_instance.global_position = unit_instance.global_position.lerp(server_pos, 0.5)
 
-	# Smoothly interpolate rotation based on server-authoritative basis
 	if unit_data.has("basis"):
-		var basis_data = unit_data.basis
-		var target_basis = Basis(
-			Vector3(basis_data.x[0], basis_data.x[1], basis_data.x[2]),
-			Vector3(basis_data.y[0], basis_data.y[1], basis_data.y[2]),
-			Vector3(basis_data.z[0], basis_data.z[1], basis_data.z[2])
+		var b = unit_data.basis
+		var server_basis = Basis(
+			Vector3(b.x.x, b.x.y, b.x.z),
+			Vector3(b.y.x, b.y.y, b.y.z),
+			Vector3(b.z.x, b.z.y, b.z.z)
 		)
-		unit_instance.transform.basis = unit_instance.transform.basis.slerp(target_basis, delta * 10.0)
+		unit_instance.transform.basis = unit_instance.transform.basis.slerp(server_basis, 0.2)
+	
+	# Update animation based on server velocity
+	if unit_data.has("velocity"):
+		var vel_data = unit_data.velocity
+		var server_velocity = Vector3(vel_data.x, vel_data.y, vel_data.z)
+		if unit_instance.has_method("update_client_visuals"):
+			unit_instance.update_client_visuals(server_velocity, delta)
 
 	# Update current state for animation
 	if unit_data.has("current_state"):
 		unit_instance.current_state = unit_data.current_state
-	
-	var server_velocity = Vector3(unit_data.velocity.x, unit_data.velocity.y, unit_data.velocity.z)
-	if unit_instance.has_method("update_client_visuals"):
-		unit_instance.update_client_visuals(server_velocity, delta)
 
 	# Update plan summary from server
 	if unit_data.has("plan_summary"):
@@ -245,17 +249,21 @@ func _update_unit(unit_data: Dictionary, delta: float) -> void:
 	
 	# Update strategic goal from server
 	if unit_data.has("strategic_goal"):
-		unit_instance.set("strategic_goal", unit_data.strategic_goal)
-		# Also update status bar if it exists
+		if "strategic_goal" in unit_instance:
+			unit_instance.strategic_goal = unit_data.strategic_goal
+		else:
+			unit_instance.set("strategic_goal", unit_data.strategic_goal)
+		
+		# Refresh the status bar to show updated goal
 		if unit_instance.has_method("refresh_status_bar"):
 			unit_instance.refresh_status_bar()
-	
-	# Update AI processing status from server
-	if unit_data.has("waiting_for_ai"):
-		unit_instance.set("waiting_for_ai", unit_data.waiting_for_ai)
-		# Update status bar to show processing state if needed
-		if unit_instance.has_method("set_ai_processing_status"):
-			unit_instance.set_ai_processing_status(unit_data.waiting_for_ai)
+		
+		# Refresh HUD unit status if strategic goal changed
+		var game_hud = get_tree().get_first_node_in_group("game_hud")
+		if not game_hud:
+			game_hud = get_node_or_null("/root/UnifiedMain/GameHUD")
+		if game_hud and game_hud.has_method("update_unit_data"):
+			game_hud.update_unit_data(unit_id, unit_data)
 	
 	# Update health from server
 	if unit_data.has("health"):
@@ -264,25 +272,6 @@ func _update_unit(unit_data: Dictionary, delta: float) -> void:
 		# Emit health changed signal if health actually changed
 		if old_health != unit_instance.current_health:
 			unit_instance.health_changed.emit(unit_instance.current_health, unit_instance.max_health)
-	
-	# Update full plan data from server
-	if unit_data.has("full_plan"):
-		# Store full plan data directly on the unit for HUD access
-		unit_instance.set("full_plan", unit_data.full_plan)
-		# Also call update method if available
-		if unit_instance.has_method("update_full_plan"):
-			unit_instance.update_full_plan(unit_data.full_plan)
-	
-	# Update control point attack sequence from server
-	if unit_data.has("control_point_attack_sequence"):
-		unit_instance.set("control_point_attack_sequence", unit_data.control_point_attack_sequence)
-	
-	# Update current attack sequence index from server
-	if unit_data.has("current_attack_sequence_index"):
-		unit_instance.set("current_attack_sequence_index", unit_data.current_attack_sequence_index)
-		# Refresh status bar to show updated progress
-		if unit_instance.has_method("refresh_status_bar"):
-			unit_instance.refresh_status_bar()
 	
 	# Update waiting for first command status from server
 	if unit_data.has("waiting_for_first_command"):
@@ -297,114 +286,17 @@ func _update_unit(unit_data: Dictionary, delta: float) -> void:
 	# NOTE: active_triggers and all_triggers are deprecated - replaced by behavior matrix system
 	# Skipping these assignments to avoid property errors on client units
 
-	# Update behavior matrix and scores for UI
+	# Note: Plan data and high-frequency UI data are now sent via separate RPCs.
+	# This keeps the main state packet small.
 	var behavior_data_updated = false
-	if unit_data.has("behavior_matrix"):
-		# Use set() for safer property assignment
-		unit_instance.set("behavior_matrix", unit_data.behavior_matrix)
-		behavior_data_updated = true
-	if unit_data.has("last_action_scores"):
-		# print("DEBUG: ClientDisplayManager updating unit %s with server action scores: %s" % [unit_id, str(unit_data.last_action_scores)])
-		unit_instance.set("last_action_scores", unit_data.last_action_scores)
-		behavior_data_updated = true
-	if unit_data.has("last_state_variables"):
-		unit_instance.set("last_state_variables", unit_data.last_state_variables)
-		behavior_data_updated = true
-	if unit_data.has("current_reactive_state"):
-		# print("DEBUG: ClientDisplayManager updating unit %s with server reactive state: %s" % [unit_id, unit_data.current_reactive_state])
-		unit_instance.set("current_reactive_state", unit_data.current_reactive_state)
-		behavior_data_updated = true
-	
 	# NOTE: The GameHUD and UnitStatusBar now use their own timers to refresh their displays
 	# periodically. Forcing an update here on every network tick was causing severe performance
 	# degradation. The UI components will pick up the data changes on their own schedule.
-
-	# Update shield visual (only for units that support shields)
-	if unit_data.has("shield_active") and "shield_node" in unit_instance:
-		if unit_data.shield_active and not is_instance_valid(unit_instance.get("shield_node")):
-			var shield_scene = preload("res://scenes/fx/ShieldEffect.tscn")
-			var shield_effect = shield_scene.instantiate()
-			unit_instance.add_child(shield_effect)
-			unit_instance.shield_node = shield_effect
-		elif not unit_data.shield_active and is_instance_valid(unit_instance.get("shield_node")):
-			unit_instance.shield_node.queue_free()
-			unit_instance.shield_node = null
-
-	# Update stealth visual
-	if unit_data.has("is_stealthed"):
-		var model_container = unit_instance.get_node_or_null("ModelContainer")
-		if model_container:
-			var was_stealthed = unit_instance.get_meta("was_stealthed", false)
-			if unit_data.is_stealthed != was_stealthed:
-				if unit_data.is_stealthed:
-					_set_model_transparency(model_container, 0.3)
-				else:
-					_set_model_transparency(model_container, 1.0)
-				unit_instance.set_meta("was_stealthed", unit_data.is_stealthed)
 
 	# Update charge shot data for snipers
 	if unit_data.has("charge_timer") and unit_data.has("charge_time"):
 		if unit_instance.has_method("update_charge_data"):
 			unit_instance.update_charge_data(unit_data.charge_timer, unit_data.charge_time)
-
-func _set_model_transparency(model_container: Node3D, alpha_value: float) -> void:
-	"""Set transparency for all MeshInstance3D nodes in the model container"""
-	if not is_instance_valid(model_container):
-		return
-	
-	# Find all MeshInstance3D nodes recursively
-	var mesh_instances = _find_all_mesh_instances(model_container)
-	
-	for mesh_instance in mesh_instances:
-		if not is_instance_valid(mesh_instance):
-			continue
-		
-		# Skip if no mesh or surfaces
-		if not mesh_instance.mesh or mesh_instance.get_surface_override_material_count() == 0:
-			continue
-			
-		# Get existing material or create from mesh surface material
-		var material = mesh_instance.get_surface_override_material(0)
-		
-		# If no override material, try to get the mesh's built-in material
-		if not material and mesh_instance.mesh.surface_get_material(0):
-			material = mesh_instance.mesh.surface_get_material(0)
-			
-		# If still no material, create a basic one with proper initialization
-		if not material:
-			material = StandardMaterial3D.new()
-			# Set basic material properties to avoid null parameter errors
-			material.albedo_color = Color.WHITE
-			material.metallic = 0.0
-			material.roughness = 0.7
-			material.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
-		
-		# Always duplicate the material to avoid affecting other instances
-		if material:
-			material = material.duplicate()
-			mesh_instance.set_surface_override_material(0, material)
-			
-			# Apply transparency settings
-			if material is StandardMaterial3D:
-				var std_material = material as StandardMaterial3D
-				if alpha_value < 1.0:
-					std_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-					std_material.albedo_color.a = alpha_value
-				else:
-					std_material.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED  
-					std_material.albedo_color.a = 1.0
-
-func _find_all_mesh_instances(node: Node) -> Array[MeshInstance3D]:
-	"""Recursively find all MeshInstance3D nodes"""
-	var mesh_instances: Array[MeshInstance3D] = []
-	
-	if node is MeshInstance3D:
-		mesh_instances.append(node as MeshInstance3D)
-	
-	for child in node.get_children():
-		mesh_instances.append_array(_find_all_mesh_instances(child))
-	
-	return mesh_instances
 
 func remove_unit(unit_id: String) -> void:
 	if displayed_units.has(unit_id):

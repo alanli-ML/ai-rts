@@ -8,7 +8,7 @@ var shooter_team_id: int
 var direction: Vector3
 var lifetime: float = 3.0 # seconds
 
-# Team colors for projectiles (matches weapon attachment colors)
+# Team colors for projectiles
 var team_colors: Dictionary = {
 	1: Color(0.2, 0.4, 1.0),    # Blue team
 	2: Color(1.0, 0.3, 0.2),    # Red team
@@ -17,8 +17,8 @@ var team_colors: Dictionary = {
 }
 
 func _ready():
-    # Create team-colored projectile mesh (50% larger than original)
-    _create_team_colored_mesh()
+    # Apply team-based coloring
+    _apply_team_color()
     
     # On clients, this is a visual-only node. On server, it's a logical node.
     if multiplayer.is_server():
@@ -36,32 +36,23 @@ func _ready():
     if is_instance_valid(self):
         queue_free()
 
-func _create_team_colored_mesh():
-    """Create a team-colored sphere mesh for the projectile"""
-    var mesh_instance = get_node("MeshInstance3D")
+func _apply_team_color():
+    """Apply team-based color to the projectile"""
+    var mesh_instance = get_node_or_null("MeshInstance3D")
     if not mesh_instance:
         return
     
-    # Create sphere mesh with 50% larger size (0.1 -> 0.15 radius)
-    var sphere_mesh = SphereMesh.new()
-    sphere_mesh.radius = 0.15
-    sphere_mesh.height = 0.3  # Height also increased proportionally
-    mesh_instance.mesh = sphere_mesh
-    
-    # Create team-colored material
-    var material = StandardMaterial3D.new()
+    # Get team color (default to white if team not found)
     var team_color = team_colors.get(shooter_team_id, Color.WHITE)
     
-    # Set material properties for visibility and team identification
+    # Create a new material with team color
+    var material = StandardMaterial3D.new()
     material.albedo_color = team_color
     material.emission_enabled = true
-    material.emission = team_color * 2.0  # Bright emission for visibility
-    material.emission_energy_multiplier = 3.0  # Extra brightness
-    material.metallic = 0.0
-    material.roughness = 0.1  # Slightly reflective
-    material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-    material.albedo_color.a = 0.9  # Slightly transparent for visual appeal
+    material.emission = team_color * 0.8  # Slight glow effect
+    material.emission_energy_multiplier = 2.0
     
+    # Apply the material to the mesh
     mesh_instance.material_override = material
 
 func _physics_process(delta: float):

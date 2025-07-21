@@ -117,7 +117,7 @@ func play_animation(animation_name: String):
 		"Interact": ["interact-left", "interact-right"],
 		"Emote": ["emote-yes", "emote-no"],
 		"Heal": ["interact-left", "interact-right", "emote-yes", "idle"],
-		"Construct": ["interact-left", "interact-right", "emote-yes", "idle"]
+		"Construct": ["interact-left", "interact-right", "idle"]
 	}
 	
 	# Try mapped fallbacks
@@ -545,15 +545,7 @@ func trigger_death_sequence():
 	# Prevent further actions and ensure dead state
 	is_dead = true
 	
-	# CRITICAL: Completely disable collision so dead units don't block living units
-	set_collision_layer_value(1, false) # No more selection/raycast hits
-	set_collision_mask(0) # Don't collide with anything
-	
-	# Disable the CollisionShape3D completely to ensure no blocking
-	var collision_shape = get_node_or_null("CollisionShape3D")
-	if collision_shape:
-		collision_shape.disabled = true
-		# print("DEBUG: Disabled CollisionShape3D for dead unit %s" % unit_id)  # TEMPORARILY DISABLED
+	# NOTE: Keep collisions active during death animation - they will be disabled after animation completes
 	
 	# Add immediate visual feedback that the unit is dead
 	_apply_immediate_death_effects()
@@ -601,6 +593,17 @@ func _on_death_animation_finished(animation_name: String):
 func _start_death_visual_effects():
 	"""Start the visual death effects sequence"""
 	# print("DEBUG: Starting death visual effects for unit %s" % unit_id)  # TEMPORARILY DISABLED
+	
+	# Now that death animation is complete, disable collisions so dead units don't block living ones
+	print("DEBUG: Death animation complete for unit %s, disabling collisions" % unit_id)
+	set_collision_layer_value(1, false) # No more selection/raycast hits
+	set_collision_mask(0) # Don't collide with anything
+	
+	# Disable the CollisionShape3D completely to ensure no blocking
+	var collision_shape = get_node_or_null("CollisionShape3D")
+	if collision_shape:
+		collision_shape.disabled = true
+		GameConstants.debug_print("Disabled CollisionShape3D for dead unit %s after death animation" % unit_id, "UNITS")
 	
 	# Note: Keep physics processing enabled for respawn timer countdown
 	

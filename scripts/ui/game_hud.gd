@@ -8,6 +8,7 @@ const GameEnums = preload("res://scripts/shared/types/game_enums.gd")
 const RTSCamera = preload("res://scripts/core/rts_camera.gd")
 
 # UI References
+@onready var top_bar = $TopBar
 @onready var energy_label = $TopBar/HBoxContainer/EnergyLabel
 @onready var node_label = $TopBar/HBoxContainer/NodeLabel
 @onready var action_queue_list = $UnitActionQueuePanel/MarginContainer/ScrollContainer/ActionQueueList
@@ -118,6 +119,10 @@ func _ready() -> void:
     # Temporarily disable spawn units interface
     if left_spawn_panel:
         left_spawn_panel.visible = false
+    
+    # Temporarily hide top bar with energy display
+    if top_bar:
+        top_bar.visible = false
     
     hover_tooltip.visible = false
 

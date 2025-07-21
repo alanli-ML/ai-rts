@@ -532,7 +532,7 @@ func _on_ai_plan_processed(plans: Array, message: String, originating_peer_id: i
                 coordination_status = "\n[color=green]All teams ready - match starting![/color]"
         
         root_node.rpc_id(originating_peer_id, "_on_ai_command_feedback_rpc", 
-            message + coordination_status, "[color=green]✓ Command completed[/color]")
+            message + coordination_status, "[color=green]✓ Command processed[/color]")
     elif root_node and originating_peer_id == -1:
         # Fallback for backward compatibility - send to all clients if peer_id not specified
         var session_manager = get_node("/root/DependencyContainer").get_node("SessionManager")

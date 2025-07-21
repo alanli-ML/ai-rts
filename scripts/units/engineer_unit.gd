@@ -230,6 +230,8 @@ func construct_turret(_params: Dictionary):
 
 	# Spawn turret in front of the engineer
 	var spawn_pos = global_position + transform.basis.z * -3.0 # 3 units in front
+	spawn_pos.y = 0.5  # Place on ground level
+
 	GameConstants.debug_print("Engineer %s - Attempting to spawn turret at position: %s" % [unit_id, spawn_pos], "ABILITIES")
 	
 	var turret_unit_id = await game_state.spawn_unit("turret", team_id, spawn_pos, unit_id)

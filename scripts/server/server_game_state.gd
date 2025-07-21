@@ -540,7 +540,7 @@ func _on_ai_plan_processed(plans: Array, message: String, originating_peer_id: i
             var session_id = session_manager.sessions.keys()[0]
             var peer_ids = session_manager.get_all_peer_ids_in_session(session_id)
             for peer_id in peer_ids:
-                root_node.rpc_id(peer_id, "_on_ai_command_feedback_rpc", message, "[color=green]✓ Command completed[/color]")
+                root_node.rpc_id(peer_id, "_on_ai_command_feedback_rpc", message, "[color=green]✓ Command processed[/color]")
 
 func _on_ai_command_failed(error: String, p_unit_ids: Array, originating_peer_id: int = -1) -> void:
     """Handle failed AI command processing"""

@@ -36,7 +36,7 @@ const FOLLOW_DISTANCE = 5.0
 # State
 var current_state: GameEnums.UnitState = GameEnums.UnitState.IDLE
 var is_dead: bool = false
-var strategic_goal: String = "Act autonomously based on my unit type."
+var strategic_goal: String = "Awaiting strategic orders from commander..."
 var plan_summary: String = "Idle"  # Client-side display of current plan status
 var full_plan: Array = []  # Client-side storage of complete plan data
 var waiting_for_ai: bool = false  # Client-side flag for AI processing status
@@ -418,16 +418,6 @@ func _physics_process(delta: float) -> void:
 		_execute_current_state(delta)
 	elif waiting_for_first_command:
 		# Unit is waiting for first AI command - remain idle
-		# CRITICAL FIX: Don't overwrite strategic_goal if it has been set by AI
-		# This prevents losing goals during synchronized start when one team gets AI response first
-		var default_goal = "Act autonomously based on my unit type."
-		var awaiting_goal = "Awaiting strategic orders from commander..."
-		
-		# Only set the awaiting message if no meaningful goal has been set yet
-		if strategic_goal == default_goal or strategic_goal.is_empty():
-			strategic_goal = awaiting_goal
-		# If strategic_goal is already set to something meaningful (not default/empty), keep it
-		
 		current_state = GameEnums.UnitState.IDLE
 		# Stop any movement while waiting
 		velocity.x = 0
@@ -907,11 +897,13 @@ func refresh_status_bar() -> void:
 	if not status_bar:
 		return
 	
-	# The status bar will pull the latest data from this unit (its parent).
-	# We just need to trigger the update method. The 'plan_summary' argument is
-	# mostly a placeholder now; the important data is pulled directly inside update_status.
+	# Force the status bar to refresh by calling update_status directly
 	if status_bar.has_method("update_status"):
 		status_bar.update_status(plan_summary)
+	
+	# Also force an immediate refresh of the auto-update tracking
+	if status_bar.has_method("force_refresh"):
+		status_bar.force_refresh()
 
 func set_status_bar_visibility(visible: bool) -> void:
 	"""Set the visibility of the status bar"""

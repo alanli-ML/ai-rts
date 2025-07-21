@@ -2,6 +2,8 @@
 class_name RTSCamera
 extends Node3D
 
+const GameConstants = preload("res://scripts/shared/constants/game_constants.gd")
+
 # Camera movement settings
 @export_group("Movement")
 @export var pan_speed: float = 30.0
@@ -11,7 +13,7 @@ extends Node3D
 
 # Zoom settings
 @export_group("Zoom")
-@export var zoom_speed: float = 2.0  # Reduced from 5.0 for more precise control
+@export var zoom_speed: float = 1.0  # Reduced from 5.0 for more precise control
 @export var min_zoom: float = 5.0  # Reduced from 10.0 to allow much closer zoom
 @export var max_zoom: float = 60.0
 @export var zoom_smoothing: float = 10.0
@@ -39,6 +41,12 @@ var target_zoom: float = 20.0   # Closer default zoom (was 30.0)
 var is_dragging: bool = false
 var last_mouse_position: Vector2
 var velocity: Vector3 = Vector3.ZERO
+
+# Input control state
+var camera_input_enabled: bool = true  # Flag to disable camera movement when typing
+
+# Signals
+signal camera_input_state_changed(enabled: bool)
 
 func _ready() -> void:
     # Find or create Camera3D child
@@ -112,6 +120,10 @@ func _unhandled_input(event: InputEvent) -> void:
         get_viewport().set_input_as_handled()
 
 func _process(delta: float) -> void:
+    # Only process camera input if enabled (not typing in command input)
+    if not camera_input_enabled:
+        return
+    
     # Keyboard input
     var input_vector = Vector3.ZERO
     
@@ -492,4 +504,21 @@ func _get_ground_intersection(ray_origin: Vector3, ray_direction: Vector3) -> Ve
     
     # Calculate intersection point
     var intersection = ray_origin + ray_direction * t
-    return intersection 
+    return intersection
+
+# Camera input control functions
+func disable_camera_input() -> void:
+    """Disable camera movement input (e.g., when user is typing)"""
+    camera_input_enabled = false
+    GameConstants.debug_print("RTSCamera: Camera input disabled", "GENERAL")
+    camera_input_state_changed.emit(false)
+
+func enable_camera_input() -> void:
+    """Enable camera movement input"""
+    camera_input_enabled = true
+    GameConstants.debug_print("RTSCamera: Camera input enabled", "GENERAL")
+    camera_input_state_changed.emit(true)
+
+func is_camera_input_enabled() -> bool:
+    """Check if camera input is currently enabled"""
+    return camera_input_enabled 

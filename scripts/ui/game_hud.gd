@@ -5,6 +5,7 @@ extends Control
 # Load shared constants
 const GameConstants = preload("res://scripts/shared/constants/game_constants.gd")
 const GameEnums = preload("res://scripts/shared/types/game_enums.gd")
+const RTSCamera = preload("res://scripts/core/rts_camera.gd")
 
 # UI References
 @onready var energy_label = $TopBar/HBoxContainer/EnergyLabel
@@ -17,6 +18,7 @@ const GameEnums = preload("res://scripts/shared/types/game_enums.gd")
 @onready var command_summary_label = $CommandStatusPanel/MarginContainer/VBoxContainer/SummaryLabel
 
 # Spawn button references
+@onready var left_spawn_panel = $LeftSpawnPanel
 @onready var scout_button = $LeftSpawnPanel/MarginContainer/VBoxContainer/ScoutButton
 @onready var tank_button = $LeftSpawnPanel/MarginContainer/VBoxContainer/TankButton
 @onready var sniper_button = $LeftSpawnPanel/MarginContainer/VBoxContainer/SniperButton
@@ -87,7 +89,7 @@ func _ready() -> void:
     if selection_system and selection_system.has_signal("selection_changed"):
         selection_system.selection_changed.connect(_on_selection_changed)
     else:
-        print("GameHUD: Warning - Selection system not found or doesn't have selection_changed signal")
+        GameConstants.debug_print("Warning - Selection system not found or doesn't have selection_changed signal", "HUD")
     if ai_command_processor:
         ai_command_processor.processing_started.connect(_on_ai_processing_started)
         ai_command_processor.processing_finished.connect(_on_ai_processing_finished)
@@ -112,6 +114,11 @@ func _ready() -> void:
     _update_node_display(0)
     _update_selection_display([])
     _update_spawn_button_states()  # Initialize spawn button states
+    
+    # Temporarily disable spawn units interface
+    if left_spawn_panel:
+        left_spawn_panel.visible = false
+    
     hover_tooltip.visible = false
 
 func _setup_command_input():
@@ -128,56 +135,96 @@ func _setup_command_input():
         # Connect focus signals to maintain focus
         command_input.focus_exited.connect(_on_command_input_focus_lost)
         
-        print("GameHUD: Command input configured for automatic keyboard capture")
+        # Connect focus signals to disable/enable camera movement
+        command_input.focus_entered.connect(_on_command_input_focus_entered)
+        command_input.focus_exited.connect(_on_command_input_focus_exited)
+        
+        GameConstants.debug_print("GameHUD: Command input configured for automatic keyboard capture", "HUD")
 
 func _grab_command_focus():
     """Grab focus for command input with a frame delay"""
     # Don't grab focus if start message is visible
     var start_message = get_node_or_null("/root/UnifiedMain/StartMessage")
     if start_message and start_message.has_method("is_currently_visible") and start_message.is_currently_visible():
-        print("GameHUD: Start message is visible, not grabbing initial focus")
+        GameConstants.debug_print("GameHUD: Start message is visible, not grabbing initial focus", "HUD")
         return
         
     if command_input and is_visible_in_tree():
         command_input.grab_focus()
-        print("GameHUD: Command input focus grabbed")
+        GameConstants.debug_print("GameHUD: Command input focus grabbed", "HUD")
 
 func _on_command_input_focus_lost():
     """Automatically regrab focus when command input loses focus"""
     # Don't regrab focus if start message is visible
     var start_message = get_node_or_null("/root/UnifiedMain/StartMessage")
     if start_message and start_message.has_method("is_currently_visible") and start_message.is_currently_visible():
-        print("GameHUD: Start message is visible, not regrabbing focus on focus lost")
+        GameConstants.debug_print("GameHUD: Start message is visible, not regrabbing focus on focus lost", "HUD")
         return
         
     # Use call_deferred instead of await to avoid race conditions
     # This prevents issues where the node might become invalid during await
     call_deferred("_regrab_focus_safely")
 
+func _on_command_input_focus_entered():
+    """Disable camera movement when user starts typing in command input"""
+    _set_camera_input_enabled(false)
+    GameConstants.debug_print("GameHUD: Command input gained focus - camera movement disabled", "HUD")
+
+func _on_command_input_focus_exited():
+    """Re-enable camera movement when user stops typing in command input"""
+    _set_camera_input_enabled(true)
+    GameConstants.debug_print("GameHUD: Command input lost focus - camera movement enabled", "HUD")
+
 func _regrab_focus_safely():
     """Safely regrab focus for command input"""
     if not command_input or not is_instance_valid(command_input):
-        print("GameHUD: Command input is invalid, cannot regrab focus")
+        GameConstants.debug_print("GameHUD: Command input is invalid, cannot regrab focus", "HUD")
         return
         
     if not is_visible_in_tree():
-        print("GameHUD: GameHUD not visible in tree, cannot regrab focus")
+        GameConstants.debug_print("GameHUD: GameHUD not visible in tree, cannot regrab focus", "HUD")
         return
     
     # Don't steal focus if start message is visible
     var start_message = get_node_or_null("/root/UnifiedMain/StartMessage")
     if start_message and start_message.has_method("is_currently_visible") and start_message.is_currently_visible():
-        print("GameHUD: Start message is visible, not grabbing focus")
+        GameConstants.debug_print("GameHUD: Start message is visible, not grabbing focus", "HUD")
         return
         
     # Ensure command input is still editable and enabled
     if not command_input.editable:
-        print("GameHUD: Command input not editable, re-enabling")
+        GameConstants.debug_print("GameHUD: Command input not editable, re-enabling", "HUD")
         command_input.editable = true
         
     # Re-grab focus
     command_input.grab_focus()
-    print("GameHUD: Command input focus regrabbed safely")
+    GameConstants.debug_print("GameHUD: Command input focus regrabbed safely", "HUD")
+
+func _set_camera_input_enabled(enabled: bool):
+    """Enable or disable camera movement input by finding and communicating with the RTSCamera"""
+    # Find the RTS camera in the scene
+    var rts_camera: RTSCamera = null
+    
+    # Try to find camera in the map instance first
+    var unified_main = get_node_or_null("/root/UnifiedMain")
+    if unified_main and "map_instance" in unified_main and unified_main.map_instance:
+        rts_camera = unified_main.map_instance.get_node_or_null("RTSCamera")
+    
+    # If not found in map, search globally in the rts_cameras group
+    if not rts_camera:
+        var rts_cameras = get_tree().get_nodes_in_group("rts_cameras")
+        if rts_cameras.size() > 0:
+            rts_camera = rts_cameras[0]
+    
+    # Control camera input
+    if rts_camera:
+        if enabled:
+            rts_camera.enable_camera_input()
+        else:
+            rts_camera.disable_camera_input()
+        GameConstants.debug_print("GameHUD: Camera input %s via RTSCamera" % ("enabled" if enabled else "disabled"), "HUD")
+    else:
+        GameConstants.debug_print("GameHUD: Warning - Could not find RTSCamera to control input", "HUD")
 
 func _unhandled_input(event: InputEvent):
     """Capture keyboard input and route it to command input - don't interfere with mouse selection"""
@@ -232,20 +279,20 @@ func _check_command_input_health():
     # Don't interfere if start message is visible
     var start_message = get_node_or_null("/root/UnifiedMain/StartMessage")
     if start_message and start_message.has_method("is_currently_visible") and start_message.is_currently_visible():
-        print("GameHUD: Start message is visible, skipping command input health check")
+        GameConstants.debug_print("GameHUD: Start message is visible, skipping command input health check", "HUD")
         return
     
     # Check if command input has lost its settings and restore them
     if not command_input.editable:
-        print("GameHUD: Detected command input became non-editable, fixing...")
+        GameConstants.debug_print("GameHUD: Detected command input became non-editable, fixing...", "HUD")
         command_input.editable = true
     
     if command_input.focus_mode != Control.FOCUS_ALL:
-        print("GameHUD: Detected command input lost focus mode, fixing...")
+        GameConstants.debug_print("GameHUD: Detected command input lost focus mode, fixing...", "HUD")
         command_input.focus_mode = Control.FOCUS_ALL
     
     if command_input.mouse_filter != Control.MOUSE_FILTER_PASS:
-        print("GameHUD: Detected command input lost mouse filter, fixing...")
+        GameConstants.debug_print("GameHUD: Detected command input lost mouse filter, fixing...", "HUD")
         command_input.mouse_filter = Control.MOUSE_FILTER_PASS
     
     # If command input doesn't have focus and there's no modal dialog, give it focus
@@ -267,9 +314,9 @@ func _find_selection_system():
              selection_system.selection_changed.connect(_on_selection_changed)
         if not selection_system.is_connected("unit_hovered", _on_unit_hovered):
              selection_system.unit_hovered.connect(_on_unit_hovered)
-        print("GameHUD: Successfully connected to EnhancedSelectionSystem.")
+        GameConstants.debug_print("GameHUD: Successfully connected to EnhancedSelectionSystem.", "HUD")
     else:
-        print("GameHUD: FATAL - Could not find EnhancedSelectionSystem via group.")
+        GameConstants.debug_print("GameHUD: FATAL - Could not find EnhancedSelectionSystem via group.", "HUD")
 
 
 func _on_resource_changed(team_id: int, resource_type: int, new_amount: int):
@@ -314,17 +361,20 @@ func _on_command_submitted(text: String):
     if text.begins_with("/test"):
         get_node("/root/UnifiedMain").rpc("submit_test_command_rpc", text)
         command_input.clear()
+        _set_camera_input_enabled(true)  # Re-enable camera after command
         _ensure_command_input_active()
         return
         
     if text.is_empty():
-        print("GameHUD: Empty command entered")
+        GameConstants.debug_print("GameHUD: Empty command entered", "HUD")
+        _set_camera_input_enabled(true)  # Re-enable camera even for empty command
         _ensure_command_input_active()  # Keep focus for next command
         return
         
     if not selection_system:
-        print("GameHUD: No selection system available")
+        GameConstants.debug_print("GameHUD: No selection system available", "HUD")
         command_input.clear()
+        _set_camera_input_enabled(true)  # Re-enable camera after clearing
         _ensure_command_input_active()
         return
     
@@ -333,12 +383,12 @@ func _on_command_submitted(text: String):
     
     if selected_units.is_empty():
         # No units selected - send as group command for entire team
-        print("GameHUD: Submitting group command '%s' for entire team" % text)
+        GameConstants.debug_print("GameHUD: Submitting group command '%s' for entire team" % text, "HUD")
     else:
         # Specific units selected
         for unit in selected_units:
             unit_ids.append(unit.unit_id)
-        print("GameHUD: Submitting command '%s' to %d selected units" % [text, unit_ids.size()])
+        GameConstants.debug_print("GameHUD: Submitting command '%s' to %d selected units" % [text, unit_ids.size()], "HUD")
     
     if audio_manager:
         audio_manager.play_sound_2d("res://assets/audio/ui/command_submit_01.wav")
@@ -347,17 +397,21 @@ func _on_command_submitted(text: String):
     get_node("/root/UnifiedMain").rpc("submit_command_rpc", text, unit_ids)
     
     command_input.clear()
+    
+    # Re-enable camera movement after command submission
+    _set_camera_input_enabled(true)
+    
     _ensure_command_input_active()  # Immediately ready for next command
 
 func _ensure_command_input_active():
     """Ensure the command input is active and ready for input"""
     if not command_input:
-        print("GameHUD: Warning - command_input is null")
+        GameConstants.debug_print("GameHUD: Warning - command_input is null", "HUD")
         return
     
     # Ensure it's editable
     if not command_input.editable:
-        print("GameHUD: Re-enabling command input editability")
+        GameConstants.debug_print("GameHUD: Re-enabling command input editability", "HUD")
         command_input.editable = true
     
     # Ensure proper focus mode
@@ -370,7 +424,7 @@ func _ensure_command_input_active():
     
     # Grab focus
     command_input.grab_focus()
-    print("GameHUD: Command input ensured active and focused")
+    GameConstants.debug_print("GameHUD: Command input ensured active and focused", "HUD")
 
 func _update_energy_display(amount: int, rate: float):
     energy_label.text = "Energy: %d (+%.1f/s)" % [amount, rate]
@@ -598,7 +652,7 @@ func _on_ai_plan_processed(plans: Array, message: String, originating_peer_id: i
                 if not action_types.is_empty():
                     summary_text = "Coordinating %d units: %s" % [unit_count, ", ".join(action_types)]
         
-        update_ai_command_feedback(summary_text, "[color=green]✓ Command completed[/color]")
+        update_ai_command_feedback(summary_text, "[color=green]✓ Command processed[/color]")
     
     # Auto-clear status after a few seconds
     await get_tree().create_timer(3.0).timeout
@@ -706,17 +760,17 @@ func _find_selection_system_old():
     if map_node:
         selection_system = map_node.find_child("EnhancedSelectionSystem", false)
         if selection_system:
-            print("GameHUD: Found selection system in TestMap node.")
+            GameConstants.debug_print("GameHUD: Found selection system in TestMap node.", "HUD")
             return
 
     # Fallback if the above fails
     await get_tree().process_frame
     selection_system = get_tree().get_first_node_in_group("selection_systems")
     if selection_system:
-        print("GameHUD: Found selection system by group after waiting a frame.")
+        GameConstants.debug_print("GameHUD: Found selection system by group after waiting a frame.", "HUD")
         return
 
-    print("GameHUD: Warning - Could not find selection system")
+    GameConstants.debug_print("GameHUD: Warning - Could not find selection system", "HUD")
 
 # ========== Unit Status Panel Methods ==========
 
@@ -756,7 +810,7 @@ func update_player_units(units_data: Array, player_peer_id: int = -1) -> void:
                         new_goal == "Awaiting strategic orders from commander..."):
                         if not prev_goal.is_empty() and prev_goal != "Awaiting strategic orders from commander...":
                             merged_data["strategic_goal"] = prev_goal
-                            print("GameHUD: Preserved strategic goal for %s: '%s'" % [unit_id, prev_goal])
+                            GameConstants.debug_print("GameHUD: Preserved strategic goal for %s: '%s'" % [unit_id, prev_goal], "HUD")
                     
                     # Preserve control point attack sequence if not included  
                     if not merged_data.has("control_point_attack_sequence") and previous_data.has("control_point_attack_sequence"):
@@ -776,48 +830,48 @@ func _get_player_team_id(peer_id: int) -> int:
     # Check for override first (set by UnifiedMain when lookups fail)
     if "player_team_id_override" in self:
         var override_team_id = get("player_team_id_override")
-        print("GameHUD: Using team ID override: %d" % override_team_id)
+        GameConstants.debug_print("GameHUD: Using team ID override: %d" % override_team_id, "HUD")
         return override_team_id
     
     # Try to get session manager to find player's team
     var session_manager = get_node_or_null("/root/DependencyContainer/SessionManager")
     if not session_manager:
-        print("GameHUD: No session manager, falling back to UnifiedMain")
+        GameConstants.debug_print("GameHUD: No session manager, falling back to UnifiedMain", "HUD")
         return _get_team_id_from_unified_main()
         
     var session_id = session_manager.get_player_session(peer_id)
     if session_id.is_empty():
-        print("GameHUD: No session found for peer %d, falling back to UnifiedMain" % peer_id)
+        GameConstants.debug_print("GameHUD: No session found for peer %d, falling back to UnifiedMain" % peer_id, "HUD")
         return _get_team_id_from_unified_main()
         
     var session = session_manager.get_session(session_id)
     if not session:
-        print("GameHUD: Session data not found, falling back to UnifiedMain")
+        GameConstants.debug_print("GameHUD: Session data not found, falling back to UnifiedMain", "HUD")
         return _get_team_id_from_unified_main()
     
     # Find player in session
     for player_id in session.players:
         var player = session.players[player_id]
         if player.peer_id == peer_id:
-            print("GameHUD: Found team ID %d for peer %d via session manager" % [player.team_id, peer_id])
+            GameConstants.debug_print("GameHUD: Found team ID %d for peer %d via session manager" % [player.team_id, peer_id], "HUD")
             return player.team_id
     
-    print("GameHUD: Peer %d not found in session, falling back to UnifiedMain" % peer_id)
+    GameConstants.debug_print("GameHUD: Peer %d not found in session, falling back to UnifiedMain" % peer_id, "HUD")
     return _get_team_id_from_unified_main()
 
 func _get_team_id_from_unified_main() -> int:
     """Get team ID from UnifiedMain as backup when SessionManager fails"""
     var unified_main = get_node_or_null("/root/UnifiedMain")
     if not unified_main:
-        print("GameHUD: Could not find UnifiedMain node")
+        GameConstants.debug_print("GameHUD: Could not find UnifiedMain node", "HUD")
         return -1
     
     if "client_team_id" in unified_main:
         var team_id = unified_main.client_team_id
-        print("GameHUD: Found client_team_id in UnifiedMain: %d" % team_id)
+        GameConstants.debug_print("GameHUD: Found client_team_id in UnifiedMain: %d" % team_id, "HUD")
         return team_id
     
-    print("GameHUD: client_team_id not found in UnifiedMain")
+    GameConstants.debug_print("GameHUD: client_team_id not found in UnifiedMain", "HUD")
     return -1
 
 func _refresh_unit_status_display() -> void:
@@ -830,7 +884,7 @@ func _refresh_unit_status_display() -> void:
         return
     is_refreshing_units = true
 
-    print("GameHUD: _refresh_unit_status_display called - updating existing bars instead of recreating")
+    GameConstants.debug_print("GameHUD: _refresh_unit_status_display called - updating existing bars instead of recreating", "HUD")
     
     # Instead of clearing everything, just update existing bars and create missing ones
     # First, update all existing bars
@@ -839,11 +893,11 @@ func _refresh_unit_status_display() -> void:
         if unit_bars.has(unit_id):
             # Update existing bar
             _update_unit_bar(unit_id, unit_data)
-            print("GameHUD: Updated existing bar for %s during refresh" % unit_id)
+            GameConstants.debug_print("GameHUD: Updated existing bar for %s during refresh" % unit_id, "HUD")
         else:
             # Create missing bar
             _create_unit_bar(unit_id, unit_data)
-            print("GameHUD: Created missing bar for %s during refresh" % unit_id)
+            GameConstants.debug_print("GameHUD: Created missing bar for %s during refresh" % unit_id, "HUD")
     
     # Remove bars for units that no longer exist
     var units_to_remove = []
@@ -856,17 +910,17 @@ func _refresh_unit_status_display() -> void:
         if bar_data.has("container") and is_instance_valid(bar_data["container"]):
             bar_data["container"].queue_free()
         unit_bars.erase(unit_id)
-        print("GameHUD: Removed bar for unit %s (no longer exists)" % unit_id)
+        GameConstants.debug_print("GameHUD: Removed bar for unit %s (no longer exists)" % unit_id, "HUD")
     
     is_refreshing_units = false
 
 func _create_unit_bar(unit_id: String, unit_data: Dictionary) -> void:
     """Create a health/respawn bar for a unit with goal display"""
     if not unit_status_panel:
-        print("GameHUD: ERROR - unit_status_panel is null, cannot create unit bar for %s" % unit_id)
+        GameConstants.debug_print("GameHUD: ERROR - unit_status_panel is null, cannot create unit bar for %s" % unit_id, "HUD")
         return
     
-    print("GameHUD: Creating unit bar for %s" % unit_id)
+    GameConstants.debug_print("GameHUD: Creating unit bar for %s" % unit_id, "HUD")
     
     # Main container for this unit - use VBoxContainer for vertical stacking
     var unit_container = VBoxContainer.new()
@@ -926,7 +980,7 @@ func _create_unit_bar(unit_id: String, unit_data: Dictionary) -> void:
         "goal_label": goal_label
     }
     
-    print("GameHUD: Created unit bar for %s" % unit_id)
+    GameConstants.debug_print("GameHUD: Created unit bar for %s" % unit_id, "HUD")
     
     # Update the bar with current data
     _update_unit_bar(unit_id, unit_data)
@@ -936,7 +990,7 @@ func _update_unit_bar(unit_id: String, unit_data: Dictionary) -> void:
 
     
     if not unit_bars.has(unit_id):
-        print("GameHUD: ERROR - No unit bar found for %s, available bars: %s" % [unit_id, str(unit_bars.keys())])
+        GameConstants.debug_print("GameHUD: ERROR - No unit bar found for %s, available bars: %s" % [unit_id, str(unit_bars.keys())], "HUD")
         return
     
     var bar_elements = unit_bars[unit_id]
@@ -988,7 +1042,7 @@ func _update_unit_bar(unit_id: String, unit_data: Dictionary) -> void:
     # Update strategic goal display
     var strategic_goal = unit_data.get("strategic_goal", "")
     if strategic_goal != "Awaiting strategic orders from commander...":
-        print("GameHUD: Setting goal for %s: '%s'" % [unit_id, strategic_goal])
+        GameConstants.debug_print("GameHUD: Setting goal for %s: '%s'" % [unit_id, strategic_goal], "HUD")
     
     if strategic_goal.is_empty() or strategic_goal == "Act autonomously based on my unit type.":
         goal_label.text = "[i][color=gray]No current objective[/color][/i]"
@@ -1027,16 +1081,16 @@ func update_unit_data(unit_id: String, unit_data: Dictionary) -> void:
         
         # If we already have a UI bar for this unit, update it
         if unit_bars.has(unit_id):
-            print("GameHUD: Updating existing bar for unit %s" % unit_id)
+            GameConstants.debug_print("GameHUD: Updating existing bar for unit %s" % unit_id, "HUD")
             _update_unit_bar(unit_id, unit_data)
         else:
             # If no bar exists yet, create one
-            print("GameHUD: Creating new bar for unit %s" % unit_id)
+            GameConstants.debug_print("GameHUD: Creating new bar for unit %s" % unit_id, "HUD")
             _create_unit_bar(unit_id, unit_data)
         
-        print("GameHUD: Updated unit data for %s - strategic_goal: '%s'" % [unit_id, unit_data.get("strategic_goal", "none")])
+        GameConstants.debug_print("GameHUD: Updated unit data for %s - strategic_goal: '%s'" % [unit_id, unit_data.get("strategic_goal", "none")], "HUD")
     else:
-        print("GameHUD: Ignoring unit %s - not from player's team (player: %d, unit: %d)" % [unit_id, player_team_id, unit_team_id])
+        GameConstants.debug_print("GameHUD: Ignoring unit %s - not from player's team (player: %d, unit: %d)" % [unit_id, player_team_id, unit_team_id], "HUD")
 
 # Add a helper method to force refresh all unit bars when needed
 func refresh_all_unit_bars() -> void:
@@ -1046,28 +1100,28 @@ func refresh_all_unit_bars() -> void:
             _update_unit_bar(unit_id, player_units[unit_id])
 
 func _on_spawn_scout():
-    print("GameHUD: Scout button pressed!")
+    GameConstants.debug_print("GameHUD: Scout button pressed!", "HUD")
     _spawn_unit("scout")
 
 func _on_spawn_tank():
-    print("GameHUD: Tank button pressed!")
+    GameConstants.debug_print("GameHUD: Tank button pressed!", "HUD")
     _spawn_unit("tank")
 
 func _on_spawn_sniper():
-    print("GameHUD: Sniper button pressed!")
+    GameConstants.debug_print("GameHUD: Sniper button pressed!", "HUD")
     _spawn_unit("sniper")
 
 func _on_spawn_medic():
-    print("GameHUD: Medic button pressed!")
+    GameConstants.debug_print("GameHUD: Medic button pressed!", "HUD")
     _spawn_unit("medic")
 
 func _on_spawn_engineer():
-    print("GameHUD: Engineer button pressed!")
+    GameConstants.debug_print("GameHUD: Engineer button pressed!", "HUD")
     _spawn_unit("engineer")
 
 func _spawn_unit(unit_type: String):
     """Spawn a unit of the specified type via direct RPC call"""
-    print("GameHUD: Attempting to spawn %s" % unit_type.to_lower())
+    GameConstants.debug_print("GameHUD: Attempting to spawn %s" % unit_type.to_lower(), "HUD")
     
     # Check if we have enough energy (basic validation)
     if resource_manager:
@@ -1075,7 +1129,7 @@ func _spawn_unit(unit_type: String):
         var spawn_cost = 100  # Standard unit cost
         
         if current_energy < spawn_cost:
-            print("GameHUD: Not enough energy to spawn %s (need %d, have %d)" % [unit_type, spawn_cost, current_energy])
+            GameConstants.debug_print("GameHUD: Not enough energy to spawn %s (need %d, have %d)" % [unit_type, spawn_cost, current_energy], "HUD")
             if audio_manager:
                 audio_manager.play_sound_2d("res://assets/audio/ui/click_01.wav")
             return
@@ -1092,7 +1146,7 @@ func _spawn_unit(unit_type: String):
     
     if server_game_state:
         var peer_id = multiplayer.get_unique_id()
-        print("GameHUD: Calling direct spawn RPC for %s with peer_id %d" % [unit_type.to_lower(), peer_id])
+        GameConstants.debug_print("GameHUD: Calling direct spawn RPC for %s with peer_id %d" % [unit_type.to_lower(), peer_id], "HUD")
         
         # Call the direct spawn RPC
         server_game_state.request_spawn_unit_rpc(unit_type.to_lower(), peer_id)
@@ -1101,14 +1155,14 @@ func _spawn_unit(unit_type: String):
         if audio_manager:
             audio_manager.play_sound_2d("res://assets/audio/ui/click_01.wav")
     else:
-        print("GameHUD: ERROR - Could not find ServerGameState to call spawn RPC")
+        GameConstants.debug_print("GameHUD: ERROR - Could not find ServerGameState to call spawn RPC", "HUD")
         if audio_manager:
             audio_manager.play_sound_2d("res://assets/audio/ui/click_01.wav")
 
 func _setup_spawn_shortcuts():
     """Set up keyboard shortcuts for spawning units"""
     # Simple input handling via _input method
-    print("GameHUD: Spawn shortcuts configured (1-5 keys for unit types)")
+    GameConstants.debug_print("GameHUD: Spawn shortcuts configured (1-5 keys for unit types)", "HUD")
 
 func _input(event):
     """Handle keyboard input for spawn shortcuts"""
@@ -1117,30 +1171,30 @@ func _input(event):
         if command_input and is_instance_valid(command_input):
             input_has_focus = command_input.has_focus()
         
-        print("GameHUD: Key pressed: %d, command_input has focus: %s" % [event.keycode, input_has_focus])
+        GameConstants.debug_print("GameHUD: Key pressed: %d, command_input has focus: %s" % [event.keycode, input_has_focus], "HUD")
         
         # Only handle spawn hotkeys (1-5) when command input is NOT focused
         # This allows normal typing in the text box while preserving hotkey functionality
         if not input_has_focus:
             match event.keycode:
                 KEY_1:
-                    print("GameHUD: Hotkey 1 pressed - spawning scout")
+                    GameConstants.debug_print("GameHUD: Hotkey 1 pressed - spawning scout", "HUD")
                     _on_spawn_scout()
                     get_viewport().set_input_as_handled()  # Prevent further processing
                 KEY_2:  
-                    print("GameHUD: Hotkey 2 pressed - spawning tank")
+                    GameConstants.debug_print("GameHUD: Hotkey 2 pressed - spawning tank", "HUD")
                     _on_spawn_tank()
                     get_viewport().set_input_as_handled()
                 KEY_3:
-                    print("GameHUD: Hotkey 3 pressed - spawning sniper")
+                    GameConstants.debug_print("GameHUD: Hotkey 3 pressed - spawning sniper", "HUD")
                     _on_spawn_sniper()
                     get_viewport().set_input_as_handled()
                 KEY_4:
-                    print("GameHUD: Hotkey 4 pressed - spawning medic")
+                    GameConstants.debug_print("GameHUD: Hotkey 4 pressed - spawning medic", "HUD")
                     _on_spawn_medic()
                     get_viewport().set_input_as_handled()
                 KEY_5:
-                    print("GameHUD: Hotkey 5 pressed - spawning engineer")
+                    GameConstants.debug_print("GameHUD: Hotkey 5 pressed - spawning engineer", "HUD")
                     _on_spawn_engineer()
                     get_viewport().set_input_as_handled()
                 _:
@@ -1189,4 +1243,4 @@ func _connect_spawn_buttons():
         medic_button.pressed.connect(_on_spawn_medic)
     if engineer_button:
         engineer_button.pressed.connect(_on_spawn_engineer)
-    print("GameHUD: Spawn buttons connected successfully")
+    GameConstants.debug_print("GameHUD: Spawn buttons connected successfully", "HUD")

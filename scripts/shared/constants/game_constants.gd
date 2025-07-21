@@ -12,6 +12,7 @@ const DEBUG_NETWORK: bool = false
 const DEBUG_FOG_OF_WAR: bool = false  # ClientDisplayManager visibility messages
 const DEBUG_ABILITIES: bool = false  # Unit abilities like healing, construction cooldowns
 const DEBUG_FX: bool = false  # Visual effects spawning
+const DEBUG_HUD: bool = false  # HUD updates, unit bar creation, status display
 
 # Debug utility function
 static func debug_print(message: String, category: String = "GENERAL") -> void:
@@ -48,6 +49,9 @@ static func debug_print(message: String, category: String = "GENERAL") -> void:
                 print("DEBUG: %s" % message)
         "FX":
             if DEBUG_FX:
+                print("DEBUG: %s" % message)
+        "HUD":
+            if DEBUG_HUD:
                 print("DEBUG: %s" % message)
         _:
             print("DEBUG: %s" % message)

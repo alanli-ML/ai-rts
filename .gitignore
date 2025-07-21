@@ -26,3 +26,4 @@ mono_crash.*.json
 .env
 config/secrets.cfg
 godot-mcp/
+assets

@@ -2,8 +2,19 @@
 class_name ClientDisplayManager
 extends Node
 
+const GameConstants = preload("res://scripts/shared/constants/game_constants.gd")
 const UNIT_SCENE = preload("res://scenes/units/AnimatedUnit.tscn")
 const MINE_SCENE = preload("res://scripts/gameplay/mine.gd")
+
+# Use the same archetype-specific scripts as the server
+const ARCHETYPE_SCRIPTS = {
+	"scout": "res://scripts/units/scout_unit.gd",
+	"tank": "res://scripts/units/tank_unit.gd",
+	"sniper": "res://scripts/units/sniper_unit.gd",
+	"medic": "res://scripts/units/medic_unit.gd",
+	"engineer": "res://scripts/units/engineer_unit.gd",
+	"turret": "res://scripts/units/turret.gd",
+}
 
 var displayed_units: Dictionary = {} # unit_id -> Node
 var displayed_mines: Dictionary = {} # mine_id -> Node
@@ -68,9 +79,10 @@ func _find_fog_manager() -> void:
 		print("ClientDisplayManager: Warning - Could not find FogOfWarManager yet, will retry")
 
 func _physics_process(delta: float) -> void:
-	# On the host/server, only update plan data for UI, not visual rendering
+	# On the host/server, we need to handle visibility filtering
 	if multiplayer.is_server():
 		_update_host_plan_data()
+		_update_host_unit_visibility()
 		return
 
 	if not latest_state or not latest_state.has("units"):
@@ -153,24 +165,25 @@ func update_state(state: Dictionary) -> void:
 				for i in range(grid_data.size()):
 					if grid_data[i] == 255:
 						visible_count += 1
-				print("ClientDisplayManager: Received visibility data - %d visible cells out of %d total" % [visible_count, grid_data.size()])
+				GameConstants.debug_print("ClientDisplayManager: Received visibility data - %d visible cells out of %d total" % [visible_count, grid_data.size()], "FOG_OF_WAR")
 			else:
-				print("ClientDisplayManager: Warning - visibility data is missing or invalid")
+				GameConstants.debug_print("ClientDisplayManager: Warning - visibility data is missing or invalid", "FOG_OF_WAR")
 			
 			if fog_of_war_manager.has_method("update_visibility_grid"):
 				fog_of_war_manager.update_visibility_grid(grid_data, grid_meta)
-				print("ClientDisplayManager: Passed visibility data to fog manager")
+				GameConstants.debug_print("ClientDisplayManager: Passed visibility data to fog manager", "FOG_OF_WAR")
 			else:
-				print("ClientDisplayManager: Error - fog manager missing update_visibility_grid method")
+				GameConstants.debug_print("ClientDisplayManager: Error - fog manager missing update_visibility_grid method", "FOG_OF_WAR")
 		else:
-			print("ClientDisplayManager: Warning - fog manager still not found, visibility data will be skipped this frame")
+			GameConstants.debug_print("ClientDisplayManager: Warning - fog manager still not found, visibility data will be skipped this frame", "FOG_OF_WAR")
 	else:
-		print("ClientDisplayManager: No visibility data in state update")
+		GameConstants.debug_print("ClientDisplayManager: No visibility data in state update", "FOG_OF_WAR")
 
 func _update_host_plan_data() -> void:
 	"""Update plan data on host units for UI display without visual rendering"""
 	if not latest_state or not latest_state.has("units"):
 		return
+	
 	
 	# IMPORTANT: Only update units that are in the filtered state data
 	# This ensures the host only sees units they should be able to see
@@ -195,25 +208,43 @@ func _update_host_plan_data() -> void:
 			))
 			displayed_units[unit_id] = unit_placeholder
 		
-		var unit_instance = displayed_units[unit_id]
-		if is_instance_valid(unit_instance):
-			# Update plan data that the UI needs from the filtered data
+		var unit_placeholder = displayed_units[unit_id]
+		if is_instance_valid(unit_placeholder):
+			# Update placeholder unit data for HUD consistency
 			if unit_data.has("strategic_goal"):
-				unit_instance.set("strategic_goal", unit_data.strategic_goal)
+				unit_placeholder.set("strategic_goal", unit_data.strategic_goal)
 			if unit_data.has("plan_summary"):
-				unit_instance.set("plan_summary", unit_data.plan_summary)
+				unit_placeholder.set("plan_summary", unit_data.plan_summary)
 			if unit_data.has("control_point_attack_sequence"):
-				unit_instance.set("control_point_attack_sequence", unit_data.control_point_attack_sequence)
+				unit_placeholder.set("control_point_attack_sequence", unit_data.control_point_attack_sequence)
 			if unit_data.has("current_attack_sequence_index"):
-				unit_instance.set("current_attack_sequence_index", unit_data.current_attack_sequence_index)
-			
-			# Update health and other basic properties
+				unit_placeholder.set("current_attack_sequence_index", unit_data.current_attack_sequence_index)
+		
+		# CRITICAL: Also update the actual server-side unit instance for status bar display
+		var server_game_state = get_node_or_null("/root/DependencyContainer/GameState")
+		if server_game_state and server_game_state.units.has(unit_id):
+			var real_unit = server_game_state.units[unit_id]
+			if is_instance_valid(real_unit):
+				if unit_data.has("strategic_goal"):
+					real_unit.strategic_goal = unit_data.strategic_goal
+					# Immediately refresh status bar for the real unit
+					if real_unit.has_method("refresh_status_bar"):
+						real_unit.refresh_status_bar()
+				
+				if unit_data.has("control_point_attack_sequence"):
+					real_unit.control_point_attack_sequence = unit_data.control_point_attack_sequence
+				
+				if unit_data.has("current_attack_sequence_index"):
+					real_unit.current_attack_sequence_index = unit_data.current_attack_sequence_index
+		
+		# Update health and other basic properties on placeholder
+		if unit_placeholder:
 			if unit_data.has("current_health"):
-				unit_instance.set("current_health", unit_data.current_health)
+				unit_placeholder.set("current_health", unit_data.current_health)
 			if unit_data.has("is_dead"):
-				unit_instance.set("is_dead", unit_data.is_dead)
+				unit_placeholder.set("is_dead", unit_data.is_dead)
 			if unit_data.has("position"):
-				unit_instance.set("global_position", Vector3(
+				unit_placeholder.set("global_position", Vector3(
 					unit_data.position.x, 
 					unit_data.position.y, 
 					unit_data.position.z
@@ -235,21 +266,51 @@ func _update_host_plan_data() -> void:
 
 func _create_unit(unit_data: Dictionary) -> void:
 	var unit_id = unit_data.id
+	var archetype = unit_data.archetype
 	var unit_instance = UNIT_SCENE.instantiate()
+	
+	# Load GameConstants for debug logging
+	var GameConstants = preload("res://scripts/shared/constants/game_constants.gd")
+	
+	# CRITICAL: Attach the correct archetype-specific script (same as server)
+	var script_path = ARCHETYPE_SCRIPTS.get(archetype)
+	if script_path:
+		var script = load(script_path)
+		if script:
+			unit_instance.set_script(script)
+			GameConstants.debug_print("ClientDisplayManager: Attached %s script to unit %s" % [archetype, unit_id], "UNITS")
+		else:
+			GameConstants.debug_print("ClientDisplayManager: ERROR - Could not load script for archetype %s at path %s" % [archetype, script_path], "UNITS")
+	else:
+		GameConstants.debug_print("ClientDisplayManager: WARNING - No script path defined for archetype %s, using default AnimatedUnit" % archetype, "UNITS")
+	
+	# Set basic properties
 	unit_instance.unit_id = unit_id
 	unit_instance.team_id = unit_data.team_id
-	unit_instance.archetype = unit_data.archetype
+	unit_instance.archetype = archetype
 	
 	# Add a placeholder for the shield node if it's a tank
-	if unit_data.archetype == "tank":
+	if archetype == "tank":
 		unit_instance.set("shield_node", null)
 	
 	# Set default behavior matrix from game constants (same as server-side units)
-	var GameConstants = preload("res://scripts/shared/constants/game_constants.gd")
-	var default_matrix = GameConstants.get_default_behavior_matrix(unit_data.archetype)
+	var default_matrix = GameConstants.get_default_behavior_matrix(archetype)
 	if not default_matrix.is_empty():
 		unit_instance.behavior_matrix = default_matrix.duplicate()
-		print("ClientDisplayManager: Set default behavior matrix for unit %s (%s)" % [unit_id, unit_data.archetype])
+		GameConstants.debug_print("ClientDisplayManager: Set default behavior matrix for unit %s (%s)" % [unit_id, archetype], "UNITS")
+
+	# Apply cached plan data if it exists to restore static goal information
+	var unified_main = get_node_or_null("/root/UnifiedMain")
+	if unified_main and "unit_plan_cache" in unified_main and unified_main.unit_plan_cache.has(unit_id):
+		var plan_data = unified_main.unit_plan_cache[unit_id]
+		unit_instance.behavior_matrix = plan_data.behavior_matrix.duplicate()
+		unit_instance.control_point_attack_sequence = plan_data.control_point_attack_sequence.duplicate()
+		unit_instance.strategic_goal = plan_data.strategic_goal
+		GameConstants.debug_print("ClientDisplayManager: Applied cached plan data to newly created unit %s" % unit_id, "UNITS")
+		
+		# Immediately refresh the status bar to show the restored data (deferred to ensure status bar is ready)
+		if unit_instance.has_method("refresh_status_bar"):
+			unit_instance.call_deferred("refresh_status_bar")
 
 	# Add to scene tree FIRST before setting position
 	units_node.add_child(unit_instance)
@@ -260,7 +321,7 @@ func _create_unit(unit_data: Dictionary) -> void:
 		unit_instance.global_position = Vector3(pos_data.x, pos_data.y, pos_data.z)
 	
 	displayed_units[unit_id] = unit_instance
-	print("ClientDisplayManager: Created unit %s" % unit_id)
+	GameConstants.debug_print("ClientDisplayManager: Created unit %s (%s) with proper script" % [unit_id, archetype], "UNITS")
 
 func _create_mine(mine_data: Dictionary) -> void:
 	var mine_id = mine_data.id
@@ -345,56 +406,19 @@ func _update_unit(unit_data: Dictionary, delta: float) -> void:
 		else:
 			unit_instance.set("plan_summary", unit_data.plan_summary)
 	
-	# Update strategic goal from server
+	# Strategic goal, attack sequence, and sequence index are primarily handled by reliable RPC,
+	# but we also handle them here as a fallback mechanism for robustness.
 	if unit_data.has("strategic_goal"):
-		print("ClientDisplayManager: Updating unit %s strategic goal to: '%s'" % [unit_id, unit_data.strategic_goal])
-		
-		if "strategic_goal" in unit_instance:
-			unit_instance.strategic_goal = unit_data.strategic_goal
-		else:
-			unit_instance.set("strategic_goal", unit_data.strategic_goal)
-		
-		# Check if unit has status bar
-		if unit_instance.status_bar:
-			print("ClientDisplayManager: Unit %s has status bar, calling refresh" % unit_id)
-		else:
-			print("ClientDisplayManager: WARNING - Unit %s does not have status bar!" % unit_id)
-		
-		# Refresh the status bar to show updated goal
+		unit_instance.set("strategic_goal", unit_data.strategic_goal)
+		# Refresh status bar when strategic goal changes
 		if unit_instance.has_method("refresh_status_bar"):
 			unit_instance.refresh_status_bar()
-			print("ClientDisplayManager: Called refresh_status_bar() for unit %s" % unit_id)
-		else:
-			print("ClientDisplayManager: WARNING - Unit %s does not have refresh_status_bar method!" % unit_id)
-		
-		# Refresh HUD unit status if strategic goal changed
-		var game_hud = get_tree().get_first_node_in_group("game_hud")
-		if not game_hud:
-			game_hud = get_node_or_null("/root/UnifiedMain/GameHUD")
-		if game_hud and game_hud.has_method("update_unit_data"):
-			game_hud.update_unit_data(unit_id, unit_data)
 	
-	# Update control point attack sequence from server
 	if unit_data.has("control_point_attack_sequence"):
-		if "control_point_attack_sequence" in unit_instance:
-			unit_instance.control_point_attack_sequence = unit_data.control_point_attack_sequence
-		else:
-			unit_instance.set("control_point_attack_sequence", unit_data.control_point_attack_sequence)
-		
-		# Refresh the status bar to show updated target sequence
-		if unit_instance.has_method("refresh_status_bar"):
-			unit_instance.refresh_status_bar()
+		unit_instance.set("control_point_attack_sequence", unit_data.control_point_attack_sequence)
 	
-	# Update current attack sequence index from server
 	if unit_data.has("current_attack_sequence_index"):
-		if "current_attack_sequence_index" in unit_instance:
-			unit_instance.current_attack_sequence_index = unit_data.current_attack_sequence_index
-		else:
-			unit_instance.set("current_attack_sequence_index", unit_data.current_attack_sequence_index)
-		
-		# Refresh the status bar to show updated sequence progress
-		if unit_instance.has_method("refresh_status_bar"):
-			unit_instance.refresh_status_bar()
+		unit_instance.set("current_attack_sequence_index", unit_data.current_attack_sequence_index)
 	
 	# Update health from server
 	if unit_data.has("health"):
@@ -479,6 +503,63 @@ func _refresh_hud_if_unit_selected(unit_instance: Node) -> void:
 	# Also specifically refresh behavior matrix display if the method exists
 	if game_hud and game_hud.has_method("_refresh_behavior_matrix_display"):
 		game_hud._refresh_behavior_matrix_display()
+
+func _update_host_unit_visibility() -> void:
+	"""Update visibility of server-side units based on fog of war for the host player"""
+	if not latest_state or not latest_state.has("units"):
+		return
+	
+	# Get the actual server game state to access real unit instances
+	var server_game_state = get_node_or_null("/root/DependencyContainer/GameState")
+	if not server_game_state:
+		return
+	
+	# Get the host's team ID
+	var unified_main = get_node_or_null("/root/UnifiedMain")
+	if not unified_main:
+		return
+	
+	var host_team_id = unified_main.client_team_id
+	if host_team_id <= 0:
+		return
+	
+	# First, hide all enemy units
+	for unit_id in server_game_state.units:
+		var unit = server_game_state.units[unit_id]
+		if is_instance_valid(unit) and unit.team_id != host_team_id:
+			unit.visible = false
+			_update_unit_children_visibility(unit, false)
+	
+	# Then show only the units that are in our filtered state (visible to us)
+	for unit_data in latest_state.units:
+		var unit_id = unit_data.id
+		if server_game_state.units.has(unit_id):
+			var unit = server_game_state.units[unit_id]
+			if is_instance_valid(unit):
+				unit.visible = true
+				_update_unit_children_visibility(unit, true)
+
+func _update_unit_children_visibility(unit: Node, is_visible: bool) -> void:
+	"""Update visibility for unit's child nodes"""
+	# Status bar visibility
+	var status_bar = unit.get_node_or_null("StatusBarContainer3D")
+	if status_bar:
+		status_bar.visible = is_visible
+	
+	# Weapon visibility
+	var weapon_node = unit.get_node_or_null("CharacterArmature/GeneralSkeleton/BoneAttachment3D/WeaponAttachment")
+	if weapon_node:
+		weapon_node.visible = is_visible
+	
+	# Name label visibility  
+	var name_label = unit.get_node_or_null("NameLabel3D")
+	if name_label:
+		name_label.visible = is_visible
+	
+	# Any particle effects
+	for child in unit.get_children():
+		if child is GPUParticles3D or child is CPUParticles3D:
+			child.visible = is_visible
 
 func cleanup() -> void:
 	for unit_id in displayed_units:

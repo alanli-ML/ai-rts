@@ -59,7 +59,7 @@ func _load_model() -> void:
 		# Find the animation player in the new model
 		animation_player = model_instance.find_child("AnimationPlayer", true, false)
 		if not animation_player:
-			print("DEBUG: AnimationPlayer not found in model %s (expected for weapon models)" % model_path)
+			GameConstants.debug_print("AnimationPlayer not found in model %s (expected for weapon models)" % model_path, "ANIMATIONS")
 			
 		play_animation("Idle")
 	else:
@@ -67,7 +67,7 @@ func _load_model() -> void:
 
 func play_animation(animation_name: String):
 	if not animation_player:
-		print("DEBUG: No animation player for unit %s, cannot play '%s'" % [unit_id, animation_name])
+		GameConstants.debug_print("No animation player for unit %s, cannot play '%s'" % [unit_id, animation_name], "ANIMATIONS")
 		return
 	
 	# Debug output for attack animations
@@ -114,10 +114,10 @@ func play_animation(animation_name: String):
 		"Shoot": ["holding-both-shoot", "holding-left-shoot", "holding-right-shoot"],
 		"Kick": ["attack-kick-left", "attack-kick-right"],
 		"Melee": ["attack-melee-left", "attack-melee-right"],
-		"Interact": ["interact-left", "interact-right", "pick-up"],
+		"Interact": ["interact-left", "interact-right"],
 		"Emote": ["emote-yes", "emote-no"],
 		"Heal": ["interact-left", "interact-right", "emote-yes", "idle"],
-		"Construct": ["interact-left", "interact-right", "pick-up", "emote-yes", "idle"]
+		"Construct": ["interact-left", "interact-right", "emote-yes", "idle"]
 	}
 	
 	# Try mapped fallbacks

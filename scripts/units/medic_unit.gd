@@ -18,13 +18,13 @@ func _ready() -> void:
 func heal_ally(params: Dictionary):
 	var target_id = params.get("target_id", "")
 	if target_id.is_empty():
-		print("Medic %s: No target specified for heal command." % unit_id)
+		GameConstants.debug_print("Medic %s: No target specified for heal command." % unit_id, "ABILITIES")
 		return
 	
 	# Check healing cooldown
 	var current_time = Time.get_ticks_msec() / 1000.0
 	if current_time - last_heal_time < healing_cooldown:
-		print("Medic %s: Healing on cooldown (%.1fs remaining)" % [unit_id, healing_cooldown - (current_time - last_heal_time)])
+		GameConstants.debug_print("Medic %s: Healing on cooldown (%.1fs remaining)" % [unit_id, healing_cooldown - (current_time - last_heal_time)], "ABILITIES")
 		return
 		
 	GameConstants.debug_print("Medic %s heal_ally called with target: %s" % [unit_id, target_id], "UNITS")

@@ -78,7 +78,7 @@ var available_animations: Dictionary = {
 	"take_cover": ["cover", "crouch", "duck", "idle"],
 	"stunned": ["stunned", "dazed", "hurt", "idle"],
 	"healing": ["interact-left", "interact-right", "emote-yes", "idle"],
-	"constructing": ["interact-left", "interact-right", "emote-yes", "pick-up", "idle"]
+	"constructing": ["interact-left", "interact-right", "emote-yes", "idle"]
 }
 
 # State transition table

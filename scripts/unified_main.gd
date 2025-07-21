@@ -1,6 +1,8 @@
 # UnifiedMain.gd - Refactored main script using manager classes
 extends Node
 
+const GameConstants = preload("res://scripts/shared/constants/game_constants.gd")
+
 # Scene paths
 const LOBBY_SCENE = "res://scenes/ui/lobby.tscn"
 const GAME_HUD_SCENE = "res://scenes/ui/game_hud.tscn"
@@ -20,6 +22,10 @@ var client_display_manager: Node
 var combat_test_suite: Node
 var client_team_id: int = -1
 var fog_of_war_manager: Node
+
+# Cache for static unit plan data received via reliable RPC. This persists
+# even if a unit's visual representation is temporarily destroyed.
+var unit_plan_cache: Dictionary = {}
 
 func _ready() -> void:
     print("UnifiedMain starting...")
@@ -232,6 +238,7 @@ func _on_match_start_requested() -> void:
         else:
             fog_of_war_manager = existing_fog
             logger.info("UnifiedMain", "Found existing Fog of War manager: %s" % existing_fog.get_path())
+    
 
     # CRITICAL: Position camera based on player's team after map is loaded
     # Wait a frame to ensure all map components are fully initialized
@@ -310,7 +317,11 @@ func _on_game_state_update(state: Dictionary) -> void:
     
     # Update HUD unit status panel with units data
     if hud_instance and is_instance_valid(hud_instance) and state.has("units"):
+        # Use the client's team ID directly instead of relying on peer ID lookup
         hud_instance.update_player_units(state.units, multiplayer.get_unique_id())
+        # Also manually update team ID if the lookup is failing
+        if client_team_id != -1:
+            hud_instance.set("player_team_id_override", client_team_id)
 
 @rpc("any_peer", "call_local", "reliable")
 func _on_ai_command_feedback_rpc(summary_message: String, status_message: String):
@@ -322,6 +333,67 @@ func _on_ai_command_feedback_rpc(summary_message: String, status_message: String
         hud_instance.update_ai_command_feedback(summary_message, status_message)
     else:
         logger.warning("UnifiedMain", "GameHUD not found for AI command feedback RPC.")
+
+@rpc("any_peer", "call_local", "reliable")
+func update_unit_behavior_plan_rpc(unit_id: String, behavior_matrix: Dictionary, attack_sequence: Array, strategic_goal: String):
+    """
+    Called by the server to update a unit's behavior plan, strategic goal, and attack sequence on clients.
+    This is the reliable RPC mechanism that updates client-side unit instances.
+    """
+    if multiplayer.is_server():
+        return  # Server doesn't need to process its own RPC
+    
+    logger.info("UnifiedMain", "Received behavior plan update for unit %s: goal='%s', sequence=%s" % [unit_id, strategic_goal, str(attack_sequence)])
+    
+    # Store in the unit plan cache for persistence
+    unit_plan_cache[unit_id] = {
+        "behavior_matrix": behavior_matrix.duplicate(),
+        "control_point_attack_sequence": attack_sequence.duplicate(),
+        "strategic_goal": strategic_goal
+    }
+    
+    # Also try to update the HUD directly if it exists
+    if hud_instance and is_instance_valid(hud_instance):
+        var unit_data_for_hud = {
+            "id": unit_id,
+            "strategic_goal": strategic_goal,
+            "control_point_attack_sequence": attack_sequence,
+            "team_id": client_team_id  # Use the correct client team ID
+        }
+        hud_instance.update_unit_data(unit_id, unit_data_for_hud)
+    
+    # Update the client-side unit instance if it exists
+    if client_display_manager and client_display_manager.displayed_units.has(unit_id):
+        var unit_instance = client_display_manager.displayed_units[unit_id]
+        if is_instance_valid(unit_instance):
+            # Update the unit's properties directly (safer than using set() method)
+            unit_instance.behavior_matrix = behavior_matrix.duplicate()
+            unit_instance.control_point_attack_sequence = attack_sequence.duplicate()
+            unit_instance.strategic_goal = strategic_goal
+            
+            # Also mark that this unit has received first command for UI purposes
+            if "has_received_first_command" in unit_instance:
+                unit_instance.has_received_first_command = true
+            
+            # Refresh the status bar to show new goals immediately
+            if unit_instance.has_method("refresh_status_bar"):
+                unit_instance.refresh_status_bar()
+            
+            # Also force refresh the status bar directly 
+            _force_refresh_unit_status_bar(unit_instance, unit_id)
+        else:
+            logger.warning("UnifiedMain", "Unit instance %s found but not valid for behavior plan update" % unit_id)
+    else:
+        logger.info("UnifiedMain", "Unit %s not yet displayed on client, cached plan data for when it spawns" % unit_id)
+
+func _force_refresh_unit_status_bar(unit_instance: Node, unit_id: String) -> void:
+    """Force refresh a unit's status bar as a fallback mechanism"""
+    if not is_instance_valid(unit_instance):
+        return
+    
+    var status_bar = unit_instance.get("status_bar")
+    if status_bar and status_bar.has_method("force_refresh"):
+        status_bar.force_refresh()
 
 @rpc("any_peer", "call_local")
 func display_speech_bubble_rpc(unit_id: String, speech_text: String):
@@ -348,7 +420,7 @@ func spawn_impact_effect_rpc(position: Vector3):
         get_tree().root.add_child(effect)
         effect.global_position = position
         effect.emitting = true
-        logger.info("UnifiedMain", "Spawned impact effect at %s" % str(position))
+        GameConstants.debug_print("UnifiedMain: Spawned impact effect at %s" % str(position), "FX")
 
 @rpc("any_peer", "unreliable")
 func spawn_healing_effect_rpc(position: Vector3):

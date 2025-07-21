@@ -23,6 +23,7 @@ var processing_animation_time: float = 0.0
 # Auto-update tracking for behavior matrix changes
 var last_known_action_scores: Dictionary = {}
 var last_known_reactive_state: String = ""
+var last_known_strategic_goal: String = ""
 var auto_update_timer: float = 0.0
 const AUTO_UPDATE_INTERVAL: float = 1.0  # Update once per second for responsive display
 
@@ -398,9 +399,10 @@ func set_ai_processing(processing: bool) -> void:
 func force_refresh() -> void:
 	"""Manually force a refresh of the status bar display"""
 	if parent_unit:
-		# Force update of behavior matrix tracking variables to trigger refresh
+		# Force update of tracking variables to trigger refresh
 		last_known_action_scores.clear()
 		last_known_reactive_state = ""
+		last_known_strategic_goal = ""
 		
 		if not parent_unit.full_plan.is_empty():
 			update_full_plan(parent_unit.full_plan)
@@ -431,13 +433,14 @@ func _refresh_current_display() -> void:
 			update_status(parent_unit.plan_summary)
 
 func _check_and_update_behavior_display() -> void:
-	"""Check if behavior matrix data has changed and update display if needed"""
+	"""Check if behavior matrix data or strategic goal has changed and update display if needed"""
 	if not parent_unit or not status_label:
 		return
 	
 	# Get current behavior matrix data
 	var current_action_scores = {}
 	var current_reactive_state = ""
+	var current_strategic_goal = ""
 	
 	if "last_action_scores" in parent_unit and parent_unit.last_action_scores != null:
 		current_action_scores = parent_unit.last_action_scores
@@ -445,14 +448,19 @@ func _check_and_update_behavior_display() -> void:
 	if "current_reactive_state" in parent_unit:
 		current_reactive_state = parent_unit.current_reactive_state
 	
+	if "strategic_goal" in parent_unit:
+		current_strategic_goal = parent_unit.strategic_goal
+	
 	# Check if data has changed
 	var scores_changed = not _dictionaries_equal(current_action_scores, last_known_action_scores)
 	var state_changed = current_reactive_state != last_known_reactive_state
+	var goal_changed = current_strategic_goal != last_known_strategic_goal
 	
-	if scores_changed or state_changed:
+	if scores_changed or state_changed or goal_changed:
 		# Update our tracking
 		last_known_action_scores = current_action_scores.duplicate()
 		last_known_reactive_state = current_reactive_state
+		last_known_strategic_goal = current_strategic_goal
 		
 		# Refresh the display
 		if not parent_unit.full_plan.is_empty():

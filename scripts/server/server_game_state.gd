@@ -237,18 +237,21 @@ func _gather_filtered_game_state_for_team(team_id: int) -> Dictionary:
                     "all_triggers": {}     # Deprecated
                 }
                 
-                # Only include goal data if it has changed or unit is marked for update
-                var unit_needs_goal_update = units_with_goal_changes.has(unit.unit_id)
-                var has_goal_changes = _check_and_cache_unit_goal_changes(unit.unit_id, unit)
-                
-                if unit_needs_goal_update or has_goal_changes:
-                    unit_data["strategic_goal"] = unit.strategic_goal if "strategic_goal" in unit else ""
-                    unit_data["control_point_attack_sequence"] = unit.control_point_attack_sequence if "control_point_attack_sequence" in unit else []
-                    unit_data["current_attack_sequence_index"] = unit.current_attack_sequence_index if "current_attack_sequence_index" in unit else 0
-                    _log_info("ServerGameState", "Including goal data for unit %s: %s" % [unit.unit_id, unit_data.get("strategic_goal", "none")])
-                    GameConstants.debug_print("ServerGameState - Sending goal update for unit %s: strategic_goal='%s', sequence=%s" % [unit.unit_id, unit_data.get("strategic_goal", ""), unit_data.get("control_point_attack_sequence", [])], "NETWORK")
+                # Only include goal data for friendly units (never for enemies)
+                if unit.team_id == team_id:
+                    var unit_needs_goal_update = units_with_goal_changes.has(unit.unit_id)
+                    var has_goal_changes = _check_and_cache_unit_goal_changes(unit.unit_id, unit)
+                    
+                    if unit_needs_goal_update or has_goal_changes:
+                        unit_data["strategic_goal"] = unit.strategic_goal if "strategic_goal" in unit else ""
+                        unit_data["control_point_attack_sequence"] = unit.control_point_attack_sequence if "control_point_attack_sequence" in unit else []
+                        unit_data["current_attack_sequence_index"] = unit.current_attack_sequence_index if "current_attack_sequence_index" in unit else 0
+                        _log_info("ServerGameState", "Including goal data for friendly unit %s: %s" % [unit.unit_id, unit_data.get("strategic_goal", "none")])
+                        GameConstants.debug_print("ServerGameState - Sending goal update for friendly unit %s: strategic_goal='%s', sequence=%s" % [unit.unit_id, unit_data.get("strategic_goal", ""), unit_data.get("control_point_attack_sequence", [])], "NETWORK")
+                    else:
+                        GameConstants.debug_print("ServerGameState - NOT including goal data for friendly unit %s (marked: %s, detected change: %s)" % [unit.unit_id, unit_needs_goal_update, has_goal_changes], "NETWORK")
                 else:
-                    GameConstants.debug_print("ServerGameState - NOT including goal data for unit %s (marked: %s, detected change: %s)" % [unit.unit_id, unit_needs_goal_update, has_goal_changes], "NETWORK")
+                    GameConstants.debug_print("ServerGameState - NOT including goal data for enemy unit %s (team %d vs %d)" % [unit.unit_id, unit.team_id, team_id], "NETWORK")
                 
                 if unit.archetype == "sniper" and unit.current_state == GameEnums.UnitState.CHARGING_SHOT:
                     if "charge_timer" in unit and "charge_time" in unit:

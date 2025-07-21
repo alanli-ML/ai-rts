@@ -59,13 +59,22 @@ func execute_plan(plan_data: Dictionary) -> bool:
         unit.set_behavior_plan(tuned_matrix, attack_sequence)
         GameConstants.debug_print("PlanExecutor - Completed behavior plan setup for unit %s" % unit.unit_id, "AI")
         
-        # 4. Broadcast the static plan data to all clients via a reliable RPC.
+        # 4. Send the static plan data to clients of the correct team via a reliable RPC.
         var unified_main = get_node_or_null("/root/UnifiedMain")
-        if unified_main:
-            unified_main.rpc("update_unit_behavior_plan_rpc", unit_id, tuned_matrix, attack_sequence, goal)
+        var session_manager = get_node_or_null("/root/DependencyContainer/SessionManager")
+        if unified_main and session_manager:
+            var unit_team_id = unit.team_id
+            # This assumes a single session.
+            if not session_manager.sessions.is_empty():
+                var session_id = session_manager.sessions.keys()[0]
+                var session = session_manager.get_session(session_id)
+                for player_id in session.players:
+                    var player_data = session.players[player_id]
+                    if player_data.team_id == unit_team_id:
+                        unified_main.rpc_id(player_data.peer_id, "update_unit_behavior_plan_rpc", unit_id, tuned_matrix, attack_sequence, goal)
         
         plan_started.emit(unit_id, plan_data)
-        logger.info("PlanExecutor", "Sent tuned behavior plan to unit %s and broadcast to clients." % unit_id)
+        logger.info("PlanExecutor", "Sent tuned behavior plan to unit %s and its team's clients." % unit_id)
     else:
         logger.error("PlanExecutor", "Unit %s does not have set_behavior_plan method." % unit_id)
         return false

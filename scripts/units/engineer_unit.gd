@@ -150,23 +150,23 @@ func construct_turret(_params: Dictionary):
 	
 	# Check if already constructing a turret (prevents race conditions)
 	if is_constructing_turret:
-		print("Engineer %s: Already constructing a turret, ignoring duplicate request" % unit_id)
+		GameConstants.debug_print("Engineer %s: Already constructing a turret, ignoring duplicate request" % unit_id, "ABILITIES")
 		return
 	
 	# Check turret construction cooldown
 	if turret_construction_timer > 0:
-		print("Engineer %s: Turret construction on cooldown (%.1fs remaining)" % [unit_id, turret_construction_timer])
+		GameConstants.debug_print("Engineer %s: Turret construction on cooldown (%.1fs remaining)" % [unit_id, turret_construction_timer], "ABILITIES")
 		return
 	
 	# Simple turret limit check by counting existing turret units
 	var game_state = get_node_or_null("/root/DependencyContainer/GameState")
-	print("DEBUG: Engineer %s - GameState found: %s" % [unit_id, game_state != null])
+	GameConstants.debug_print("Engineer %s - GameState found: %s" % [unit_id, game_state != null], "ABILITIES")
 	
 	# Turret limit management - remove oldest if at limit
 	if game_state and game_state.has_method("get_units_by_archetype"):
 		var existing_turrets = game_state.get_units_by_archetype("turret", team_id)
 		var max_turrets = 5  # Team limit
-		print("DEBUG: Engineer %s - Current turrets: %d/%d" % [unit_id, existing_turrets.size(), max_turrets])
+		GameConstants.debug_print("Engineer %s - Current turrets: %d/%d" % [unit_id, existing_turrets.size(), max_turrets], "ABILITIES")
 		
 		if existing_turrets.size() >= max_turrets:
 			print("Engineer %s: Team turret limit reached (%d/%d), removing oldest turret" % [unit_id, existing_turrets.size(), max_turrets])
@@ -184,11 +184,10 @@ func construct_turret(_params: Dictionary):
 				oldest_turret.die()  # This will trigger cleanup via _on_unit_died
 				strategic_goal = "Replacing oldest turret..."
 			else:
-				print("Engineer %s: Could not find valid turret to remove" % unit_id)
+				GameConstants.debug_print("Engineer %s: Could not find valid turret to remove" % unit_id, "ABILITIES")
 				return
 
-	print("DEBUG: Engineer %s - Starting turret construction process" % unit_id)
-	print("%s is starting to construct a turret." % unit_id)
+	GameConstants.debug_print("Engineer %s - Starting turret construction process" % unit_id, "ABILITIES")
 	
 	# Set turret construction flags but DON'T use CONSTRUCTING state (that's for buildings)
 	is_constructing_turret = true
@@ -203,27 +202,27 @@ func construct_turret(_params: Dictionary):
 	
 	# Trigger construction animation using existing AnimatedUnit system
 	play_animation("Construct")
-	print("DEBUG: Engineer %s - Construction animation started" % unit_id)
-	print("DEBUG: Engineer %s - is_constructing_turret: %s, can_move: %s" % [unit_id, is_constructing_turret, can_move])
+	GameConstants.debug_print("Engineer %s - Construction animation started" % unit_id, "ABILITIES")
+	GameConstants.debug_print("Engineer %s - is_constructing_turret: %s, can_move: %s" % [unit_id, is_constructing_turret, can_move], "ABILITIES")
 	
 	# Get construction time from turret config
 	var turret_config = GameConstants.get_unit_config("turret")
 	var construction_time = turret_config.get("build_time", 5.0)
-	print("DEBUG: Engineer %s - Construction time: %.1f seconds" % [unit_id, construction_time])
+	GameConstants.debug_print("Engineer %s - Construction time: %.1f seconds" % [unit_id, construction_time], "ABILITIES")
 
 	await get_tree().create_timer(construction_time).timeout
-	print("DEBUG: Engineer %s - Construction timer completed" % unit_id)
+	GameConstants.debug_print("Engineer %s - Construction timer completed" % unit_id, "ABILITIES")
 
 	# Check if construction was interrupted
 	if not is_instance_valid(self) or not is_constructing_turret:
-		print("DEBUG: Engineer %s - Construction interrupted (valid: %s, constructing: %s)" % [unit_id, is_instance_valid(self), is_constructing_turret])
+		GameConstants.debug_print("Engineer %s - Construction interrupted (valid: %s, constructing: %s)" % [unit_id, is_instance_valid(self), is_constructing_turret], "ABILITIES")
 		is_constructing_turret = false
 		can_move = true
 		strategic_goal = "Construction interrupted"
 		return
 
 	if not game_state:
-		print("Engineer %s: GameState not found." % unit_id)
+		GameConstants.debug_print("Engineer %s: GameState not found." % unit_id, "ABILITIES")
 		is_constructing_turret = false
 		can_move = true
 		strategic_goal = "Construction failed - no game state"
@@ -231,18 +230,18 @@ func construct_turret(_params: Dictionary):
 
 	# Spawn turret in front of the engineer
 	var spawn_pos = global_position + transform.basis.z * -3.0 # 3 units in front
-	print("DEBUG: Engineer %s - Attempting to spawn turret at position: %s" % [unit_id, spawn_pos])
+	GameConstants.debug_print("Engineer %s - Attempting to spawn turret at position: %s" % [unit_id, spawn_pos], "ABILITIES")
 	
 	var turret_unit_id = await game_state.spawn_unit("turret", team_id, spawn_pos, unit_id)
-	print("DEBUG: Engineer %s - spawn_unit returned: '%s'" % [unit_id, turret_unit_id])
+	GameConstants.debug_print("Engineer %s - spawn_unit returned: '%s'" % [unit_id, turret_unit_id], "ABILITIES")
 
 	if not turret_unit_id.is_empty():
-		print("%s finished constructing turret %s." % [unit_id, turret_unit_id])
+		GameConstants.debug_print("%s finished constructing turret %s." % [unit_id, turret_unit_id], "ABILITIES")
 		strategic_goal = "Turret construction complete"
 		# Set cooldown on successful construction
 		turret_construction_timer = turret_construction_cooldown
 	else:
-		print("Engineer %s: FAILED to construct turret - spawn_unit returned empty string" % unit_id)
+		GameConstants.debug_print("Engineer %s: FAILED to construct turret - spawn_unit returned empty string" % unit_id, "ABILITIES")
 		strategic_goal = "Turret construction failed"
 	
 	# Refresh status bar to show completion status
@@ -255,4 +254,4 @@ func construct_turret(_params: Dictionary):
 	# Reset construction state
 	is_constructing_turret = false
 	can_move = true
-	print("DEBUG: Engineer %s - Construction process completed" % unit_id)
+	GameConstants.debug_print("Engineer %s - Construction process completed" % unit_id, "ABILITIES")

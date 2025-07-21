@@ -418,7 +418,16 @@ func _physics_process(delta: float) -> void:
 		_execute_current_state(delta)
 	elif waiting_for_first_command:
 		# Unit is waiting for first AI command - remain idle
-		strategic_goal = "Awaiting strategic orders from commander..."
+		# CRITICAL FIX: Don't overwrite strategic_goal if it has been set by AI
+		# This prevents losing goals during synchronized start when one team gets AI response first
+		var default_goal = "Act autonomously based on my unit type."
+		var awaiting_goal = "Awaiting strategic orders from commander..."
+		
+		# Only set the awaiting message if no meaningful goal has been set yet
+		if strategic_goal == default_goal or strategic_goal.is_empty():
+			strategic_goal = awaiting_goal
+		# If strategic_goal is already set to something meaningful (not default/empty), keep it
+		
 		current_state = GameEnums.UnitState.IDLE
 		# Stop any movement while waiting
 		velocity.x = 0
@@ -870,12 +879,8 @@ func _setup_range_visualization() -> void:
 		range_visualization.set_team_colors(team_id)
 
 func update_plan_summary(new_summary: String) -> void:
-	"""Update the plan summary and refresh the status bar"""
+	"""Update the plan summary. The status bar is refreshed by client_display_manager."""
 	plan_summary = new_summary
-	
-	# Update status bar if it exists
-	if status_bar and status_bar.has_method("update_status"):
-		status_bar.update_status(plan_summary)
 
 func update_full_plan(full_plan_data: Array) -> void:
 	"""Update the full plan data and refresh the status bar"""

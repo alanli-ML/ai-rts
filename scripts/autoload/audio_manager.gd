@@ -2,6 +2,7 @@
 class_name AudioManager
 extends Node
 
+const GameConstants = preload("res://scripts/shared/constants/game_constants.gd")
 const POOL_SIZE_2D = 10
 const POOL_SIZE_3D = 20
 
@@ -41,7 +42,7 @@ func play_sound_2d(sound_path: String, volume_db: float = 0.0):
     # Try to load the audio stream
     var stream = load(sound_path)
     if not stream:
-        print("AudioManager: Could not load sound at path: %s - audio will be skipped" % sound_path)
+        GameConstants.debug_print("AudioManager: Could not load sound at path: %s - audio will be skipped" % sound_path, "GENERAL")
         # Try to find a fallback sound (for development)
         stream = _try_fallback_sound_2d(sound_path)
         if not stream:
@@ -75,7 +76,7 @@ func play_sound_3d(sound_path: String, position: Vector3, volume_db: float = 0.0
     # Try to load the audio stream
     var stream = load(sound_path)
     if not stream:
-        print("AudioManager: Could not load 3D sound at path: %s - audio will be skipped" % sound_path)
+        GameConstants.debug_print("AudioManager: Could not load 3D sound at path: %s - audio will be skipped" % sound_path, "GENERAL")
         # Try to find a fallback sound (for development)
         stream = _try_fallback_sound_3d(sound_path)
         if not stream:

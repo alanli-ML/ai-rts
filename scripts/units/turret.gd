@@ -8,7 +8,7 @@ func _enter_tree() -> void:
 	can_move = false
 	waiting_for_first_command = false
 	has_received_first_command = true
-	print("DEBUG: Turret %s _enter_tree() - set autonomous flags early" % get("unit_id"))
+	GameConstants.debug_print("Turret %s _enter_tree() - set autonomous flags early" % get("unit_id"), "UNITS")
 
 func _ready() -> void:
 	archetype = "turret"
@@ -81,11 +81,11 @@ func _position_turret_weapon():
 	weapon_attachment.rotation_degrees = Vector3(0, 180, 0)  # Rotate 180° to face correct direction
 	weapon_attachment.scale = Vector3(0.5, 0.5, 0.5)  # Scale up the weapon to match tank size
 	
-	print("DEBUG: Positioned turret weapon at %s with rotation %s and scale %s" % [weapon_attachment.position, weapon_attachment.rotation_degrees, weapon_attachment.scale])
+	GameConstants.debug_print("Positioned turret weapon at %s with rotation %s and scale %s" % [weapon_attachment.position, weapon_attachment.rotation_degrees, weapon_attachment.scale], "WEAPONS")
 
 func _on_weapon_fired(weapon_type: String, damage: float):
 	"""Handle weapon fired signal for turret weapon effects"""
-	print("DEBUG: Turret weapon fired - %s dealing %.1f damage" % [weapon_type, damage])
+	GameConstants.debug_print("Turret weapon fired - %s dealing %.1f damage" % [weapon_type, damage], "WEAPONS")
 	
 	# Trigger any turret-specific firing effects here if needed
 	# For now, the weapon attachment handles muzzle flash and projectiles

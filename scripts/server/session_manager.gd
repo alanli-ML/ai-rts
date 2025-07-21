@@ -731,7 +731,7 @@ func _spawn_initial_units(session: Dictionary, map_node: Node) -> void:
         _log_info("Spawning initial units for team %d with %d players" % [team_id, team_players.size()])
         
         # Spawn 2x each unit type for this team using safe spawn positions
-        var archetypes = ["scout", "tank", "sniper", "medic", "engineer"]
+        var archetypes = ["tank", "scout", "sniper", "medic", "engineer"]
         var home_base_manager = get_tree().get_first_node_in_group("home_base_managers")
         
         var unit_index = 0  # Track overall unit position for formation

@@ -2,10 +2,10 @@
 
 # Debug configuration - All disabled by default for performance
 const DEBUG_ENABLED: bool = false
-const DEBUG_UNITS: bool = false
+const DEBUG_UNITS: bool = true
 const DEBUG_ANIMATIONS: bool = false
-const DEBUG_SELECTION: bool = false  # Right-click target selection, unit selection
-const DEBUG_WEAPONS: bool = false
+const DEBUG_SELECTION: bool = true  # Right-click target selection, unit selection
+const DEBUG_WEAPONS: bool = true
 const DEBUG_NAVIGATION: bool = false
 const DEBUG_AI: bool = false
 const DEBUG_NETWORK: bool = false

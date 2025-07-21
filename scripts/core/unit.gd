@@ -1238,6 +1238,8 @@ func _execute_attack_state():
 	var distance_to_target = global_position.distance_to(current_target.global_position)
 	var my_range = self.attack_range
 	var target_range = current_target.attack_range
+	
+	GameConstants.debug_print("Unit %s attacking %s: distance=%.1f, my_range=%.1f, target_range=%.1f" % [unit_id, current_target.unit_id, distance_to_target, my_range, target_range], "UNITS")
 
 	# 4. Movement Decision
 	if my_range > target_range:
@@ -1255,19 +1257,24 @@ func _execute_attack_state():
 			if direction_from_enemy.length_squared() < 0.01:
 				direction_from_enemy = Vector3.FORWARD
 			navigation_agent.target_position = current_target.global_position + direction_from_enemy * sweet_spot_distance
+			GameConstants.debug_print("Unit %s kiting: moving to sweet spot distance %.1f (current: %.1f)" % [unit_id, sweet_spot_distance, distance_to_target], "UNITS")
 		else:
 			# We are in the sweet spot, stop moving to fire.
 			navigation_agent.target_position = global_position
+			GameConstants.debug_print("Unit %s kiting: in sweet spot, stopping to fire (distance: %.1f)" % [unit_id, distance_to_target], "UNITS")
 	else:
 		# Standard Engagement
 		if distance_to_target > my_range:
 			# Out of range, move closer
 			navigation_agent.target_position = current_target.global_position
+			GameConstants.debug_print("Unit %s standard attack: out of range, moving closer (distance: %.1f > range: %.1f)" % [unit_id, distance_to_target, my_range], "UNITS")
 		else:
 			# In range, stop moving
 			navigation_agent.target_position = global_position
+			GameConstants.debug_print("Unit %s standard attack: in range, stopping to fire (distance: %.1f <= range: %.1f)" % [unit_id, distance_to_target, my_range], "UNITS")
 	
 	# 5. Execute Attack
+	GameConstants.debug_print("Unit %s attempting to attack %s" % [unit_id, current_target.unit_id], "UNITS")
 	_attempt_attack_target(current_target)
 
 func _move_to_next_objective():

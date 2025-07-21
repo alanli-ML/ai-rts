@@ -137,11 +137,11 @@ func _process_input_event(event: InputEvent):
     """Common input processing logic used by both _gui_input and _unhandled_input"""
     
     if event is InputEventMouseButton:
-        print("EnhancedSelectionSystem: Mouse button %d, pressed=%s" % [event.button_index, event.pressed])
+        GameConstants.debug_print("EnhancedSelectionSystem: Mouse button %d, pressed=%s" % [event.button_index, event.pressed], "SELECTION")
         
         if event.button_index == MOUSE_BUTTON_LEFT:
             if event.pressed:
-                print("EnhancedSelectionSystem: Starting box selection at %s" % event.position)
+                GameConstants.debug_print("EnhancedSelectionSystem: Starting box selection at %s" % event.position, "SELECTION")
                 is_box_selecting = true
                 box_start_position = event.position
                 box_end_position = event.position
@@ -149,19 +149,19 @@ func _process_input_event(event: InputEvent):
                 get_viewport().set_input_as_handled()
             else:
                 if is_box_selecting:
-                    print("EnhancedSelectionSystem: Finishing selection at %s" % event.position)
+                    GameConstants.debug_print("EnhancedSelectionSystem: Finishing selection at %s" % event.position, "SELECTION")
                     is_box_selecting = false
                     _finish_selection(event.position)
                     queue_redraw()
                     get_viewport().set_input_as_handled()
         elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-            print("EnhancedSelectionSystem: Right-click detected at %s" % event.position)
+            GameConstants.debug_print("EnhancedSelectionSystem: Right-click detected at %s" % event.position, "SELECTION")
             if not camera:
-                print("EnhancedSelectionSystem: No camera available for right-click processing")
+                GameConstants.debug_print("EnhancedSelectionSystem: No camera available for right-click processing", "SELECTION")
             elif selected_units.is_empty():
-                print("EnhancedSelectionSystem: No units selected for right-click command")
+                GameConstants.debug_print("EnhancedSelectionSystem: No units selected for right-click command", "SELECTION")
             else:
-                print("EnhancedSelectionSystem: Processing right-click with %d selected units" % selected_units.size())
+                GameConstants.debug_print("EnhancedSelectionSystem: Processing right-click with %d selected units" % selected_units.size(), "SELECTION")
                 _handle_right_click(event.position)
                 get_viewport().set_input_as_handled()
     
@@ -222,6 +222,8 @@ func _finish_selection(end_pos: Vector2):
     selection_changed.emit(selected_units)
 
 func _get_unit_at_position(screen_pos: Vector2) -> Unit:
+    GameConstants.debug_print("_get_unit_at_position called with screen_pos: %s" % screen_pos, "SELECTION")
+    
     if not game_world:
         # Try one last time to get the world from the camera's viewport
         if camera:
@@ -229,27 +231,52 @@ func _get_unit_at_position(screen_pos: Vector2) -> Unit:
             if viewport:
                 game_world = viewport.world_3d
         if not game_world:
+            GameConstants.debug_print("_get_unit_at_position: No game_world available for raycast", "SELECTION")
             return null # No 3D world, can't raycast
             
     var space_state = game_world.direct_space_state
     if not space_state:
+        GameConstants.debug_print("_get_unit_at_position: No space_state available", "SELECTION")
         return null
         
     var from = camera.project_ray_origin(screen_pos)
     var to = from + camera.project_ray_normal(screen_pos) * 1000
     
-    var query = PhysicsRayQueryParameters3D.create(from, to, 1) # Layer 1 for units
+    GameConstants.debug_print("_get_unit_at_position: Raycast from %s to %s" % [from, to], "SELECTION")
+    
+    var query = PhysicsRayQueryParameters3D.create(from, to, 3) # Layer 1 (units) + Layer 2 (buildings/turrets)
     query.collide_with_bodies = true
     query.collide_with_areas = false # We only want to hit unit bodies
     
+    GameConstants.debug_print("_get_unit_at_position: Query collision_mask: %d, collide_with_bodies: %s" % [query.collision_mask, query.collide_with_bodies], "SELECTION")
+    
     var result = space_state.intersect_ray(query)
+    
+    GameConstants.debug_print("_get_unit_at_position: Raycast result has %d keys: %s" % [result.size(), result.keys()], "SELECTION")
+    
+    # Additional debug: try raycast with all layers to see what we're hitting
+    if result.is_empty():
+        var broad_query = PhysicsRayQueryParameters3D.create(from, to, 0xFFFFFFFF) # All layers
+        broad_query.collide_with_bodies = true
+        broad_query.collide_with_areas = false
+        var broad_result = space_state.intersect_ray(broad_query)
+        if not broad_result.is_empty():
+            GameConstants.debug_print("_get_unit_at_position: Broad raycast (all layers) hit: %s (layer: %d)" % [broad_result.collider.get_path(), broad_result.collider.collision_layer], "SELECTION")
+        else:
+            GameConstants.debug_print("_get_unit_at_position: Even broad raycast found nothing", "SELECTION")
 
     if result.has("collider"):
         var node = result.collider
+        GameConstants.debug_print("_get_unit_at_position: Hit collider: %s (type: %s)" % [node.get_path(), node.get_class()], "SELECTION")
+        
         # The collider might be a child CollisionShape3D. Get the parent Unit.
+        var original_node = node
         while node != null and not node is Unit:
             node = node.get_parent()
+            
         if node is Unit:
+            GameConstants.debug_print("_get_unit_at_position: Found Unit: %s (team: %d, archetype: %s)" % [node.unit_id, node.team_id, node.archetype], "SELECTION")
+            
             # Check if unit is alive (same logic as _get_units_in_box)
             var is_unit_dead = false
             if node.has_method("get") and "is_dead" in node:
@@ -258,10 +285,15 @@ func _get_unit_at_position(screen_pos: Vector2) -> Unit:
                 is_unit_dead = node.is_dead()
                 
             if not is_unit_dead:
+                GameConstants.debug_print("_get_unit_at_position: Returning alive unit: %s" % node.unit_id, "SELECTION")
                 return node
+            else:
+                GameConstants.debug_print("_get_unit_at_position: Unit %s is dead, ignoring" % node.unit_id, "SELECTION")
         else:
+            GameConstants.debug_print("_get_unit_at_position: Collider %s is not a Unit (walked up to: %s)" % [original_node.get_path(), node.get_path() if node else "null"], "SELECTION")
             return null
     else:
+        GameConstants.debug_print("_get_unit_at_position: No collision detected", "SELECTION")
         return null
             
     return null
@@ -315,9 +347,22 @@ func _handle_right_click(screen_pos: Vector2):
     var unit_ids = []
     for unit in selected_units:
         unit_ids.append(unit.unit_id)
+    
+    # Debug: Show available units in scene for reference
+    var all_units = get_tree().get_nodes_in_group("units")
+    GameConstants.debug_print("_handle_right_click: Available units in scene: %d" % all_units.size(), "SELECTION")
+    for unit in all_units:
+        if unit is Unit:
+            GameConstants.debug_print("  - Unit %s (team: %d, pos: %s, collision_layer: %d)" % [unit.unit_id, unit.team_id, unit.global_position, unit.collision_layer], "SELECTION")
 
     var target_unit = _get_unit_at_position(screen_pos)
     var command_data = {}
+    
+    if target_unit:
+        GameConstants.debug_print("_handle_right_click: Detected unit %s (team: %d) at click position" % [target_unit.unit_id, target_unit.team_id], "SELECTION")
+        GameConstants.debug_print("_handle_right_click: Selected units team: %d" % selected_units[0].team_id, "SELECTION")
+    else:
+        GameConstants.debug_print("_handle_right_click: No unit detected at click position, defaulting to move command", "SELECTION")
     
     if target_unit and target_unit.team_id != selected_units[0].team_id:
         # Attack command

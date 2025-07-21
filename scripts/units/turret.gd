@@ -44,6 +44,17 @@ func _ready() -> void:
 	waiting_for_first_command = false
 	has_received_first_command = true
 	
+	# TURRET-SPECIFIC COLLISION SETUP
+	# Move turrets to buildings layer (2) instead of units layer (1)
+	# This prevents units from colliding with turrets while keeping them selectable
+	set_collision_layer_value(1, false)  # Remove from units layer
+	set_collision_layer_value(2, true)   # Add to buildings layer
+	
+	# Turrets don't need to avoid anything since they don't move
+	set_collision_mask(0)  # Don't collide with anything for movement
+	
+	print("DEBUG: Turret %s collision setup - Layer 2 (buildings), no collision mask" % unit_id)
+	
 	print("DEBUG: Turret %s _ready() completed - final flags: waiting_for_first_command=%s, has_received_first_command=%s" % [unit_id, waiting_for_first_command, has_received_first_command])
 	
 	# Custom weapon attachment for turrets - mount blaster-e on top of tank

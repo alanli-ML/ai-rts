@@ -451,13 +451,17 @@ func spawn_visual_projectile_rpc(start_pos: Vector3, p_direction: Vector3, p_tea
     var projectile_scene = preload("res://scenes/fx/Projectile.tscn")
     if projectile_scene:
         var projectile = projectile_scene.instantiate()
-        get_tree().root.add_child(projectile)
+        
+        # Set properties BEFORE adding to scene tree so _ready() has correct values
         projectile.global_position = start_pos
         projectile.direction = p_direction
         projectile.shooter_team_id = p_team_id
         projectile.speed = p_speed
         projectile.lifetime = p_lifetime
         projectile.damage = 0 # Visual only
+        
+        # Add to scene tree after setting properties
+        get_tree().root.add_child(projectile)
 
 @rpc("any_peer", "unreliable")
 func display_damage_indicator_rpc(unit_id: String, damage_amount: float):

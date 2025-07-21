@@ -40,10 +40,13 @@ func _apply_team_color():
     """Apply team-based color to the projectile"""
     var mesh_instance = get_node_or_null("MeshInstance3D")
     if not mesh_instance:
+        print("DEBUG: Projectile _apply_team_color - no MeshInstance3D found")
         return
     
     # Get team color (default to white if team not found)
     var team_color = team_colors.get(shooter_team_id, Color.WHITE)
+    
+    print("DEBUG: Projectile applying team color for team %d: %s" % [shooter_team_id, team_color])
     
     # Create a new material with team color
     var material = StandardMaterial3D.new()
@@ -54,6 +57,8 @@ func _apply_team_color():
     
     # Apply the material to the mesh
     mesh_instance.material_override = material
+    
+    print("DEBUG: Projectile team color applied successfully")
 
 func _physics_process(delta: float):
     global_position += direction * speed * delta
